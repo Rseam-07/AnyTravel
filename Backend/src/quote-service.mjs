@@ -90,6 +90,9 @@ function validateTransportRequest(request) {
   if (request.returnDate && !/^\d{4}-\d{2}-\d{2}$/.test(request.returnDate)) {
     throw new RequestError("returnDate must use YYYY-MM-DD");
   }
+  if (request.returnDate && Date.parse(request.returnDate) < Date.parse(request.departureDate)) {
+    throw new RequestError("returnDate must not be before departureDate");
+  }
   if (!Array.isArray(request.modes) || request.modes.some((mode) => !["train", "flight"].includes(mode))) {
     throw new RequestError("modes must contain train or flight");
   }

@@ -70,6 +70,41 @@ final class CompletePlanTests: XCTestCase {
     }
 
     @MainActor
+    func testReturnLiveQuoteReplacesMirroredOutboundEstimate() {
+        var logistics = TripLogistics()
+        logistics.travelers = 2
+        let draft = TripDraft(destination: "苏州", budgetPerPerson: 3_000, logistics: logistics)
+        let outbound = TransportOption(
+            mode: .train,
+            title: "G7001 · 上海→苏州",
+            originName: "上海",
+            destinationName: "苏州",
+            quotes: [ProviderQuote(provider: .railway12306, amountCNY: 40, unit: .perPerson, kind: .live, note: "去程")]
+        )
+        let returnTrip = TransportOption(
+            mode: .train,
+            title: "G7028 · 苏州→上海",
+            originName: "苏州",
+            destinationName: "上海",
+            direction: .returnTrip,
+            quotes: [ProviderQuote(provider: .railway12306, amountCNY: 50, unit: .perPerson, kind: .live, note: "返程")]
+        )
+
+        let lines = ExpensePlanner().buildLines(
+            draft: draft,
+            accommodation: nil,
+            transport: outbound,
+            returnTransport: returnTrip
+        )
+        let returnLine = lines.first(where: { $0.id == "return-transport" })
+
+        XCTAssertEqual(returnLine?.amountCNY, 100)
+        XCTAssertEqual(returnLine?.source, .live)
+        XCTAssertTrue(returnLine?.detail.contains("当前返程") == true)
+        XCTAssertFalse(returnLine?.detail.contains("按当前去程价格预留") == true)
+    }
+
+    @MainActor
     func testSkippingTransportDoesNotInventATransportExpense() {
         var logistics = TripLogistics()
         logistics.skipTransport = true

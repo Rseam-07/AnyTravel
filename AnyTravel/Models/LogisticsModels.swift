@@ -54,6 +54,18 @@ enum LongDistanceMode: String, CaseIterable, Codable, Hashable, Identifiable, Se
     }
 }
 
+enum TransportDirection: String, Codable, Hashable, Sendable {
+    case outbound
+    case returnTrip = "return"
+
+    var title: String {
+        switch self {
+        case .outbound: "去程"
+        case .returnTrip: "返程"
+        }
+    }
+}
+
 enum TravelProvider: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
     case ctrip
     case qunar
@@ -251,6 +263,7 @@ struct TransportOption: Codable, Hashable, Identifiable, Sendable {
     var title: String
     var originName: String
     var destinationName: String
+    var direction: TransportDirection?
     var durationMinutes: Int?
     var departureTime: Date?
     var arrivalTime: Date?
@@ -266,6 +279,7 @@ struct TransportOption: Codable, Hashable, Identifiable, Sendable {
         title: String,
         originName: String,
         destinationName: String,
+        direction: TransportDirection? = .outbound,
         durationMinutes: Int? = nil,
         departureTime: Date? = nil,
         arrivalTime: Date? = nil,
@@ -280,6 +294,7 @@ struct TransportOption: Codable, Hashable, Identifiable, Sendable {
         self.title = title
         self.originName = originName
         self.destinationName = destinationName
+        self.direction = direction
         self.durationMinutes = durationMinutes
         self.departureTime = departureTime
         self.arrivalTime = arrivalTime
@@ -289,6 +304,8 @@ struct TransportOption: Codable, Hashable, Identifiable, Sendable {
         self.recommendationReasons = recommendationReasons
         self.isRecommended = isRecommended
     }
+
+    var journeyDirection: TransportDirection { direction ?? .outbound }
 }
 
 struct LogisticsSnapshot: Codable, Hashable, Sendable {
@@ -296,6 +313,8 @@ struct LogisticsSnapshot: Codable, Hashable, Sendable {
     var selectedAccommodationID: AccommodationOption.ID?
     var transportOptions: [TransportOption]
     var selectedTransportID: TransportOption.ID?
+    var returnTransportOptions: [TransportOption]? = nil
+    var selectedReturnTransportID: TransportOption.ID? = nil
 }
 
 enum QuoteRefreshState: Equatable, Sendable {

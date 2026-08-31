@@ -48,6 +48,8 @@ final class PlannerViewModel {
     var accessPoints: [AccessPoint] = []
     var transportOptions: [TransportOption] = []
     var selectedTransportID: TransportOption.ID?
+    var returnTransportOptions: [TransportOption] = []
+    var selectedReturnTransportID: TransportOption.ID?
     var isLogisticsLoading = false
     var logisticsStatusMessage: String?
     var quoteRefreshState: QuoteRefreshState = .idle
@@ -135,11 +137,16 @@ final class PlannerViewModel {
         transportOptions.first { $0.id == selectedTransportID }
     }
 
+    var selectedReturnTransport: TransportOption? {
+        returnTransportOptions.first { $0.id == selectedReturnTransportID }
+    }
+
     var expenseLines: [ExpenseLine] {
         expensePlanner.buildLines(
             draft: draft,
             accommodation: selectedAccommodation,
-            transport: selectedTransport
+            transport: selectedTransport,
+            returnTransport: selectedReturnTransport
         )
     }
 
@@ -166,7 +173,16 @@ final class PlannerViewModel {
 
     var visibleAccessPoints: [AccessPoint] {
         guard planMapFocus == .transport else { return [] }
-        if let point = selectedTransport?.arrivalAccessPoint { return [point] }
+        let selectedPoints = [
+            selectedTransport?.arrivalAccessPoint,
+            selectedReturnTransport?.arrivalAccessPoint
+        ].compactMap { $0 }
+        if !selectedPoints.isEmpty {
+            return selectedPoints.reduce(into: []) { points, point in
+                guard !points.contains(where: { $0.name == point.name && $0.kind == point.kind }) else { return }
+                points.append(point)
+            }
+        }
         return Array(accessPoints.filter { $0.kind != .metro }.prefix(6))
     }
 
@@ -331,8 +347,23 @@ final class PlannerViewModel {
             recommendationReasons: ["你已优先选择这种方式", "苏州站到住宿约4.6公里"],
             isRecommended: true
         )
+        let returnTrain = TransportOption(
+            mode: .train,
+            title: "G7028 · 苏州→上海",
+            originName: "苏州",
+            destinationName: "上海",
+            direction: .returnTrip,
+            durationMinutes: 32,
+            arrivalAccessPoint: station,
+            hotelTransferMeters: 4_600,
+            quotes: [ProviderQuote(provider: .railway12306, amountCNY: 40, unit: .perPerson, kind: .demo, capturedAt: .now, bookingURL: URL(string: "https://kyfw.12306.cn/otn/leftTicket/init"), note: "返程演示价，仅用于界面验收")],
+            recommendationReasons: ["17:02–17:34 · 二等座有票", "住宿到苏州站约4.6公里"],
+            isRecommended: true
+        )
         transportOptions = [train]
         selectedTransportID = train.id
+        returnTransportOptions = [returnTrain]
+        selectedReturnTransportID = returnTrain.id
         selectedDayIndex = 0
         phase = .ready
         fitCurrentDay(animated: false)
@@ -380,6 +411,8 @@ final class PlannerViewModel {
         noticeMessage = nil
         errorMessage = nil
         quoteRefreshState = .idle
+        returnTransportOptions = []
+        selectedReturnTransportID = nil
         activityTitle = "正在拾起沿途值得停留的地方"
         activityDetail = "依照目的地、偏好与距离慢慢筛选"
         phase = .discovering
@@ -656,6 +689,8 @@ final class PlannerViewModel {
         failedSegmentsByDay = [:]
         visibleLegCount = 0
         selectedPlaceID = nil
+        returnTransportOptions = []
+        selectedReturnTransportID = nil
         quoteRefreshState = .stale("日期、人数或出发方式变了，住宿与交通需要重新核价。")
         fitCurrentDay(animated: true)
         routeTask?.cancel()
@@ -759,7 +794,9 @@ final class PlannerViewModel {
                 accommodations: accommodations,
                 selectedAccommodationID: selectedAccommodationID,
                 transportOptions: transportOptions,
-                selectedTransportID: selectedTransportID
+                selectedTransportID: selectedTransportID,
+                returnTransportOptions: returnTransportOptions,
+                selectedReturnTransportID: selectedReturnTransportID
             )
         )
 
@@ -788,7 +825,9 @@ final class PlannerViewModel {
             selectedAccommodationID = snapshot.selectedAccommodationID
             transportOptions = snapshot.transportOptions
             selectedTransportID = snapshot.selectedTransportID
-            let snapshotPoints = snapshot.transportOptions.compactMap(\.arrivalAccessPoint)
+            returnTransportOptions = snapshot.returnTransportOptions ?? []
+            selectedReturnTransportID = snapshot.selectedReturnTransportID
+            let snapshotPoints = (snapshot.transportOptions + returnTransportOptions).compactMap(\.arrivalAccessPoint)
                 + snapshot.accommodations.flatMap { Array($0.nearestAccessPoints.values) }
             accessPoints = snapshotPoints.reduce(into: []) { points, point in
                 guard !points.contains(where: { $0.name == point.name && $0.kind == point.kind }) else { return }
@@ -800,6 +839,8 @@ final class PlannerViewModel {
             accessPoints = []
             transportOptions = []
             selectedTransportID = nil
+            returnTransportOptions = []
+            selectedReturnTransportID = nil
         }
         originResolution = nil
         destination = DestinationResolution(
@@ -1034,6 +1075,8 @@ final class PlannerViewModel {
     func selectAccommodation(_ option: AccommodationOption) {
         selectedAccommodationID = option.id
         selectedPlaceID = nil
+        returnTransportOptions = []
+        selectedReturnTransportID = nil
         rebuildTransportOptions()
         if draft.logistics.hasDates,
            !draft.logistics.origin.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -1081,7 +1124,11 @@ final class PlannerViewModel {
     }
 
     func selectTransport(_ option: TransportOption) {
-        selectedTransportID = option.id
+        if option.journeyDirection == .returnTrip {
+            selectedReturnTransportID = option.id
+        } else {
+            selectedTransportID = option.id
+        }
         if let accessPoint = option.arrivalAccessPoint {
             fitCoordinates(
                 [accessPoint.coordinate, selectedAccommodation?.coordinate].compactMap { $0 },
@@ -1100,7 +1147,11 @@ final class PlannerViewModel {
             let coordinates = accommodations.prefix(8).map(\.coordinate) + currentStops.map(\.coordinate)
             fitCoordinates(coordinates, animated: true)
         case .transport:
-            let coordinates = [selectedTransport?.arrivalAccessPoint?.coordinate, selectedAccommodation?.coordinate]
+            let coordinates = [
+                selectedTransport?.arrivalAccessPoint?.coordinate,
+                selectedReturnTransport?.arrivalAccessPoint?.coordinate,
+                selectedAccommodation?.coordinate
+            ]
                 .compactMap { $0 }
             if coordinates.isEmpty {
                 fitCurrentDay(animated: true)
@@ -1135,6 +1186,8 @@ final class PlannerViewModel {
         guard !draft.logistics.skipTransport else {
             transportOptions = []
             selectedTransportID = nil
+            returnTransportOptions = []
+            selectedReturnTransportID = nil
             return
         }
         let previousMode = selectedTransport?.mode ?? draft.logistics.preferredLongDistanceMode
@@ -1151,8 +1204,10 @@ final class PlannerViewModel {
     }
 
     private func refreshTransportQuotes() async throws -> PricingEnrichmentResult<[TransportOption]> {
+        let previousOutboundTitle = selectedTransport?.title
+        let previousReturnTitle = selectedReturnTransport?.title
         let result = try await pricingBackendClient.enrichTransportOptions(
-            transportOptions,
+            transportOptions + returnTransportOptions,
             origin: draft.logistics.origin,
             destination: draft.destination,
             logistics: draft.logistics,
@@ -1160,16 +1215,26 @@ final class PlannerViewModel {
             accommodation: selectedAccommodation
         )
         guard !Task.isCancelled else { throw CancellationError() }
+        let outboundOptions = result.value.filter { $0.journeyDirection == .outbound }
+        let inboundOptions = result.value.filter { $0.journeyDirection == .returnTrip }
         if UIAccessibility.isReduceMotionEnabled {
-            transportOptions = result.value
+            transportOptions = outboundOptions
+            returnTransportOptions = inboundOptions
         } else {
             withAnimation(.spring(response: 0.46, dampingFraction: 0.88)) {
-                transportOptions = result.value
+                transportOptions = outboundOptions
+                returnTransportOptions = inboundOptions
             }
         }
         if !transportOptions.contains(where: { $0.id == selectedTransportID }) {
-            selectedTransportID = transportOptions.first(where: \.isRecommended)?.id
+            selectedTransportID = transportOptions.first(where: { $0.title == previousOutboundTitle })?.id
+                ?? transportOptions.first(where: \.isRecommended)?.id
                 ?? transportOptions.first?.id
+        }
+        if !returnTransportOptions.contains(where: { $0.id == selectedReturnTransportID }) {
+            selectedReturnTransportID = returnTransportOptions.first(where: { $0.title == previousReturnTitle })?.id
+                ?? returnTransportOptions.first(where: \.isRecommended)?.id
+                ?? returnTransportOptions.first?.id
         }
         return result
     }
@@ -1221,6 +1286,8 @@ final class PlannerViewModel {
         accessPoints = []
         transportOptions = []
         selectedTransportID = nil
+        returnTransportOptions = []
+        selectedReturnTransportID = nil
         isLogisticsLoading = false
         logisticsStatusMessage = nil
         quoteRefreshState = .idle

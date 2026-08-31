@@ -74,6 +74,20 @@ final class AnyTravelUITests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(transferReason.exists)
 
+        let returnSegment = app.segmentedControls["transport-direction-picker"].buttons["返程"]
+        XCTAssertTrue(returnSegment.waitForExistence(timeout: 3))
+        XCTAssertTrue(returnSegment.isHittable)
+        returnSegment.tap()
+        XCTAssertTrue(app.staticTexts["G7028 · 苏州→上海"].waitForExistence(timeout: 3))
+        let returnTransferReason = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "住宿到苏州站约4.6公里")
+        ).firstMatch
+        XCTAssertTrue(returnTransferReason.exists)
+        let returnScreenshot = XCTAttachment(screenshot: app.screenshot())
+        returnScreenshot.name = "往返交通独立选择"
+        returnScreenshot.lifetime = .keepAlways
+        add(returnScreenshot)
+
         app.buttons["费用"].tap()
         XCTAssertTrue(app.staticTexts["完整费用 · 2人"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["去程大交通"].exists)

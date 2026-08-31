@@ -30,39 +30,26 @@ export class Railway12306Adapter {
         };
       }
 
-      const cookies = await createAnonymousSession(from, to, request.departureDate);
-      const query = new URL(`${baseURL}/leftTicket/query`);
-      query.searchParams.set("leftTicketDTO.train_date", request.departureDate);
-      query.searchParams.set("leftTicketDTO.from_station", from.code);
-      query.searchParams.set("leftTicketDTO.to_station", to.code);
-      query.searchParams.set("purpose_codes", "ADULT");
-      const payload = await fetchJSON(query, cookies);
-      const stationMap = payload?.data?.map || {};
-      const trains = (payload?.data?.result || [])
-        .map((row) => parseTrainRow(row, stationMap))
-        .filter((train) => train?.canBuy)
-        .sort((a, b) => compareTrains(a, b, from, to))
-        .slice(0, Math.min(Number(process.env.RAILWAY_RESULT_LIMIT || 8), 12));
-
-      const priced = await Promise.all(trains.map(async (train) => {
-        const priceURL = new URL(`${baseURL}/leftTicket/queryTicketPrice`);
-        priceURL.searchParams.set("train_no", train.trainNo);
-        priceURL.searchParams.set("from_station_no", train.fromStationNo);
-        priceURL.searchParams.set("to_station_no", train.toStationNo);
-        priceURL.searchParams.set("seat_types", train.seatTypes);
-        priceURL.searchParams.set("train_date", request.departureDate);
-        try {
-          const price = parseTicketPrice(await fetchJSON(priceURL, cookies));
-          return toOption(train, price, request, from, to);
-        } catch {
-          return toOption(train, null, request, from, to);
+      const journeys = buildJourneyQueries(request, from, to);
+      const settled = await Promise.allSettled(journeys.map(searchJourney));
+      const options = [];
+      const diagnostics = [];
+      for (let index = 0; index < settled.length; index += 1) {
+        const result = settled[index];
+        const journey = journeys[index];
+        const label = journey.direction === "return" ? "返程" : "去程";
+        if (result.status === "fulfilled") {
+          options.push(...result.value);
+          diagnostics.push({ provider: "12306", status: "ok", detail: `${label} ${result.value.length} 列` });
+        } else {
+          diagnostics.push({
+            provider: "12306",
+            status: "failed",
+            detail: `${label}查询失败：${result.reason?.message || String(result.reason)}`
+          });
         }
-      }));
-
-      return {
-        options: priced,
-        diagnostics: [{ provider: "12306", status: "ok", detail: `${priced.length} trains returned` }]
-      };
+      }
+      return { options, diagnostics };
     } catch (error) {
       return {
         options: [],
@@ -70,6 +57,55 @@ export class Railway12306Adapter {
       };
     }
   }
+}
+
+export function buildJourneyQueries(request, from, to) {
+  const journeys = [{
+    direction: "outbound",
+    date: request.departureDate,
+    from,
+    to
+  }];
+  if (request.returnDate) {
+    journeys.push({
+      direction: "return",
+      date: request.returnDate,
+      from: to,
+      to: from
+    });
+  }
+  return journeys;
+}
+
+async function searchJourney(journey) {
+  const cookies = await createAnonymousSession(journey.from, journey.to, journey.date);
+  const query = new URL(`${baseURL}/leftTicket/query`);
+  query.searchParams.set("leftTicketDTO.train_date", journey.date);
+  query.searchParams.set("leftTicketDTO.from_station", journey.from.code);
+  query.searchParams.set("leftTicketDTO.to_station", journey.to.code);
+  query.searchParams.set("purpose_codes", "ADULT");
+  const payload = await fetchJSON(query, cookies);
+  const stationMap = payload?.data?.map || {};
+  const trains = (payload?.data?.result || [])
+    .map((row) => parseTrainRow(row, stationMap))
+    .filter((train) => train?.canBuy)
+    .sort((a, b) => compareTrains(a, b, journey.from, journey.to))
+    .slice(0, Math.min(Number(process.env.RAILWAY_RESULT_LIMIT || 8), 12));
+
+  return Promise.all(trains.map(async (train) => {
+    const priceURL = new URL(`${baseURL}/leftTicket/queryTicketPrice`);
+    priceURL.searchParams.set("train_no", train.trainNo);
+    priceURL.searchParams.set("from_station_no", train.fromStationNo);
+    priceURL.searchParams.set("to_station_no", train.toStationNo);
+    priceURL.searchParams.set("seat_types", train.seatTypes);
+    priceURL.searchParams.set("train_date", journey.date);
+    try {
+      const price = parseTicketPrice(await fetchJSON(priceURL, cookies));
+      return toOption(train, price, journey);
+    } catch {
+      return toOption(train, null, journey);
+    }
+  }));
 }
 
 async function loadStations() {
@@ -124,29 +160,30 @@ function compareTrains(a, b, from, to) {
     || a.departureTime.localeCompare(b.departureTime);
 }
 
-function toOption(train, price, request, from, to) {
+function toOption(train, price, journey) {
   const capturedAt = new Date().toISOString();
   const bookingURL = new URL(`${baseURL}/leftTicket/init`);
   bookingURL.searchParams.set("linktypeid", "dc");
-  bookingURL.searchParams.set("fs", `${from.name},${from.code}`);
-  bookingURL.searchParams.set("ts", `${to.name},${to.code}`);
-  bookingURL.searchParams.set("date", request.departureDate);
+  bookingURL.searchParams.set("fs", `${journey.from.name},${journey.from.code}`);
+  bookingURL.searchParams.set("ts", `${journey.to.name},${journey.to.code}`);
+  bookingURL.searchParams.set("date", journey.date);
   bookingURL.searchParams.set("flag", "N,N,Y");
   return {
     provider: "12306",
     mode: "train",
+    direction: journey.direction,
     serviceNumber: train.serviceNumber,
     originName: train.fromName,
     destinationName: train.toName,
-    departureTime: dateTimeISO(request.departureDate, train.departureTime),
-    arrivalTime: arrivalDateTimeISO(request.departureDate, train.departureTime, train.arrivalTime),
+    departureTime: dateTimeISO(journey.date, train.departureTime),
+    arrivalTime: arrivalDateTimeISO(journey.date, train.departureTime, train.arrivalTime),
     durationMinutes: train.durationMinutes,
     amountCNY: price?.amountCNY ?? null,
     fareName: price?.fareName ?? "票价待页面确认",
     availability: availabilitySummary(train.availability),
     bookingURL: bookingURL.toString(),
     capturedAt,
-    note: "余票和票价来自铁路12306公开查询页，提交订单前请再次确认"
+    note: `${journey.direction === "return" ? "返程" : "去程"}余票和票价来自铁路12306公开查询页，提交订单前请再次确认`
   };
 }
 

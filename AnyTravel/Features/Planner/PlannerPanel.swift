@@ -3,6 +3,7 @@ import SwiftUI
 struct PlannerPanel: View {
     @Bindable var model: PlannerViewModel
     @State private var readyExpanded = false
+    @State private var selectedTransportDirection: TransportDirection = .outbound
     @FocusState private var destinationFocused: Bool
     @FocusState private var adjustmentFocused: Bool
     @Namespace private var sectionMotion
@@ -500,9 +501,15 @@ struct PlannerPanel: View {
         return switch model.planMapFocus {
         case .itinerary: "\(destination) · \(model.currentDay?.title ?? "行程")"
         case .accommodation: "住宿比价 · \(model.accommodations.count)个候选"
-        case .transport: "抵达方式 · \(model.selectedTransport?.mode.shortTitle ?? "待选择")"
+        case .transport: "\(selectedTransportDirection.title)方式 · \(activeTransportSelection?.mode.shortTitle ?? "待选择")"
         case .budget: "完整费用 · \(model.draft.logistics.travelers)人"
         }
+    }
+
+    private var activeTransportSelection: TransportOption? {
+        selectedTransportDirection == .outbound
+            ? model.selectedTransport
+            : model.selectedReturnTransport
     }
 
     private var readySectionSubtitle: String {
@@ -513,8 +520,13 @@ struct PlannerPanel: View {
             model.selectedAccommodation.map { "已选\($0.name) · 到景点平均\($0.attractionDistanceMeters.anyTravelDistanceText)" }
                 ?? (model.isLogisticsLoading ? "正在地图上查找真实住宿" : "按景点分布与枢纽距离排序")
         case .transport:
-            model.selectedTransport.map { option in
-                option.durationMinutes.map { "门到门规则估算约\($0 / 60)小时\($0 % 60)分 · 等待实时报价" }
+            activeTransportSelection.map { option in
+                option.durationMinutes.map {
+                    let quoteState = option.quotes.contains(where: { $0.kind == .live })
+                        ? "班次与票价已更新"
+                        : "等待实时报价"
+                    return "\(transportDurationText($0)) · \(quoteState)"
+                }
                     ?? "补充出发地和日期后比较班次与价格"
             } ?? "补充条件后自动推荐，也可以先指定方式"
         case .budget:
@@ -657,26 +669,67 @@ struct PlannerPanel: View {
     }
 
     private var transportReadyContent: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        let options = selectedTransportDirection == .outbound
+            ? model.transportOptions
+            : model.returnTransportOptions
+        let selectedOption = selectedTransportDirection == .outbound
+            ? model.selectedTransport
+            : model.selectedReturnTransport
+
+        return VStack(alignment: .leading, spacing: 9) {
             if model.draft.logistics.skipTransport {
                 skippedModule(title: "已跳过大交通", detail: "景点与住宿仍可继续规划，之后补出发地即可重算。", symbol: "tram")
-            } else if model.isLogisticsLoading && model.transportOptions.isEmpty {
+            } else if model.isLogisticsLoading && model.transportOptions.isEmpty && model.returnTransportOptions.isEmpty {
                 loadingModule("正在比较每一种抵达远方的方式")
             } else {
-                ScrollView(.horizontal) {
+                if model.draft.logistics.endDate != nil || !model.returnTransportOptions.isEmpty {
+                    Picker("选择去程或返程", selection: $selectedTransportDirection) {
+                        Text("去程").tag(TransportDirection.outbound)
+                        Text("返程").tag(TransportDirection.returnTrip)
+                    }
+                    .pickerStyle(.segmented)
+                    .tint(AnyTravelPalette.route)
+                    .accessibilityIdentifier("transport-direction-picker")
+                }
+
+                if options.isEmpty {
+                    let title = selectedTransportDirection == .returnTrip ? "返程班次暂未抵达" : "暂时没有交通结果"
+                    let detail = selectedTransportDirection == .returnTrip
+                        ? "保留当前去程；刷新后会继续查询返程当天的班次与票价。"
+                        : "补充出发地与日期，或稍后重新查询。"
                     HStack(spacing: 10) {
-                        ForEach(model.transportOptions) { option in
-                            transportCard(option)
+                        Image(systemName: selectedTransportDirection == .returnTrip ? "arrow.uturn.backward.circle" : "tram")
+                            .foregroundStyle(AnyTravelPalette.route)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(title).font(.subheadline.weight(.semibold))
+                            Text(detail).font(.caption2).foregroundStyle(.secondary)
                         }
                     }
-                    .scrollTargetLayout()
+                    .padding(11)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                } else {
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 10) {
+                            ForEach(options) { option in
+                                transportCard(option)
+                            }
+                        }
+                        .scrollTargetLayout()
+                    }
+                    .scrollIndicators(.hidden)
+                    .scrollTargetBehavior(.viewAligned)
                 }
-                .scrollIndicators(.hidden)
-                .scrollTargetBehavior(.viewAligned)
                 quoteRefreshBanner
-                if let selected = model.selectedTransport {
-                    quoteStrip(selected.quotes)
+                if let selectedOption {
+                    quoteStrip(selectedOption.quotes)
                 }
+            }
+        }
+        .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: selectedTransportDirection)
+        .onChange(of: model.returnTransportOptions.isEmpty) { _, returnIsEmpty in
+            if returnIsEmpty && selectedTransportDirection == .returnTrip {
+                selectedTransportDirection = .outbound
             }
         }
     }
@@ -881,8 +934,10 @@ struct PlannerPanel: View {
     }
 
     private func transportCard(_ option: TransportOption) -> some View {
-        let selected = model.selectedTransportID == option.id
-        let duration = option.durationMinutes.map { "约\($0 / 60)小时\($0 % 60)分" } ?? "耗时待比较"
+        let selected = option.journeyDirection == .returnTrip
+            ? model.selectedReturnTransportID == option.id
+            : model.selectedTransportID == option.id
+        let duration = option.durationMinutes.map(transportDurationText) ?? "耗时待比较"
         return Button {
             model.selectTransport(option)
         } label: {
@@ -932,8 +987,17 @@ struct PlannerPanel: View {
             .shadow(color: selected ? AnyTravelPalette.route.opacity(0.16) : .clear, radius: 10, y: 5)
         }
         .buttonStyle(AnyTravelPressStyle())
+        .accessibilityIdentifier("transport-option-\(option.journeyDirection.rawValue)-\(option.id.uuidString)")
         .accessibilityAddTraits(selected ? .isSelected : [])
         .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: selected)
+    }
+
+    private func transportDurationText(_ minutes: Int) -> String {
+        guard minutes >= 60 else { return "约\(minutes)分钟" }
+        let remainder = minutes % 60
+        return remainder == 0
+            ? "约\(minutes / 60)小时"
+            : "约\(minutes / 60)小时\(remainder)分钟"
     }
 
     private func quoteStrip(_ quotes: [ProviderQuote]) -> some View {

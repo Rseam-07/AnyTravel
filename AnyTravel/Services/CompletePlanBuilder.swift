@@ -131,19 +131,20 @@ struct ExpensePlanner {
     func buildLines(
         draft: TripDraft,
         accommodation: AccommodationOption?,
-        transport: TransportOption?
+        transport: TransportOption?,
+        returnTransport: TransportOption? = nil
     ) -> [ExpenseLine] {
         let totalBudget = draft.budgetPerPerson * max(draft.logistics.travelers, 1)
         let rooms = max((draft.logistics.travelers + 1) / 2, 1)
         let nights = draft.logistics.skipAccommodation ? 0 : max(draft.logistics.nights, max(draft.dayCount - 1, 0))
 
         let transportQuote = transport?.quotes.bestUsableQuote
-        let quotedOutboundAmount = transportQuote?.amountCNY.map { amount in
-            transportQuote?.unit == .perPerson ? amount * max(draft.logistics.travelers, 1) : amount
-        }
+        let returnTransportQuote = returnTransport?.quotes.bestUsableQuote
+        let quotedOutboundAmount = totalAmount(for: transportQuote, travelers: draft.logistics.travelers)
+        let quotedReturnAmount = totalAmount(for: returnTransportQuote, travelers: draft.logistics.travelers)
         let roundTripEnvelope = Int(Double(totalBudget) * 0.24)
         let outboundAmount = quotedOutboundAmount ?? roundTripEnvelope / 2
-        let returnAmount = quotedOutboundAmount ?? (roundTripEnvelope - outboundAmount)
+        let returnAmount = quotedReturnAmount ?? quotedOutboundAmount ?? (roundTripEnvelope - outboundAmount)
 
         let hotelQuote = accommodation?.quotes.bestUsableQuote
         let accommodationAmount: Int
@@ -179,11 +180,12 @@ struct ExpensePlanner {
                 ExpenseLine(
                     id: "return-transport",
                     title: "返程大交通",
-                    detail: quotedOutboundAmount == nil
-                        ? "先留出往返交通预算的一半"
-                        : "按当前去程价格预留 · 尚非返程实时报价",
+                    detail: returnTransportQuote.map { "\($0.provider.title) · \($0.kind.title) · 当前返程" }
+                        ?? (quotedOutboundAmount == nil
+                            ? "先留出往返交通预算的一半"
+                            : "按当前去程价格预留 · 尚非返程实时报价"),
                     amountCNY: returnAmount,
-                    source: .budgetEnvelope
+                    source: returnTransportQuote?.kind == .live ? .live : .budgetEnvelope
                 )
             ]
         }
@@ -201,6 +203,11 @@ struct ExpensePlanner {
             ExpenseLine(id: "local", title: "市内交通", detail: "地铁、公交与必要打车", amountCNY: Int(Double(totalBudget) * 0.07), source: .budgetEnvelope),
             ExpenseLine(id: "buffer", title: "机动金", detail: "价格波动与临时调整", amountCNY: Int(Double(totalBudget) * 0.05), source: .budgetEnvelope)
         ]
+    }
+
+    private func totalAmount(for quote: ProviderQuote?, travelers: Int) -> Int? {
+        guard let quote, let amount = quote.amountCNY else { return nil }
+        return quote.unit == .perPerson ? amount * max(travelers, 1) : amount
     }
 }
 

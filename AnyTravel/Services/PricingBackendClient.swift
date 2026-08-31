@@ -21,7 +21,9 @@ struct PricingProviderIssue: Hashable, Sendable {
         case "dependency_missing": return "\(name)的采集组件尚未安装"
         case "city_id_missing": return "\(name)暂时无法识别这座城市"
         case "station_not_found": return "\(name)暂时无法识别出发地或到达地"
-        case "failed": return "\(name)本次没有返回结果"
+        case "failed":
+            let trimmed = detail?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return trimmed.isEmpty ? "\(name)本次没有返回结果" : "\(name)：\(trimmed)"
         default:
             let trimmed = detail?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             return trimmed.isEmpty ? "\(name)本次没有返回结果" : trimmed
@@ -212,13 +214,23 @@ struct PricingBackendClient {
                 )
             }
             let recommendedMode = logistics.preferredLongDistanceMode
+            var recommendedDirections: Set<TransportDirection> = []
             for index in liveOptions.indices {
-                liveOptions[index].isRecommended = index == liveOptions.startIndex
-                    && (recommendedMode == nil || recommendedMode == liveOptions[index].mode)
+                let direction = liveOptions[index].journeyDirection
+                let matchesPreference = recommendedMode == nil || recommendedMode == liveOptions[index].mode
+                liveOptions[index].isRecommended = matchesPreference && !recommendedDirections.contains(direction)
+                if liveOptions[index].isRecommended { recommendedDirections.insert(direction) }
             }
-            let liveModes = Set(liveOptions.map(\.mode))
-            let merged = (liveOptions + currentOptions.filter { !liveModes.contains($0.mode) })
+            let liveJourneyModes = Set(liveOptions.map {
+                "\($0.journeyDirection.rawValue):\($0.mode.rawValue)"
+            })
+            let merged = (liveOptions + currentOptions.filter {
+                !liveJourneyModes.contains("\($0.journeyDirection.rawValue):\($0.mode.rawValue)")
+            })
                 .sorted { lhs, rhs in
+                    if lhs.journeyDirection != rhs.journeyDirection {
+                        return lhs.journeyDirection == .outbound
+                    }
                     if lhs.isRecommended != rhs.isRecommended { return lhs.isRecommended }
                     return (lhs.durationMinutes ?? .max) < (rhs.durationMinutes ?? .max)
                 }
@@ -315,15 +327,17 @@ struct PricingBackendClient {
     ) -> TransportOption? {
         guard let provider = TravelProvider(backendName: option.provider),
               let mode = LongDistanceMode(rawValue: option.mode) else { return nil }
+        let direction = option.direction.flatMap(TransportDirection.init(rawValue:)) ?? .outbound
+        let localStationName = direction == .returnTrip ? option.originName : option.destinationName
         let bestNamedPoint = accessPoints
             .filter { $0.kind == (mode == .flight ? .airport : .rail) }
             .min { lhs, rhs in
-                Self.stationNameScore(lhs.name, target: option.destinationName)
-                    < Self.stationNameScore(rhs.name, target: option.destinationName)
+                Self.stationNameScore(lhs.name, target: localStationName)
+                    < Self.stationNameScore(rhs.name, target: localStationName)
             }
         let arrivalPoint: AccessPoint?
         if let bestNamedPoint,
-           Self.stationNameScore(bestNamedPoint.name, target: option.destinationName) < 10 {
+           Self.stationNameScore(bestNamedPoint.name, target: localStationName) < 10 {
             arrivalPoint = bestNamedPoint
         } else {
             arrivalPoint = fallbackAccessPoint
@@ -345,13 +359,17 @@ struct PricingBackendClient {
         )
         var reasons = ["\(Self.clockText(option.departureTime))–\(Self.clockText(option.arrivalTime)) · \(option.availability)"]
         if let transferMeters, let arrivalPoint {
-            reasons.append("\(arrivalPoint.name)到住宿约\(transferMeters.anyTravelDistanceText)")
+            let transferText = direction == .returnTrip
+                ? "住宿到\(arrivalPoint.name)约\(transferMeters.anyTravelDistanceText)"
+                : "\(arrivalPoint.name)到住宿约\(transferMeters.anyTravelDistanceText)"
+            reasons.append(transferText)
         }
         return TransportOption(
             mode: mode,
             title: "\(option.serviceNumber) · \(option.originName)→\(option.destinationName)",
             originName: option.originName,
             destinationName: option.destinationName,
+            direction: direction,
             durationMinutes: option.durationMinutes,
             departureTime: option.departureTime,
             arrivalTime: option.arrivalTime,
@@ -455,6 +473,7 @@ private struct BackendErrorResponse: Codable {
 private struct BackendTransportOption: Codable {
     var provider: String
     var mode: String
+    var direction: String?
     var serviceNumber: String
     var originName: String
     var destinationName: String
