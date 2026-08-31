@@ -116,6 +116,10 @@ final class AnyTravelUITests: XCTestCase {
         app.launchArguments = ["--ui-test-ready"]
         app.launch()
 
+        let rationale = app.descendants(matching: .any)["planning-rationale"]
+        XCTAssertTrue(rationale.waitForExistence(timeout: 5))
+        XCTAssertTrue(rationale.label.contains("这一天为何这样展开"))
+
         let accommodationTab = app.buttons["住宿"]
         XCTAssertTrue(accommodationTab.waitForExistence(timeout: 5))
         let exportMenu = app.buttons["plan-export-menu"]
@@ -297,6 +301,13 @@ final class AnyTravelUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["已跳过住宿"].waitForExistence(timeout: 3))
 
         app.buttons["行程"].tap()
+        XCTAssertTrue(app.staticTexts["苏州博物馆"].exists)
+
+        app.buttons["调整"].tap()
+        let editRouteButton = app.buttons["增删与调整路线"]
+        XCTAssertTrue(editRouteButton.waitForExistence(timeout: 2))
+        editRouteButton.tap()
+        XCTAssertTrue(app.navigationBars["编排行程"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["苏州博物馆"].exists)
         XCTAssertTrue(app.staticTexts["拙政园"].exists)
     }

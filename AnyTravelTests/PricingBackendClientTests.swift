@@ -217,6 +217,56 @@ final class PricingBackendClientTests: XCTestCase {
     }
 
     @MainActor
+    func testPublicTicketQuoteIsMergedByPlaceIDIncludingFreeAdmission() async throws {
+        let placeID = UUID()
+        let capturedAt = "2026-09-01T02:00:00Z"
+        PricingURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/v1/quotes/tickets")
+            let body = Data("""
+            {
+              "quotes": [{
+                "attractionID": "\(placeID.uuidString)",
+                "attractionName": "苏州博物馆",
+                "provider": "qunar",
+                "amountCNY": 0,
+                "displayPriceText": "免费",
+                "unit": "perPerson",
+                "kind": "live",
+                "capturedAt": "\(capturedAt)",
+                "bookingURL": "https://piao.qunar.com/ticket/detail_123.html",
+                "note": "公开页当前标注免费"
+              }],
+              "diagnostics": [{"provider":"qunar","status":"ok"}],
+              "capturedAt": "\(capturedAt)",
+              "cached": false
+            }
+            """.utf8)
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, body)
+        }
+        let context = try makeClient()
+        let day = ItineraryDay(index: 0, stops: [
+            TravelPlace(
+                id: placeID,
+                name: "苏州博物馆",
+                address: "东北街204号",
+                coordinate: Coordinate(latitude: 31.324, longitude: 120.627),
+                interest: .culture
+            )
+        ])
+
+        let result = try await context.client.enrichTicketQuotes(
+            [day],
+            destination: "苏州",
+            visitDate: Date(timeIntervalSince1970: 2_000_000_000)
+        )
+
+        XCTAssertEqual(result.receivedCount, 1)
+        XCTAssertEqual(result.value[0].stops[0].ticketQuote?.provider, .qunar)
+        XCTAssertEqual(result.value[0].stops[0].ticketQuote?.amountCNY, 0)
+        XCTAssertEqual(result.value[0].stops[0].ticketQuote?.priceText, "免费")
+    }
+
+    @MainActor
     func testHTTPFailureIsReportedInsteadOfSilentlyReturningOldCards() async throws {
         PricingURLProtocol.requestHandler = { request in
             let body = Data(#"{"error":"rate_limit"}"#.utf8)

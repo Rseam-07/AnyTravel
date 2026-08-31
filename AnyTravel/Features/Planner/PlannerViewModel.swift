@@ -84,6 +84,7 @@ final class PlannerViewModel {
     @ObservationIgnored private let localTransferService: LocalTransferService
     @ObservationIgnored private let planExportService: PlanExportService
     @ObservationIgnored private let planPacingService: PlanPacingService
+    @ObservationIgnored private let tourismDayAssessmentService = TourismDayAssessmentService()
     @ObservationIgnored private let assistantClient: TravelAssistantClient
     @ObservationIgnored private let expensePlanner: ExpensePlanner
     @ObservationIgnored private let scheduleBuilder: ScheduleBuilder
@@ -200,7 +201,8 @@ final class PlannerViewModel {
             transport: selectedTransport,
             returnTransport: selectedReturnTransport,
             outboundTransfer: selectedOutboundTransfer,
-            returnTransfer: selectedReturnTransfer
+            returnTransfer: selectedReturnTransfer,
+            itineraryDays: itineraryDays
         )
     }
 
@@ -221,7 +223,9 @@ final class PlannerViewModel {
             days: itineraryDays,
             travelMinutesByDay: routeTravelMinutesByDay,
             failedSegmentsByDay: failedSegmentsByDay,
-            pace: draft.pace
+            pace: draft.pace,
+            mode: draft.travelMode,
+            constraintsByDay: tourismConstraintsByDay
         )
     }
 
@@ -230,7 +234,20 @@ final class PlannerViewModel {
         return scheduleBuilder.build(
             for: currentDay,
             pace: draft.pace,
-            accommodation: selectedAccommodation
+            accommodation: selectedAccommodation,
+            travelMode: draft.travelMode,
+            constraints: tourismConstraints(for: currentDay)
+        )
+    }
+
+    var currentDayTourismAssessment: TourismDayAssessment? {
+        guard let currentDay else { return nil }
+        return tourismDayAssessmentService.assess(
+            day: currentDay,
+            pace: draft.pace,
+            mode: draft.travelMode,
+            actualTravelMinutes: routeTravelMinutesByDay[currentDay.index],
+            constraints: tourismConstraints(for: currentDay)
         )
     }
 
@@ -557,7 +574,7 @@ final class PlannerViewModel {
             let places = try await searchService.discoverPlaces(around: destination, draft: draft)
             guard phase == .discovering else { return }
             activityTitle = "正在编排每天的脚步"
-            activityDetail = "先让相近的地方在同一天相遇"
+            activityDetail = "正在衡量距离、停留、用餐、休息与夜游时段"
             itineraryDays = routePlanner.orderPlaces(
                 places,
                 from: destination.coordinate,
@@ -1084,7 +1101,9 @@ final class PlannerViewModel {
             from: itineraryDays,
             travelMinutesByDay: routeTravelMinutesByDay,
             failedSegmentsByDay: failedSegmentsByDay,
-            pace: draft.pace
+            pace: draft.pace,
+            mode: draft.travelMode,
+            constraintsByDay: tourismConstraintsByDay
         )
         let didChange = draft.pace != .relaxed || result.days != itineraryDays
         guard didChange else {
@@ -1096,7 +1115,16 @@ final class PlannerViewModel {
         revealTask?.cancel()
         draft.pace = .relaxed
         draft.dayCount = result.days.count
-        itineraryDays = result.days
+        let relaxedStops = result.days.flatMap(\.stops)
+        if let planningCenter = destination?.coordinate ?? relaxedStops.first?.coordinate {
+            itineraryDays = routePlanner.orderPlaces(
+                relaxedStops,
+                from: planningCenter,
+                draft: draft
+            )
+        } else {
+            itineraryDays = result.days
+        }
         selectedDayIndex = min(selectedDayIndex, max(result.days.count - 1, 0))
         selectedPlaceID = nil
         routesByDay = [:]
@@ -1275,7 +1303,13 @@ final class PlannerViewModel {
             return PlanExportDay(
                 itinerary: day,
                 date: date,
-                schedule: scheduleBuilder.build(for: day, pace: draft.pace, accommodation: selectedAccommodation),
+                schedule: scheduleBuilder.build(
+                    for: day,
+                    pace: draft.pace,
+                    accommodation: selectedAccommodation,
+                    travelMode: draft.travelMode,
+                    constraints: tourismConstraints(for: day)
+                ),
                 routeSegments: segments
             )
         }
@@ -1408,6 +1442,33 @@ final class PlannerViewModel {
         var allResultsCached = true
         var pricingIssues: [String] = []
         var pricingFailures: [String] = []
+
+        if pricingBackendClient.isConfigured {
+            logisticsStatusMessage = "正在复核景点门票与预约"
+            do {
+                let result = try await pricingBackendClient.enrichTicketQuotes(
+                    itineraryDays,
+                    destination: draft.destination,
+                    visitDate: draft.logistics.startDate
+                )
+                guard !Task.isCancelled else { return }
+                if UIAccessibility.isReduceMotionEnabled {
+                    itineraryDays = result.value
+                } else {
+                    withAnimation(.spring(response: 0.46, dampingFraction: 0.86)) {
+                        itineraryDays = result.value
+                    }
+                }
+                receivedQuoteCount += result.receivedCount
+                latestCapture = max(latestCapture ?? result.capturedAt, result.capturedAt)
+                allResultsCached = allResultsCached && result.isCached
+                pricingIssues.append(contentsOf: result.issues.map(\.message))
+            } catch {
+                if wantsLiveQuotes {
+                    pricingFailures.append(Self.pricingFailureText(error))
+                }
+            }
+        }
 
         if draft.logistics.skipAccommodation {
             accommodations = []
@@ -2150,6 +2211,59 @@ final class PlannerViewModel {
         routesByDay.mapValues { legs in
             max(Int((legs.reduce(0) { $0 + $1.route.expectedTravelTime } / 60).rounded()), 0)
         }
+    }
+
+    private var tourismConstraintsByDay: [Int: TourismDayConstraints] {
+        Dictionary(uniqueKeysWithValues: itineraryDays.compactMap { day in
+            let constraints = tourismConstraints(for: day)
+            guard constraints != .none else { return nil }
+            return (day.index, constraints)
+        })
+    }
+
+    private func tourismConstraints(for day: ItineraryDay) -> TourismDayConstraints {
+        guard !itineraryDays.isEmpty else { return .none }
+        var constraints = TourismDayConstraints.none
+
+        if day.index == itineraryDays.first?.index,
+           let arrivalTime = selectedTransport?.arrivalTime {
+            let transferMinutes = selectedOutboundTransfer?.durationMinutes
+                ?? (draft.logistics.skipAccommodation ? 30 : 45)
+            let exitAndSettleMinutes: Int = switch selectedTransport?.mode {
+            case .some(.flight): 45
+            case .some(.train): 25
+            case .some(.coach): 20
+            case .some(.driving): 10
+            case .none: 25
+            }
+            let rawStart = Self.minuteOfDay(arrivalTime) + transferMinutes + exitAndSettleMinutes
+            constraints.earliestStartMinute = min(rawStart, 23 * 60 + 55)
+            constraints.startNote = rawStart >= 24 * 60
+                ? "抵达、出站与接驳预计跨过午夜，当天不宜再排主要游览"
+                : "按抵达时刻，加上约\(transferMinutes)分钟接驳和\(exitAndSettleMinutes)分钟出站安顿后开始"
+        }
+
+        if day.index == itineraryDays.last?.index,
+           let departureTime = selectedReturnTransport?.departureTime {
+            let transferMinutes = selectedReturnTransfer?.durationMinutes ?? 45
+            let checkInBufferMinutes: Int = switch selectedReturnTransport?.mode {
+            case .some(.flight): 120
+            case .some(.train): 60
+            case .some(.coach): 60
+            case .some(.driving): 15
+            case .none: 60
+            }
+            let leaveBy = Self.minuteOfDay(departureTime) - transferMinutes - checkInBufferMinutes
+            constraints.latestEndMinute = max(leaveBy, 0)
+            constraints.endNote = "按约\(transferMinutes)分钟接驳，并为\(selectedReturnTransport?.mode.shortTitle ?? "返程")预留\(checkInBufferMinutes)分钟提前到达"
+        }
+
+        return constraints
+    }
+
+    private static func minuteOfDay(_ date: Date) -> Int {
+        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return max((components.hour ?? 0) * 60 + (components.minute ?? 0), 0)
     }
 
     private func showFailure(_ error: Error, recovery: RecoveryAction) {

@@ -6,15 +6,15 @@ export async function searchAMapPlaces(request, options = {}) {
   if (!apiKey) throw new AMapError("amap_not_configured", 503, "高德 Web 服务尚未配置");
   const clean = validateRequest(request);
   const baseURL = normalizeBaseURL(env.AMAP_BASE_URL || "https://restapi.amap.com");
-  const endpoint = new URL("v3/place/text", baseURL);
+  const endpoint = new URL("v5/place/text", baseURL);
   endpoint.searchParams.set("keywords", clean.keywords);
   if (clean.city) {
-    endpoint.searchParams.set("city", clean.city);
-    endpoint.searchParams.set("citylimit", "true");
+    endpoint.searchParams.set("region", clean.city);
+    endpoint.searchParams.set("city_limit", "true");
   }
-  endpoint.searchParams.set("offset", String(clean.limit));
-  endpoint.searchParams.set("page", "1");
-  endpoint.searchParams.set("extensions", "base");
+  endpoint.searchParams.set("page_size", String(clean.limit));
+  endpoint.searchParams.set("page_num", "1");
+  endpoint.searchParams.set("show_fields", "business");
   endpoint.searchParams.set("key", apiKey);
 
   let response;
@@ -62,7 +62,11 @@ export function normalizePOI(poi) {
     type: String(poi.type || "").trim(),
     coordinate: { latitude: wgs84.latitude, longitude: wgs84.longitude },
     sourceCoordinate: { latitude, longitude },
-    sourceCoordinateSystem: "GCJ-02"
+    sourceCoordinateSystem: "GCJ-02",
+    openingHoursToday: normalizeOptionalText(poi?.business?.opentime_today),
+    openingHoursWeek: normalizeOptionalText(poi?.business?.opentime_week),
+    rating: normalizeOptionalNumber(poi?.business?.rating),
+    averageCostCNY: normalizeOptionalNumber(poi?.business?.cost)
   };
 }
 
@@ -117,6 +121,16 @@ function normalizeAddress(value) {
   if (Array.isArray(value)) return value.join("");
   const address = String(value || "").trim();
   return address || "地址以高德详情为准";
+}
+
+function normalizeOptionalText(value) {
+  const text = String(value || "").trim();
+  return text || null;
+}
+
+function normalizeOptionalNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : null;
 }
 
 function validateRequest(request) {

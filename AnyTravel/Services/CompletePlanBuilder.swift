@@ -136,7 +136,8 @@ struct ExpensePlanner {
         transport: TransportOption?,
         returnTransport: TransportOption? = nil,
         outboundTransfer: LocalTransferOption? = nil,
-        returnTransfer: LocalTransferOption? = nil
+        returnTransfer: LocalTransferOption? = nil,
+        itineraryDays: [ItineraryDay] = []
     ) -> [ExpenseLine] {
         let totalBudget = draft.budgetPerPerson * max(draft.logistics.travelers, 1)
         let rooms = max((draft.logistics.travelers + 1) / 2, 1)
@@ -212,6 +213,11 @@ struct ExpensePlanner {
         let transferTotal = transferLines.reduce(0) { $0 + $1.amountCNY }
         let localTransportEnvelope = Int(Double(totalBudget) * 0.07)
         let remainingLocalTransport = max(localTransportEnvelope - transferTotal, 0)
+        let ticketLine = ticketExpenseLine(
+            for: itineraryDays,
+            totalBudget: totalBudget,
+            travelers: draft.logistics.travelers
+        )
 
         return transportLines + transferLines + [
             ExpenseLine(
@@ -221,7 +227,7 @@ struct ExpensePlanner {
                 amountCNY: accommodationAmount,
                 source: hotelQuote?.kind == .live ? .live : .budgetEnvelope
             ),
-            ExpenseLine(id: "tickets", title: "景点与预约", detail: "按景点逐项核价前的额度", amountCNY: Int(Double(totalBudget) * 0.13), source: .budgetEnvelope),
+            ticketLine,
             ExpenseLine(id: "meals", title: "餐饮", detail: "默认轻松节奏，预留正餐与休息", amountCNY: Int(Double(totalBudget) * 0.17), source: .budgetEnvelope),
             ExpenseLine(
                 id: "local",
@@ -239,6 +245,50 @@ struct ExpensePlanner {
         return quote.unit == .perPerson ? amount * max(travelers, 1) : amount
     }
 
+    private func ticketExpenseLine(
+        for days: [ItineraryDay],
+        totalBudget: Int,
+        travelers: Int
+    ) -> ExpenseLine {
+        let stops = days.flatMap(\.stops).filter { $0.interest != .food }
+        let quoted = stops.compactMap(\.ticketQuote).filter { $0.amountCNY != nil }
+        let quotedTotal = quoted.reduce(0) { partial, quote in
+            partial + (totalAmount(for: quote, travelers: travelers) ?? 0)
+        }
+        let unknownCount = max(stops.count - quoted.count, 0)
+        let envelope = Int(Double(totalBudget) * 0.13)
+
+        if quoted.isEmpty {
+            return ExpenseLine(
+                id: "tickets",
+                title: "景点与预约",
+                detail: "按景点逐项核价前的额度",
+                amountCNY: envelope,
+                source: .budgetEnvelope
+            )
+        }
+
+        let detail: String
+        let amount: Int
+        let source: ExpenseSource
+        if unknownCount == 0 {
+            detail = "\(quoted.count)处采用渠道当前展示价 · 日期、票种与优惠仍需复核"
+            amount = quotedTotal
+            source = quoted.allSatisfy { $0.kind == .live } ? .live : .estimate
+        } else {
+            detail = "\(quoted.count)处采用当前展示价，另\(unknownCount)处按预算预留"
+            amount = quotedTotal + max(envelope - quotedTotal, 0)
+            source = .estimate
+        }
+        return ExpenseLine(
+            id: "tickets",
+            title: "景点与预约",
+            detail: detail,
+            amountCNY: amount,
+            source: source
+        )
+    }
+
     private func durationText(_ minutes: Int) -> String {
         guard minutes >= 60 else { return "约\(minutes)分钟" }
         let remainder = minutes % 60
@@ -247,41 +297,209 @@ struct ExpensePlanner {
 }
 
 struct ScheduleBuilder {
-    func build(for day: ItineraryDay, pace: TripPace, accommodation: AccommodationOption?) -> [ScheduleItem] {
-        let slots: [(String, String)] = switch pace {
-        case .relaxed: [("10:00–12:00", "慢慢参观"), ("14:30–16:30", "午休后继续")]
-        case .balanced: [("09:30–11:30", "上午参观"), ("13:30–15:30", "午后参观"), ("16:00–18:00", "傍晚参观")]
-        case .full: [("09:00–10:30", "上午第一站"), ("11:00–12:30", "上午第二站"), ("14:00–15:30", "午后第一站"), ("16:00–17:30", "午后第二站")]
-        }
+    private let policy = TourismPlanningPolicy()
+
+    func build(
+        for day: ItineraryDay,
+        pace: TripPace,
+        accommodation: AccommodationOption?,
+        travelMode: TravelMode = .walking,
+        constraints: TourismDayConstraints = .none
+    ) -> [ScheduleItem] {
+        let rhythm = policy.rhythm(for: pace)
         var result: [ScheduleItem] = []
+        var currentMinute = max(rhythm.startMinute, constraints.earliestStartMinute ?? rhythm.startMinute)
+        var lunchIncluded = false
+
+        if let earliestStartMinute = constraints.earliestStartMinute,
+           earliestStartMinute > rhythm.startMinute {
+            result.append(
+                ScheduleItem(
+                    id: "\(day.index)-arrival-boundary",
+                    timeText: "\(policy.clock(earliestStartMinute))后",
+                    title: "抵达、接驳与安顿",
+                    detail: constraints.startNote ?? "从抵达枢纽、前往住处并安顿好之后，再开始当天游览",
+                    placeID: nil
+                )
+            )
+        }
+
         for (index, stop) in day.stops.enumerated() {
-            if index == 1 {
-                let lunchTime = pace == .relaxed ? "12:00–14:30" : "12:30–13:30"
-                result.append(ScheduleItem(id: "\(day.index)-lunch", timeText: lunchTime, title: "午餐与休息", detail: "在相邻景点附近用餐，留出缓冲时间", placeID: nil))
+            if index > 0 {
+                let previous = day.stops[index - 1]
+                if !lunchIncluded,
+                   stop.interest != .food,
+                   currentMinute >= rhythm.lunchStartMinute - 10 {
+                    appendLunch(
+                        to: &result,
+                        dayIndex: day.index,
+                        currentMinute: &currentMinute,
+                        rhythm: rhythm
+                    )
+                    lunchIncluded = true
+                }
+
+                let travelMinutes = policy.estimatedTravelMinutes(
+                    from: previous.coordinate,
+                    to: stop.coordinate,
+                    mode: travelMode
+                ) + rhythm.transferBufferMinutes
+                let travelStart = currentMinute
+                currentMinute += travelMinutes
+                result.append(
+                    ScheduleItem(
+                        id: "\(day.index)-transfer-\(index)",
+                        timeText: rangeText(from: travelStart, to: currentMinute),
+                        title: "前往\(stop.name)",
+                        detail: "\(travelMode.title) · 含换乘、找路与进场缓冲，实际以地图路线为准",
+                        placeID: nil
+                    )
+                )
             }
-            let slot = slots[min(index, slots.count - 1)]
+
+            if stop.interest == .food, !lunchIncluded {
+                // When a restaurant is one of the selected stops, let it carry
+                // the meal instead of adding a second, generic lunch block.
+                currentMinute = max(currentMinute, 11 * 60 + 30)
+                lunchIncluded = currentMinute <= 14 * 60 + 30
+            } else if !lunchIncluded,
+                      stop.interest != .night,
+                      currentMinute >= rhythm.lunchStartMinute - 10 {
+                appendLunch(
+                    to: &result,
+                    dayIndex: day.index,
+                    currentMinute: &currentMinute,
+                    rhythm: rhythm
+                )
+                lunchIncluded = true
+            }
+
+            if stop.interest == .night, currentMinute < rhythm.nightStartMinute {
+                if !lunchIncluded {
+                    currentMinute = max(currentMinute, rhythm.lunchStartMinute)
+                    appendLunch(
+                        to: &result,
+                        dayIndex: day.index,
+                        currentMinute: &currentMinute,
+                        rhythm: rhythm
+                    )
+                    lunchIncluded = true
+                }
+                if currentMinute < rhythm.nightStartMinute {
+                    let pauseStart = currentMinute
+                    currentMinute = rhythm.nightStartMinute
+                    result.append(
+                        ScheduleItem(
+                            id: "\(day.index)-night-pause",
+                            timeText: rangeText(from: pauseStart, to: currentMinute),
+                            title: "午后留白与晚餐",
+                            detail: "不把白天硬塞满；可回住处休息，也可随天气临时调整",
+                            placeID: nil
+                        )
+                    )
+                }
+            }
+
+            let visitMinutes = policy.visitMinutes(for: stop, pace: pace)
+            let openingWindow = policy.primaryOpeningWindow(for: stop)
+            if let openingWindow, currentMinute < openingWindow.startMinute {
+                let pauseStart = currentMinute
+                currentMinute = openingWindow.startMinute
+                result.append(
+                    ScheduleItem(
+                        id: "\(day.index)-opening-pause-\(stop.id)",
+                        timeText: rangeText(from: pauseStart, to: currentMinute),
+                        title: "等候开门与附近慢逛",
+                        detail: "按当前可读取的营业时段留白；出发前仍需复核临时调整",
+                        placeID: nil
+                    )
+                )
+            }
+            let start = currentMinute
+            currentMinute += visitMinutes
+            let mealNote = stop.interest == .food && lunchIncluded ? " · 这一站兼作正餐" : ""
+            let ticketNote = stop.ticketQuote.map {
+                " · \($0.provider.title)\($0.priceText)（\($0.kind.title)）"
+            } ?? ""
+            let openingNote: String
+            if let openingWindow {
+                openingNote = currentMinute > openingWindow.endMinute
+                    ? " · 预计可能越过今日营业时段，请调整或复核"
+                    : " · 今日营业\(policy.clock(openingWindow.startMinute))–\(policy.clock(openingWindow.endMinute))，仍需复核"
+            } else {
+                openingNote = " · 开放与预约请复核"
+            }
             result.append(
                 ScheduleItem(
                     id: "\(day.index)-\(stop.id)",
-                    timeText: slot.0,
+                    timeText: rangeText(from: start, to: currentMinute),
                     title: stop.name,
-                    detail: "\(stop.interest.visitIntroduction) · \(slot.1)",
+                    detail: "\(stop.interest.visitIntroduction) · 预计停留\(policy.durationText(visitMinutes))\(mealNote)\(openingNote)\(ticketNote)",
                     placeID: stop.id
                 )
             )
         }
-        if let accommodation {
+
+        if !lunchIncluded, currentMinute >= rhythm.lunchStartMinute {
+            appendLunch(
+                to: &result,
+                dayIndex: day.index,
+                currentMinute: &currentMinute,
+                rhythm: rhythm
+            )
+        }
+
+        if let latestEndMinute = constraints.latestEndMinute {
+            let isConflicted = currentMinute > latestEndMinute
+            result.append(
+                ScheduleItem(
+                    id: "\(day.index)-departure-boundary",
+                    timeText: "需在\(policy.clock(latestEndMinute))前",
+                    title: isConflicted ? "返程前需要调整" : "离开游览区，前往返程枢纽",
+                    detail: isConflicted
+                        ? "当前游览预计到\(policy.clock(currentMinute))；\(constraints.endNote ?? "需为接驳和提前进站留出时间")"
+                        : (constraints.endNote ?? "已为接驳和提前进站留出时间"),
+                    placeID: nil
+                )
+            )
+        }
+
+        if let accommodation, constraints.latestEndMinute == nil {
             result.append(
                 ScheduleItem(
                     id: "\(day.index)-hotel",
-                    timeText: pace == .full ? "18:30后" : "17:30后",
+                    timeText: "\(policy.clock(currentMinute))后",
                     title: day.index == 0 ? "办理入住并休息" : "返回住宿",
-                    detail: accommodation.name,
+                    detail: "\(accommodation.name) · 回程时间需按当天实时路线复核",
                     placeID: nil
                 )
             )
         }
         return result
+    }
+
+    private func appendLunch(
+        to result: inout [ScheduleItem],
+        dayIndex: Int,
+        currentMinute: inout Int,
+        rhythm: TourismPlanningPolicy.DayRhythm
+    ) {
+        currentMinute = max(currentMinute, rhythm.lunchStartMinute)
+        let start = currentMinute
+        currentMinute += rhythm.lunchDurationMinutes
+        result.append(
+            ScheduleItem(
+                id: "\(dayIndex)-lunch",
+                timeText: rangeText(from: start, to: currentMinute),
+                title: "午餐与休息",
+                detail: "在相邻景点之间用餐，给排队、步行和体力恢复留出余量",
+                placeID: nil
+            )
+        )
+    }
+
+    private func rangeText(from start: Int, to end: Int) -> String {
+        "\(policy.clock(start))–\(policy.clock(end))"
     }
 }
 

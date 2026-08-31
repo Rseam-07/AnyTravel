@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		032E6E6DD2A72CFC6068D22E /* AnyTravelMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4B42D0557B340BF5F6D8600 /* AnyTravelMotion.swift */; };
+		080EFA50D64DA0BCEF8A9B73 /* TourismPlanningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36A7A7C2F3677CB2248DC59B /* TourismPlanningTests.swift */; };
 		10C85C94D796A1624A5098BF /* AMapPlaceClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10F16C059D7AEDE759CA71F4 /* AMapPlaceClient.swift */; };
 		1348DBC8AD830CDD528E8C07 /* PlanExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B256E53C0BF917818B5DA2A /* PlanExportService.swift */; };
 		150F8E02994652C93407AE77 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37AE0994DE8F330ABD92826E /* OnboardingView.swift */; };
@@ -36,6 +37,7 @@
 		A3D9C071B43904A52016D071 /* ActivityShareView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8D65A05785DC3DD4DD52CE1 /* ActivityShareView.swift */; };
 		A4E194A98010010F95FCE069 /* TripConditionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0576F368474607CDDB13D76D /* TripConditionsView.swift */; };
 		A670AC4ECE77AA2A10FF81B6 /* AssistantSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38034B292DE22D534DAD15B2 /* AssistantSettingsStore.swift */; };
+		A7C77BA26C5E1CA1664624CD /* TourismPlanningPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = F917449BD30488468484DB86 /* TourismPlanningPolicy.swift */; };
 		ADDBABF435D0B016DDAA90B8 /* ProviderLoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E477461756C8474C02F9B0D6 /* ProviderLoginView.swift */; };
 		B072F9D5DF34787968001A8D /* PricingBackendClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C847BE872495F8B2E471121 /* PricingBackendClientTests.swift */; };
 		B422279B1326B6AB878ABACE /* PlannerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE3D806549B7B102222D2DD3 /* PlannerViewModel.swift */; };
@@ -89,6 +91,7 @@
 		302EBC8F7BC06284F1922AB4 /* RoutePlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutePlanner.swift; sourceTree = "<group>"; };
 		33630F3E25704ED5383C8668 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		33F0814EAF574D611AA6271F /* TripStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripStore.swift; sourceTree = "<group>"; };
+		36A7A7C2F3677CB2248DC59B /* TourismPlanningTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TourismPlanningTests.swift; sourceTree = "<group>"; };
 		37AE0994DE8F330ABD92826E /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		37CC688AEBC1168F00CFAE1C /* PlannerIntentParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerIntentParser.swift; sourceTree = "<group>"; };
 		38034B292DE22D534DAD15B2 /* AssistantSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantSettingsStore.swift; sourceTree = "<group>"; };
@@ -124,6 +127,7 @@
 		DE7205A4429DDD1E2DEB8827 /* CompletePlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletePlanTests.swift; sourceTree = "<group>"; };
 		E477461756C8474C02F9B0D6 /* ProviderLoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderLoginView.swift; sourceTree = "<group>"; };
 		F817F76F85D54181770934B6 /* PlannerIntentParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerIntentParserTests.swift; sourceTree = "<group>"; };
+		F917449BD30488468484DB86 /* TourismPlanningPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TourismPlanningPolicy.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -230,6 +234,7 @@
 				F817F76F85D54181770934B6 /* PlannerIntentParserTests.swift */,
 				7E45621319317C89329BC05E /* PlanPacingTests.swift */,
 				0C847BE872495F8B2E471121 /* PricingBackendClientTests.swift */,
+				36A7A7C2F3677CB2248DC59B /* TourismPlanningTests.swift */,
 				91F2F27E05BE3FE278963E8A /* TravelAssistantClientTests.swift */,
 				5E5F5C464A43AF556B5CC083 /* TripStoreTests.swift */,
 			);
@@ -258,6 +263,7 @@
 				AA21B2A889F7EAC5B340FF45 /* PlanPacingService.swift */,
 				2353D8B73835CB2F2F4DF34C /* PricingBackendClient.swift */,
 				302EBC8F7BC06284F1922AB4 /* RoutePlanner.swift */,
+				F917449BD30488468484DB86 /* TourismPlanningPolicy.swift */,
 				5BDAC18E555181D3AF5FDC2E /* TravelAssistantClient.swift */,
 			);
 			path = Services;
@@ -444,6 +450,7 @@
 				4033BDB512F592599EE0CA93 /* RoutePlanner.swift in Sources */,
 				D786737FC1C40A1FBD1EE33B /* SavedTripsView.swift in Sources */,
 				8C7AFA58D6D1E09C64BCD08A /* SettingsView.swift in Sources */,
+				A7C77BA26C5E1CA1664624CD /* TourismPlanningPolicy.swift in Sources */,
 				FA23167330979704F6524138 /* TravelAssistantClient.swift in Sources */,
 				A4E194A98010010F95FCE069 /* TripConditionsView.swift in Sources */,
 				8960F02004C65CFD839977E3 /* TripModels.swift in Sources */,
@@ -462,6 +469,7 @@
 				8601623816B3076C76FC309A /* PlanPacingTests.swift in Sources */,
 				17AB40509E0C22B972F08D05 /* PlannerIntentParserTests.swift in Sources */,
 				B072F9D5DF34787968001A8D /* PricingBackendClientTests.swift in Sources */,
+				080EFA50D64DA0BCEF8A9B73 /* TourismPlanningTests.swift in Sources */,
 				F07375BF9B028040EC1E5066 /* TravelAssistantClientTests.swift in Sources */,
 				F5F50EC102E52E3D884910CA /* TripStoreTests.swift in Sources */,
 			);
@@ -682,7 +690,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 10;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AnyTravel/Resources/Info.plist;
@@ -690,7 +698,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.6.0;
+				MARKETING_VERSION = 0.6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.anytravel.app;
 				PRODUCT_NAME = AnyTravel;
 				SDKROOT = iphoneos;
@@ -725,7 +733,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 10;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AnyTravel/Resources/Info.plist;
@@ -733,7 +741,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.6.0;
+				MARKETING_VERSION = 0.6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.anytravel.app;
 				PRODUCT_NAME = AnyTravel;
 				SDKROOT = iphoneos;

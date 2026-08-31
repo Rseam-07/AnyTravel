@@ -23,7 +23,13 @@ final class PlanExportTests: XCTestCase {
         XCTAssertTrue(calendarText.contains("BEGIN:VCALENDAR"))
         XCTAssertTrue(calendarText.contains("SUMMARY:拙政园"))
         XCTAssertTrue(calendarText.contains("LOCATION:江苏省苏州市姑苏区东北街178号"))
-        XCTAssertEqual(calendarText.components(separatedBy: "BEGIN:VEVENT").count - 1, 15)
+        XCTAssertGreaterThanOrEqual(calendarText.components(separatedBy: "BEGIN:VEVENT").count - 1, 15)
+        XCTAssertTrue(calendarText.contains("SUMMARY:前往苏州博物馆"))
+        XCTAssertTrue(
+            payload.days.flatMap(\.schedule).contains {
+                $0.title == "午餐与休息" || $0.detail.contains("兼作正餐")
+            }
+        )
         XCTAssertTrue(
             calendarText.components(separatedBy: "\r\n").allSatisfy { $0.utf8.count <= 75 },
             "iCalendar lines must be folded to 75 octets or fewer"

@@ -1,4 +1,27 @@
-import { matchRequestedHotel } from "./normalize.mjs";
+import { matchRequestedHotel, normalizeHotelName } from "./normalize.mjs";
+
+export function selectCtripHotelSuggestion(payload, requestedHotelName, expectedCityID) {
+  const requested = normalizeHotelName(requestedHotelName);
+  if (!requested) return null;
+  const rows = payload?.Response?.searchResults;
+  if (!Array.isArray(rows)) return null;
+
+  for (const row of rows) {
+    if (row?.type !== "Hotel" || !row.id) continue;
+    if (Number.isFinite(Number(expectedCityID)) && Number(row.cityId) !== Number(expectedCityID)) continue;
+    const visibleName = String(row.word || row.displayName || "").split(",")[0].trim();
+    const candidate = normalizeHotelName(visibleName);
+    const shorter = Math.min(candidate.length, requested.length);
+    const longer = Math.max(candidate.length, requested.length);
+    const isStrongMatch = candidate === requested
+      || (shorter >= 4 && shorter / Math.max(longer, 1) >= 0.72
+        && (candidate.includes(requested) || requested.includes(candidate)));
+    if (isStrongMatch) {
+      return { id: String(row.id), name: visibleName, cityID: Number(row.cityId) };
+    }
+  }
+  return null;
+}
 
 export function parseCtripCardTexts(cardTexts, requestedHotels, bookingURL, capturedAt) {
   const quotes = [];

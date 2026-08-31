@@ -1,6 +1,35 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseCtripCardTexts } from "../src/lib/ctrip-parser.mjs";
+import { parseCtripCardTexts, selectCtripHotelSuggestion } from "../src/lib/ctrip-parser.mjs";
+
+test("selects an exact hotel suggestion in the expected city", () => {
+  const payload = {
+    Response: {
+      searchResults: [
+        { id: 60927309, type: "Hotel", word: "苏州柏悦酒店", cityId: 14 },
+        { id: 123, type: "Hotel", word: "苏州柏悦酒店", cityId: 2 }
+      ]
+    }
+  };
+
+  assert.deepEqual(selectCtripHotelSuggestion(payload, "苏州柏悦酒店", 14), {
+    id: "60927309",
+    name: "苏州柏悦酒店",
+    cityID: 14
+  });
+});
+
+test("rejects a weakly related hotel suggestion", () => {
+  const payload = {
+    Response: {
+      searchResults: [
+        { id: 122475663, type: "Hotel", word: "福城柏悦商务宾馆(光福文体中心店)", cityId: 14 }
+      ]
+    }
+  };
+
+  assert.equal(selectCtripHotelSuggestion(payload, "苏州柏悦酒店", 14), null);
+});
 
 test("parses the current price without leaking review counts", () => {
   const hotels = [{ id: "dce71906-54d1-4d74-a5d6-cdbed9aa7dd2", name: "苏州吴宫泛太平洋酒店" }];

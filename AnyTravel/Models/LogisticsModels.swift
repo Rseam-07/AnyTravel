@@ -137,6 +137,7 @@ struct ProviderQuote: Codable, Hashable, Identifiable, Sendable {
     var capturedAt: Date?
     var bookingURL: URL?
     var note: String
+    var displayPriceText: String?
 
     init(
         id: UUID = UUID(),
@@ -146,7 +147,8 @@ struct ProviderQuote: Codable, Hashable, Identifiable, Sendable {
         kind: QuoteKind,
         capturedAt: Date? = nil,
         bookingURL: URL? = nil,
-        note: String
+        note: String,
+        displayPriceText: String? = nil
     ) {
         self.id = id
         self.provider = provider
@@ -156,9 +158,11 @@ struct ProviderQuote: Codable, Hashable, Identifiable, Sendable {
         self.capturedAt = capturedAt
         self.bookingURL = bookingURL
         self.note = note
+        self.displayPriceText = displayPriceText
     }
 
     var priceText: String {
+        if let displayPriceText, !displayPriceText.isEmpty { return displayPriceText }
         guard let amountCNY else { return kind.title }
         return "¥\(amountCNY.formatted(.number.grouping(.automatic)))\(unit.suffix)"
     }

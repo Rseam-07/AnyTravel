@@ -235,6 +235,43 @@ final class CompletePlanTests: XCTestCase {
     }
 
     @MainActor
+    func testLiveTicketQuotesReplaceTheTicketBudgetEnvelope() {
+        var logistics = TripLogistics()
+        logistics.travelers = 2
+        let draft = TripDraft(destination: "苏州", budgetPerPerson: 3_000, logistics: logistics)
+        let quotedPlace = TravelPlace(
+            name: "拙政园",
+            address: "东北街178号",
+            coordinate: Coordinate(latitude: 31.326, longitude: 120.629),
+            interest: .gardens,
+            ticketQuote: ProviderQuote(
+                provider: .qunar,
+                amountCNY: 80,
+                unit: .perPerson,
+                kind: .live,
+                note: "当前展示起价"
+            )
+        )
+        let day = ItineraryDay(index: 0, stops: [quotedPlace])
+
+        let lines = ExpensePlanner().buildLines(
+            draft: draft,
+            accommodation: nil,
+            transport: nil,
+            itineraryDays: [day]
+        )
+        let ticketLine = lines.first(where: { $0.id == "tickets" })
+
+        XCTAssertEqual(ticketLine?.amountCNY, 160)
+        XCTAssertEqual(ticketLine?.source, .live)
+        XCTAssertTrue(ticketLine?.detail.contains("1处采用渠道当前展示价") == true)
+        XCTAssertTrue(
+            ScheduleBuilder().build(for: day, pace: .relaxed, accommodation: nil)
+                .first(where: { $0.placeID == quotedPlace.id })?.detail.contains("去哪儿¥80/人") == true
+        )
+    }
+
+    @MainActor
     func testRelaxedScheduleStartsLateAndKeepsTwoStops() {
         let day = ItineraryDay(index: 0, stops: [
             place("拙政园", interest: .gardens),

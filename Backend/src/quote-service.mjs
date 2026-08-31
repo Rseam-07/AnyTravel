@@ -1,9 +1,10 @@
 import { CtripAdapter } from "./adapters/ctrip.mjs";
 import { RollingGoAdapter } from "./adapters/rollinggo.mjs";
 import { Railway12306Adapter } from "./adapters/railway12306.mjs";
+import { TongchengAdapter } from "./adapters/tongcheng.mjs";
 
 const cache = new Map();
-const adapters = [new RollingGoAdapter(), new CtripAdapter()];
+const adapters = [new RollingGoAdapter(), new CtripAdapter(), new TongchengAdapter()];
 const transportAdapters = [new Railway12306Adapter()];
 
 export async function searchAccommodationQuotes(request) {

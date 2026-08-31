@@ -54,7 +54,9 @@ struct AMapPlaceClient {
                 address: place.address,
                 coordinate: place.coordinate,
                 interest: interest,
-                source: "高德地图 · Web服务"
+                source: "高德地图 · Web服务",
+                openingHoursToday: place.openingHoursToday,
+                openingHoursWeek: place.openingHoursWeek
             )
         }
     }
@@ -92,6 +94,8 @@ private struct AMapPlaceResponse: Decodable {
         var name: String
         var address: String
         var coordinate: Coordinate
+        var openingHoursToday: String?
+        var openingHoursWeek: String?
     }
 
     var places: [Place]

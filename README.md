@@ -22,7 +22,7 @@ AnyTravel 是一款地图优先的开源 iOS 与 Android 旅行规划应用。�
 
 动效实录：[首次启动与初始化](Documentation/Demo/onboarding-motion.mp4) · [地图、住宿、交通与费用联动](Documentation/Demo/map-plan-motion.mp4)
 
-下载：[iOS 0.6.0 无签名 IPA](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.6.0) · [Android 0.4.0 APK](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.4.0)
+下载：[iOS 0.6.1 无签名 IPA](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.6.1) · [Android 0.4.0 APK](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.4.0)
 
 <p align="center">
   <img src="Documentation/Screenshots/android-welcome.png" width="30%" alt="Android 欢迎页">
@@ -37,11 +37,12 @@ AnyTravel 是一款地图优先的开源 iOS 与 Android 旅行规划应用。�
 - 日期、预算、兴趣、住宿和交通没有固定填写顺序，每一项都可以暂时留白。
 - `MKLocalSearch` 会寻找真实景点、酒店、民宿和交通枢纽；`MKDirections` 会逐段绘制当前日路线。
 - 方案生成后仍可继续搜索 Apple Maps 地点、添加或删除停靠、拖动顺序、跨天移动或复制，并可撤销与重做；也能修改日期、出发地、人数、预算与交通偏好。地图路线和受影响的住宿、交通会重新计算。
-- 当一段行程显得太赶，可以一键改成松弛节奏：保留全部地点与先后顺序，重新铺开天数、时刻、路线、住宿晚数、返程和接驳。
+- 当一段行程显得太赶，可以一键改成松弛节奏：保留全部地点，按空间关系重新铺开天数、时刻、路线、住宿晚数、返程和接驳。
 - 智能向导可以听懂自然语言并调整节奏、市内交通、预算或聚焦已有地点。默认由伴随服务托管 GLM-5.3-Flash，也可在设置中填写任意 OpenAI 兼容服务；模型动作必须通过本机白名单才会落到地图上。
 - 选定住处后，交通建议会结合抵达时间、车站或机场到住处的距离、总耗时和票价重新排列；铁路去程与返程分别查询、选择和计入费用。
 - 每一段大交通还会继续接到门前：分别比较车站或机场与住处之间的地铁公交、打车和步行，选择后地图切换到对应接驳线，费用表单列往返接驳。
 - 最终方案包含每天的具体时段、地点介绍、路线、住宿候选、交通方式、购买入口和费用明细。
+- 每天不再只按数量平分景点：相近地点先聚成同一天，餐饮和夜游按时段落位，时间表显式写出移动、午餐、休息、营业时间与机动余量；去程晚到或返程较早时还会扣除接驳和提前进站时间。
 - 完整方案可以折成带地图的多页 PDF，也可以把每天的安排写成可导入系统日历的 `.ics`；两种文件都经由 iOS 系统分享页带走。
 - 用户拖动地图时，自动镜头立即让出控制；点击卡片、车站或酒店时，地图再把相应位置带回视野。
 - 欢迎页、路线展开、地图标记、标签滑块、卡片选择和报价刷新使用同一套可中断弹簧动效；系统开启“减少动态效果”后会自动改用淡入淡出或静态反馈。
@@ -52,15 +53,16 @@ AnyTravel 是一款地图优先的开源 iOS 与 Android 旅行规划应用。�
 | --- | --- | --- |
 | 地点与市内路线 | iOS 以 Apple MapKit 为主，并可通过伴随服务合并高德 Web 服务候选；Android 使用人工核对目的地包与系统 Geocoder | 高德候选保留来源与 GCJ-02→WGS84 坐标语义；渠道失败时继续使用 Apple Maps，Android 0.4 明确标注路线为示意 |
 | 酒店与民宿位置 | Apple Maps 候选；按景点均距和交通枢纽距离排序 | 地图卡片与推荐理由 |
-| 酒店实时价格 | 两端支持 RollingGo MCP（配置密钥后）；iOS 另支持用户自行登录后的携程持久化浏览器会话 | 渠道、每晚/总价口径、抓取时间、缓存过期、部分成功与失败原因、购买入口 |
+| 酒店实时价格 | 两端支持 RollingGo MCP（配置密钥后）；iOS 伴随服务另支持用户自行登录后的携程与同程/艺龙持久化浏览器会话 | 渠道、每晚/总价口径、抓取时间、缓存过期、部分成功、登录/验证状态与购买入口 |
+| 景点门票 | iOS 伴随服务读取去哪儿门票公开列表，并按景点名称严格匹配 | 地点卡、时间轴与费用表显示当前公开起价、抓取时间和购买页；计划日期、票种、优惠与库存仍需在平台复核 |
 | 铁路班次与票价 | 铁路 12306 公开查询页，按抵达日与返程日分别只读查询 | 去程/返程独立车次、发到时间、余票、席别价格与官方购票页；单边失败不遮住另一边 |
 | 门到门接驳 | iOS 使用 Apple MapKit 分别查询去程枢纽→住宿、住宿→返程枢纽的公交、驾车和步行 | 地图路线、耗时、距离、估算费用与推荐理由；地图缺少公交路线时明确标成“距离估算” |
 | 方案导出 | iOS 原生生成带地图的多页 PDF 与标准 iCalendar 文件 | 日程、住处、往返交通、接驳和费用完整落款；无日期仍可导出 PDF，日历会明确要求先补日期 |
-| 去哪儿、同程与 Trip.com | iOS 支持应用内登录与会话复用；Android 提供购买页入口 | 未接通实时适配器时明确显示“到渠道查询” |
+| 其他住宿渠道 | iOS 支持去哪儿、同程与 Trip.com 应用内登录及会话复用；同程酒店节点适配器已落地；Android 提供购买页入口 | 同程只有在强匹配且得到数字价格时才标实时；去哪儿酒店与 Trip.com 未接通时明确显示“到渠道查询” |
 | 航班 | 已预留携程、去哪儿与 Skyscanner 适配位置 | 当前先提供渠道入口，不把估算冒充实时票价 |
 | 智能向导 | 伴随服务托管 GLM-5.3-Flash；iOS 也支持用户自定义 OpenAI 兼容 Base URL、模型与 Key | 回应以卡片浮在地图上；只执行节奏、交通、预算和已有地点操作，失败时回退本机解析 |
 
-各适配器的状态、输入输出与验证边界见 [数据渠道说明](Documentation/DATA_CHANNELS.md)，PDF 与日历的字段和降级规则见 [方案导出说明](Documentation/EXPORT_FORMATS.md)。铁路购票链接始终指向 [铁路 12306 官方页面](https://www.12306.cn/mormhweb/zxdt/202412/t20241211_43192.html)。RollingGo 接入参考其[官方开源仓库](https://github.com/RollingGo-AI/RollingGo-hotel-MCP-CN)。
+行程编排的模型、假设与边界见 [行程规划模型](Documentation/ITINERARY_PLANNING_MODEL.md)，各适配器的状态见 [数据渠道说明](Documentation/DATA_CHANNELS.md)，PDF 与日历的降级规则见 [方案导出说明](Documentation/EXPORT_FORMATS.md)。铁路购票链接始终指向 [铁路 12306 官方页面](https://www.12306.cn/mormhweb/zxdt/202412/t20241211_43192.html)。RollingGo 接入参考其[官方开源仓库](https://github.com/RollingGo-AI/RollingGo-hotel-MCP-CN)。
 
 ## 运行 iOS 应用
 
@@ -103,7 +105,7 @@ set -a; source .env; set +a
 npm start
 ```
 
-随后在 App 的“旅途偏好与价格渠道”中填写节点地址。模拟器可用 `http://127.0.0.1:8787/`；真机需使用同一局域网内电脑的 IP。携程采集前运行 `npm run login:ctrip`，由用户在弹出的浏览器里自行登录。托管智能向导需要在 `.env` 配置 `ZAI_API_KEY`；高德补充搜索需要平台类型为“Web 服务”的 `AMAP_API_KEY`。完整请求示例见 [Backend/README.md](Backend/README.md)。
+随后在 App 的“旅途偏好与价格渠道”中填写节点地址。模拟器可用 `http://127.0.0.1:8787/`；真机需使用同一局域网内电脑的 IP。携程采集前运行 `npm run login:ctrip`，同程采集前运行 `npm run login:tongcheng`，都由用户在弹出的浏览器里完成登录或验证。托管智能向导需要在 `.env` 配置 `ZAI_API_KEY`；高德补充搜索需要平台类型为“Web 服务”的 `AMAP_API_KEY`。完整请求示例见 [Backend/README.md](Backend/README.md)。
 
 ## 验证
 
@@ -121,7 +123,7 @@ xcodebuild \
 cd Backend && npm test
 ```
 
-0.6.0 发布前验证结果：38/38 iOS 单元测试、10/10 XCUITest、17/17 Node 测试通过。新增流程在 iPhone 17 Pro 模拟器真实完成“太赶→松弛”重排与托管/自定义模型设置切换；伴随服务向 GLM-5.3-Flash 发起真实请求并取得白名单动作。设备 Release 构建产物为 0.6.0（9）。当前收到的高德 Key 联网返回 `USERKEY_PLAT_NOMATCH (10009)`，因此高德适配器保留明确失败状态，iOS 自动继续使用 Apple Maps。所有服务端密钥只保存在被 Git 忽略的节点环境文件中。
+0.6.1 发布前验证结果：49/49 iOS 单元测试、10/10 XCUITest、26/26 Node 测试通过。新增流程在 iPhone 17 Pro 模拟器真实完成“为什么这样排”、调整条件后保留全部景点、住宿/往返交通/费用切换与 PDF 分享；设备 Release 构建产物为 0.6.1（10）。去哪儿门票公开页已联网返回苏州景点当前展示起价并进入地点卡、时间轴与费用表；携程已验证公开酒店 ID 精确定位与 `login_required`，同程已验证苏州城市编码、入住日期与 `verification_required`，不会从未登录或验证页生成虚假价格。当前收到的高德 Key 联网返回 `USERKEY_PLAT_NOMATCH (10009)`，iOS 自动继续使用 Apple Maps。所有服务端密钥只保存在被 Git 忽略的节点环境文件中。
 
 0.4.0 Android 发布前验证结果：4/4 规划逻辑单元测试、1/1 Android 12 Compose 端到端流程和 lint 通过。APK 在 API 31 arm64 模拟器完成安装与视觉检查，并实际连接同一报价节点，显示 RollingGo 酒店实时价和铁路 12306 班次、票价、余票、接驳距离与抓取时间。APK 为调试签名预览包，尚未替代生产签名和真机矩阵。
 

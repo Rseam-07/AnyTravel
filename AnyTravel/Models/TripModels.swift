@@ -183,6 +183,9 @@ struct TravelPlace: Codable, Hashable, Identifiable, Sendable {
     let coordinate: Coordinate
     let interest: TripInterest
     let source: String
+    let openingHoursToday: String?
+    let openingHoursWeek: String?
+    var ticketQuote: ProviderQuote?
 
     init(
         id: UUID = UUID(),
@@ -190,7 +193,10 @@ struct TravelPlace: Codable, Hashable, Identifiable, Sendable {
         address: String,
         coordinate: Coordinate,
         interest: TripInterest,
-        source: String = "Apple Maps"
+        source: String = "Apple Maps",
+        openingHoursToday: String? = nil,
+        openingHoursWeek: String? = nil,
+        ticketQuote: ProviderQuote? = nil
     ) {
         self.id = id
         self.name = name
@@ -198,6 +204,9 @@ struct TravelPlace: Codable, Hashable, Identifiable, Sendable {
         self.coordinate = coordinate
         self.interest = interest
         self.source = source
+        self.openingHoursToday = openingHoursToday
+        self.openingHoursWeek = openingHoursWeek
+        self.ticketQuote = ticketQuote
     }
 }
 

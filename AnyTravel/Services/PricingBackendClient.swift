@@ -18,8 +18,12 @@ struct PricingProviderIssue: Hashable, Sendable {
         switch status {
         case "disabled": return "\(name)尚未在报价节点启用"
         case "login_required": return "\(name)需要在报价节点重新登录"
+        case "verification_required": return "\(name)需要在报价节点完成一次人工验证"
         case "dependency_missing": return "\(name)的采集组件尚未安装"
+        case "browser_unavailable": return "\(name)的浏览器采集环境暂时不可用"
         case "city_id_missing": return "\(name)暂时无法识别这座城市"
+        case "no_matching_quotes": return "\(name)已查询，但没有与当前地点名称可靠匹配的价格"
+        case "no_visible_cards": return "\(name)页面已打开，但暂时没有可读取的酒店卡片"
         case "station_not_found": return "\(name)暂时无法识别出发地或到达地"
         case "failed":
             let trimmed = detail?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -251,6 +255,66 @@ struct PricingBackendClient {
         }
     }
 
+    func enrichTicketQuotes(
+        _ days: [ItineraryDay],
+        destination: String,
+        visitDate: Date?
+    ) async throws -> PricingEnrichmentResult<[ItineraryDay]> {
+        guard let baseURL = configuredBaseURL() else { throw PricingBackendError.serviceNotConfigured }
+        let attractions = days.flatMap(\.stops).filter { $0.interest != .food }
+        guard !attractions.isEmpty else {
+            return PricingEnrichmentResult(
+                value: days,
+                receivedCount: 0,
+                capturedAt: .now,
+                isCached: false,
+                issues: []
+            )
+        }
+
+        let endpoint = baseURL.appendingPathComponent("v1/quotes/tickets")
+        let requestBody = TicketQuoteRequest(
+            destination: destination,
+            visitDate: visitDate.map(Self.dayFormatter.string(from:)),
+            attractions: attractions.map {
+                .init(id: $0.id, name: $0.name, address: $0.address)
+            }
+        )
+
+        do {
+            var request = URLRequest(url: endpoint)
+            request.httpMethod = "POST"
+            request.timeoutInterval = 25
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(requestBody)
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  (200..<300).contains(httpResponse.statusCode) else {
+                throw Self.httpError(response: response, data: data)
+            }
+            let payload = try JSONDecoder.anyTravelPricing.decode(TicketQuoteResponse.self, from: data)
+            let recognizedCount = payload.quotes.filter {
+                TravelProvider(backendName: $0.provider) != nil && $0.amountCNY >= 0
+            }.count
+            let completedLookup = payload.diagnostics.contains {
+                $0.status == "ok" || $0.status == "no_matching_quotes"
+            }
+            return PricingEnrichmentResult(
+                value: merge(payload.quotes, into: days, clearUnmatched: completedLookup),
+                receivedCount: recognizedCount,
+                capturedAt: payload.capturedAt,
+                isCached: payload.cached,
+                issues: payload.diagnostics.compactMap(\.providerIssue)
+            )
+        } catch let error as PricingBackendError {
+            throw error
+        } catch is DecodingError {
+            throw PricingBackendError.invalidResponse
+        } catch {
+            throw PricingBackendError.network(error.localizedDescription)
+        }
+    }
+
     func healthCheck(urlText: String) async -> Bool {
         guard let baseURL = Self.normalizedURL(urlText),
               let healthURL = URL(string: "health", relativeTo: baseURL)?.absoluteURL else {
@@ -317,6 +381,43 @@ struct PricingBackendClient {
             updated.quotes.removeAll { liveProviders.contains($0.provider) }
             updated.quotes.insert(contentsOf: liveQuotes, at: 0)
             return updated
+        }
+    }
+
+    private func merge(
+        _ backendQuotes: [BackendTicketQuote],
+        into days: [ItineraryDay],
+        clearUnmatched: Bool
+    ) -> [ItineraryDay] {
+        let quotesByID = Dictionary(uniqueKeysWithValues: backendQuotes.map { ($0.attractionID, $0) })
+        return days.map { day in
+            var updatedDay = day
+            updatedDay.stops = day.stops.map { place in
+                let quote = quotesByID[place.id] ?? backendQuotes.first {
+                    Self.normalizedName($0.attractionName) == Self.normalizedName(place.name)
+                }
+                guard let quote else {
+                    guard clearUnmatched, place.ticketQuote?.provider == .qunar else { return place }
+                    var updatedPlace = place
+                    updatedPlace.ticketQuote = nil
+                    return updatedPlace
+                }
+                guard let provider = TravelProvider(backendName: quote.provider),
+                      quote.amountCNY >= 0 else { return place }
+                var updatedPlace = place
+                updatedPlace.ticketQuote = ProviderQuote(
+                    provider: provider,
+                    amountCNY: quote.amountCNY,
+                    unit: quote.unit == "total" ? .total : .perPerson,
+                    kind: quote.kind == "indicative" ? .indicative : .live,
+                    capturedAt: quote.capturedAt,
+                    bookingURL: quote.bookingURL,
+                    note: quote.note,
+                    displayPriceText: quote.displayPriceText
+                )
+                return updatedPlace
+            }
+            return updatedDay
         }
     }
 
@@ -456,6 +557,25 @@ private struct TransportQuoteResponse: Codable {
     var cached: Bool
 }
 
+private struct TicketQuoteRequest: Codable {
+    struct Attraction: Codable {
+        var id: UUID
+        var name: String
+        var address: String
+    }
+
+    var destination: String
+    var visitDate: String?
+    var attractions: [Attraction]
+}
+
+private struct TicketQuoteResponse: Codable {
+    var quotes: [BackendTicketQuote]
+    var diagnostics: [BackendDiagnostic]
+    var capturedAt: Date
+    var cached: Bool
+}
+
 private struct BackendDiagnostic: Codable {
     var provider: String
     var status: String
@@ -499,6 +619,19 @@ private struct BackendAccommodationQuote: Codable {
     var capturedAt: Date
     var bookingURL: URL?
     var note: String
+}
+
+private struct BackendTicketQuote: Codable {
+    var attractionID: UUID
+    var attractionName: String
+    var provider: String
+    var amountCNY: Int
+    var unit: String
+    var kind: String
+    var capturedAt: Date
+    var bookingURL: URL?
+    var note: String
+    var displayPriceText: String?
 }
 
 private extension JSONDecoder {

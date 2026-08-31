@@ -2,6 +2,7 @@ import http from "node:http";
 import { AMapError, searchAMapPlaces } from "./amap-service.mjs";
 import { AssistantError, interpretAssistantRequest } from "./assistant-service.mjs";
 import { RequestError, searchAccommodationQuotes, searchTransportOptions } from "./quote-service.mjs";
+import { QunarTicketError, searchQunarTicketQuotes } from "./qunar-ticket-service.mjs";
 
 const port = Number(process.env.PORT || 8787);
 const host = process.env.HOST || "127.0.0.1";
@@ -22,6 +23,7 @@ const server = http.createServer(async (request, response) => {
         service: "anytravel-companion",
         assistant: process.env.ZAI_API_KEY ? "configured" : "disabled",
         amap: process.env.AMAP_API_KEY ? "configured" : "disabled",
+        qunarTickets: "public",
         time: new Date().toISOString()
       });
       return;
@@ -46,9 +48,14 @@ const server = http.createServer(async (request, response) => {
       sendJSON(response, 200, await searchTransportOptions(body));
       return;
     }
+    if (request.method === "POST" && request.url === "/v1/quotes/tickets") {
+      const body = await readJSON(request);
+      sendJSON(response, 200, await searchQunarTicketQuotes(body));
+      return;
+    }
     sendJSON(response, 404, { error: "not_found" });
   } catch (error) {
-    const status = error instanceof RequestError
+    const status = error instanceof RequestError || error instanceof QunarTicketError
       ? 400
       : error instanceof AssistantError
         ? error.status

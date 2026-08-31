@@ -6,7 +6,9 @@ AnyTravel 把每个来源做成独立适配器。某个渠道没有返回时，�
 
 App 直接使用 Apple MapKit：`MKLocalSearch` 搜索目的地、景点、酒店、民宿、机场和车站，`MKDirections` 计算当前日的真实路段。MapKit 返回的住宿网站会作为“住宿官网”入口保留，但是否为物业直营网站仍由用户在打开后判断。
 
-iOS 0.6.0 还会在伴随服务已接通时请求高德 Web 服务地点搜索。节点保留高德返回的 GCJ-02 原始坐标，并把近似反算的 WGS84 坐标连同 `sourceCRS`、`outputCRS` 一起返回；客户端只接受坐标语义完整、范围有效的候选，并明确标成“高德地图 · Web服务”。高德失败不会阻断 MapKit 结果。`AMAP_API_KEY` 必须是控制台中平台类型为“Web 服务”的 Key；当前提供的 Key 在 2026-08-31 联网验证中返回 `USERKEY_PLAT_NOMATCH (10009)`，因此尚未把它标记为可用来源。
+iOS 还会在伴随服务已接通时请求高德 Web 服务地点搜索。节点使用官方 v5 文本搜索，并请求 `show_fields=business`，因此可在高德返回时带回今日/每周营业时间、评分与人均消费。节点保留 GCJ-02 原始坐标，并把近似反算的 WGS84 坐标连同 `sourceCRS`、`outputCRS` 一起返回；客户端只接受坐标语义完整、范围有效的候选，并明确标成“高德地图 · Web服务”。高德失败不会阻断 MapKit 结果。`AMAP_API_KEY` 必须是控制台中平台类型为“Web 服务”的 Key；当前提供的 Key 在联网验证中返回 `USERKEY_PLAT_NOMATCH (10009)`，因此尚未把它标记为可用来源。
+
+接口字段以[高德 Web 服务新版 POI 搜索文档](https://lbs.amap.com/api/webservice/guide/api-advanced/newpoisearch)为准。营业时间会参与排程，但节假日、预约批次和临时闭馆仍需复核。
 
 官方资料：[MKLocalSearch](https://developer.apple.com/documentation/mapkit/mklocalsearch)、[MKDirections](https://developer.apple.com/documentation/mapkit/mkdirections)。
 
@@ -28,17 +30,29 @@ iOS 0.5.3 会在用户选定大交通和住宿后，用 `MKDirections` 分别查
 
 ### 携程
 
-`Backend/src/adapters/ctrip.mjs` 使用 Playwright 持久化用户浏览器会话。运行 `npm run login:ctrip` 后，用户自行在携程页面完成登录；节点随后读取公开搜索结果卡片，并只接收能与 App 酒店候选匹配的价格。它不会读取密码，也不会把评论数等数字误认成价格。
+`Backend/src/adapters/ctrip.mjs` 使用 Playwright 持久化用户浏览器会话。节点先调用公开酒店联想端点，将每个 Apple Maps 候选严格解析为携程酒店 ID，再打开带真实日期且只指向该酒店的公开列表；运行 `npm run login:ctrip` 后，用户自行在携程页面完成登录。节点只接收名称强匹配的数字价格，不读取密码，也不会把评论数等数字误认成价格。
 
-酒店卡片结构参考了当前公开的浏览器操作资料：[browser-harness 的携程酒店说明](https://github.com/browser-use/browser-harness/blob/main/agent-workspace/domain-skills/ctrip/hotels.md) 与 [ctrip-hotel-skill](https://github.com/biaowuqiong/ctrip-hotel-skill)。
+酒店卡片结构参考了当前公开的浏览器操作资料：[browser-harness 的携程酒店说明](https://github.com/browser-use/browser-harness/blob/main/agent-workspace/domain-skills/ctrip/hotels.md) 与 [OpenCLI 的携程浏览器适配说明](https://github.com/jackwener/OpenCLI/blob/main/docs/adapters/browser/ctrip.md)。
 
-2026-08-31 的联网验收中，3 个苏州酒店候选均取得实时展示价和购买链接。未匹配结果不会被错误贴到其他酒店卡片上。
+2026-08-31 的联网验收中，3 个苏州酒店候选均取得实时展示价和购买链接。2026-09-01 再次实查时，公开联想接口把“苏州吴宫泛太平洋酒店”解析为酒店 ID `346290`，目标列表只返回这一家，但当前持久会话显示“登录以查看会员价”，节点因而返回 `login_required`。未匹配或未登录的结果不会被错误贴到酒店卡片上。
 
-### 去哪儿、同程、Trip.com 与住宿官网
+### 同程旅行 / 艺龙
 
-App 已提供应用内登录、Cookie 会话复用和购买页入口。iOS 会在保存前确认对应平台域名已有有效 Cookie，并在 Cookie 失效后撤销会话状态。同程会识别 `ly.com`、`17u.cn` 与 `elong.com` 的用户网页会话。去哪儿当前公开桌面酒店搜索入口会回到综合首页，其开放平台主要面向酒店供应商，因此没有把它写成已验证的实时价格源。节点接口保留独立适配器位置，后续接入不会改变 iOS 数据模型。
+`Backend/src/adapters/tongcheng.mjs` 使用 Playwright 持久化用户浏览器会话。它通过公开移动首页选择城市，取得平台生成的城市编码，再把真实入住/离店日期带到酒店列表。解析器只接受酒店名称强匹配且卡片中出现明确人民币数字价格的结果，并保留早餐、免费取消等可见说明。
 
-平台资料：[去哪儿酒店开放平台](https://open.hotel.qunar.com/)、[携程分销合作](https://pages.ctrip.com/public/dlhz.htm)。
+运行 `npm run login:tongcheng` 后由用户自行处理登录与平台验证。页面只写“登录查看低价”时返回 `login_required`；出现安全验证或账号异常时返回 `verification_required`；两种状态都不会产生伪造价格。2026-09-01 的正常 Chrome 实查已确认苏州城市编码 `1102` 和日期参数正确进入公开列表，但新会话触发平台验证，因此尚未宣称取得同程数字实时报价。
+
+### 去哪儿、Trip.com 与住宿官网
+
+App 已提供应用内登录、Cookie 会话复用和购买页入口。iOS 会在保存前确认对应平台域名已有有效 Cookie，并在 Cookie 失效后撤销会话状态。去哪儿当前公开桌面酒店搜索入口会回到综合首页，其开放平台主要面向酒店供应商，因此没有把它写成已验证的实时价格源。节点接口保留独立适配器位置，后续接入不会改变 iOS 数据模型。
+
+平台资料：[去哪儿酒店开放平台](https://open.hotel.qunar.com/)、[携程开放平台](https://developer.ctrip.com/)、[携程商旅 OpenAPI](https://openapi.ctripbiz.com/)。
+
+## 景点门票
+
+`Backend/src/qunar-ticket-service.mjs` 读取去哪儿门票公开列表 JSON。节点先查目的地热门景点，再对未命中的用户地点做有限次数精确搜索；只有名称相等或高相似且地址不冲突时才回填。返回值保留公开页当前展示起价、抓取时间和景点详情购买链接，iOS 会同时把它写入地点卡、当日时间轴与多人费用表。公开列表不是指定日期的库存接口，因此计划日期、票种、优惠、预约批次和是否售罄必须在购买页再次确认。
+
+2026-09-01 联网实查“苏州”取得 15 个景点；对当前行程中的拙政园、狮子林与虎丘山分别匹配到 `¥80`、`¥38.2` 和 `¥70` 的公开展示起价，并得到各自详情页。可复现的公开端点用法也见开源项目 [jingdianpachong 的去哪儿示例](https://github.com/impxiahuaxian/jingdianpachong/blob/main/qunar.py)。这些数字只说明抓取当刻的公开起价，不代表计划日期的最终成交价。
 
 ## 铁路
 

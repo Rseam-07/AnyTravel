@@ -605,6 +605,12 @@ struct PlannerPanel: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
             }
 
+            if let assessment = model.currentDayTourismAssessment {
+                planningRationaleCard(assessment)
+                    .id(model.selectedDayIndex)
+                    .transition(.opacity.combined(with: .move(edge: .trailing)))
+            }
+
             ScrollView(.horizontal) {
                 HStack(spacing: 7) {
                     ForEach(model.itineraryDays) { day in
@@ -769,6 +775,49 @@ struct PlannerPanel: View {
             RoundedRectangle(cornerRadius: 17, style: .continuous)
                 .strokeBorder(AnyTravelPalette.route.opacity(0.16), lineWidth: 1)
         }
+    }
+
+    private func planningRationaleCard(_ assessment: TourismDayAssessment) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: assessment.isOverCapacity
+                      ? "hourglass.badge.plus"
+                      : "point.topleft.down.to.point.bottomright.curvepath")
+                    .foregroundStyle(assessment.isOverCapacity ? AnyTravelPalette.warm : AnyTravelPalette.route)
+                    .symbolEffect(.bounce, value: model.selectedDayIndex)
+                Text(assessment.title)
+                    .font(.subheadline.weight(.bold))
+                Spacer(minLength: 0)
+            }
+
+            Text(assessment.detail)
+                .font(.caption2)
+                .foregroundStyle(AnyTravelPalette.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ScrollView(.horizontal) {
+                HStack(spacing: 6) {
+                    ForEach(assessment.badges, id: \.self) { badge in
+                        Text(badge)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(AnyTravelPalette.routeDark)
+                            .padding(.horizontal, 9)
+                            .frame(minHeight: 28)
+                            .background(AnyTravelPalette.route.opacity(0.09), in: Capsule())
+                    }
+                }
+            }
+            .scrollIndicators(.hidden)
+        }
+        .padding(12)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 17, style: .continuous)
+                .strokeBorder(AnyTravelPalette.route.opacity(0.16), lineWidth: 1)
+        }
+        .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: model.selectedDayIndex)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("planning-rationale")
     }
 
     private var itineraryTimeline: some View {
@@ -1099,6 +1148,38 @@ struct PlannerPanel: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(AnyTravelPalette.route)
+            }
+
+            if let quote = place.ticketQuote {
+                Divider()
+                HStack(alignment: .center, spacing: 10) {
+                    Image(systemName: "ticket.fill")
+                        .foregroundStyle(AnyTravelPalette.warm)
+                        .frame(width: 30, height: 30)
+                        .background(AnyTravelPalette.warm.opacity(0.12), in: Circle())
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(quote.provider.title) · \(quote.priceText)")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(.primary)
+                        Text([quote.kind.title, quote.freshnessText].compactMap { $0 }.joined(separator: " · "))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 4)
+                    if let bookingURL = quote.bookingURL {
+                        Link(destination: bookingURL) {
+                            Label("查看", systemImage: "arrow.up.right")
+                                .font(.caption.weight(.bold))
+                                .frame(minHeight: 44)
+                        }
+                        .foregroundStyle(AnyTravelPalette.route)
+                        .accessibilityLabel("到\(quote.provider.title)查看\(place.name)门票")
+                    }
+                }
+                Text(quote.note)
+                    .font(.caption2)
+                    .foregroundStyle(AnyTravelPalette.secondaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(12)
