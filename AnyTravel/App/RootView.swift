@@ -43,6 +43,10 @@ struct RootView: View {
         .sheet(item: $bindableModel.activeProviderPage) { destination in
             ProviderBrowserView(destination: destination)
         }
+        .sheet(item: $bindableModel.sharePayload) { payload in
+            ActivityShareView(payload: payload)
+                .ignoresSafeArea()
+        }
         .fullScreenCover(
             isPresented: Binding(
                 get: {
@@ -68,6 +72,7 @@ struct RootView: View {
         }
         .sensoryFeedback(.success, trigger: model.saveFeedbackTrigger)
         .sensoryFeedback(.success, trigger: model.planReadyFeedbackTrigger)
+        .sensoryFeedback(.success, trigger: model.exportFeedbackTrigger)
         .sensoryFeedback(.selection, trigger: model.planMapFocus)
         .sensoryFeedback(.selection, trigger: model.selectedDayIndex)
         .task {

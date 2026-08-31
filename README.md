@@ -18,9 +18,11 @@ AnyTravel 是一款地图优先的开源 iOS 与 Android 旅行规划应用。�
 
 ![车站与住处之间也有完整的接驳选择](Documentation/Screenshots/door-to-door-transfer.png)
 
+![把完整方案导出为 PDF，并交给系统分享页](Documentation/Screenshots/plan-export-share.png)
+
 动效实录：[首次启动与初始化](Documentation/Demo/onboarding-motion.mp4) · [地图、住宿、交通与费用联动](Documentation/Demo/map-plan-motion.mp4)
 
-下载：[iOS 0.5.3 无签名 IPA](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.5.3) · [Android 0.4.0 APK](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.4.0)
+下载：[iOS 0.5.4 无签名 IPA](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.5.4) · [Android 0.4.0 APK](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.4.0)
 
 <p align="center">
   <img src="Documentation/Screenshots/android-welcome.png" width="30%" alt="Android 欢迎页">
@@ -38,6 +40,7 @@ AnyTravel 是一款地图优先的开源 iOS 与 Android 旅行规划应用。�
 - 选定住处后，交通建议会结合抵达时间、车站或机场到住处的距离、总耗时和票价重新排列；铁路去程与返程分别查询、选择和计入费用。
 - 每一段大交通还会继续接到门前：分别比较车站或机场与住处之间的地铁公交、打车和步行，选择后地图切换到对应接驳线，费用表单列往返接驳。
 - 最终方案包含每天的具体时段、地点介绍、路线、住宿候选、交通方式、购买入口和费用明细。
+- 完整方案可以折成带地图的多页 PDF，也可以把每天的安排写成可导入系统日历的 `.ics`；两种文件都经由 iOS 系统分享页带走。
 - 用户拖动地图时，自动镜头立即让出控制；点击卡片、车站或酒店时，地图再把相应位置带回视野。
 - 欢迎页、路线展开、地图标记、标签滑块、卡片选择和报价刷新使用同一套可中断弹簧动效；系统开启“减少动态效果”后会自动改用淡入淡出或静态反馈。
 
@@ -50,10 +53,11 @@ AnyTravel 是一款地图优先的开源 iOS 与 Android 旅行规划应用。�
 | 酒店实时价格 | 两端支持 RollingGo MCP（配置密钥后）；iOS 另支持用户自行登录后的携程持久化浏览器会话 | 渠道、每晚/总价口径、抓取时间、缓存过期、部分成功与失败原因、购买入口 |
 | 铁路班次与票价 | 铁路 12306 公开查询页，按抵达日与返程日分别只读查询 | 去程/返程独立车次、发到时间、余票、席别价格与官方购票页；单边失败不遮住另一边 |
 | 门到门接驳 | iOS 使用 Apple MapKit 分别查询去程枢纽→住宿、住宿→返程枢纽的公交、驾车和步行 | 地图路线、耗时、距离、估算费用与推荐理由；地图缺少公交路线时明确标成“距离估算” |
+| 方案导出 | iOS 原生生成带地图的多页 PDF 与标准 iCalendar 文件 | 日程、住处、往返交通、接驳和费用完整落款；无日期仍可导出 PDF，日历会明确要求先补日期 |
 | 去哪儿与 Trip.com | iOS 支持应用内登录与会话复用；Android 提供购买页入口 | 未接通实时适配器时明确显示“到渠道查询” |
 | 航班 | 已预留携程、去哪儿与 Skyscanner 适配位置 | 当前先提供渠道入口，不把估算冒充实时票价 |
 
-各适配器的状态、输入输出与验证边界见 [数据渠道说明](Documentation/DATA_CHANNELS.md)。铁路购票链接始终指向 [铁路 12306 官方页面](https://www.12306.cn/mormhweb/zxdt/202412/t20241211_43192.html)。RollingGo 接入参考其[官方开源仓库](https://github.com/RollingGo-AI/RollingGo-hotel-MCP-CN)。
+各适配器的状态、输入输出与验证边界见 [数据渠道说明](Documentation/DATA_CHANNELS.md)，PDF 与日历的字段和降级规则见 [方案导出说明](Documentation/EXPORT_FORMATS.md)。铁路购票链接始终指向 [铁路 12306 官方页面](https://www.12306.cn/mormhweb/zxdt/202412/t20241211_43192.html)。RollingGo 接入参考其[官方开源仓库](https://github.com/RollingGo-AI/RollingGo-hotel-MCP-CN)。
 
 ## 运行 iOS 应用
 
@@ -114,7 +118,7 @@ xcodebuild \
 cd Backend && npm test
 ```
 
-0.5.3 发布前验证结果：27/27 iOS 单元测试、7/7 XCUITest、9/9 Node 测试通过；iPhone 17 Pro 模拟器走通首次进入、方案保存恢复、生成后编辑、条件重算、去程/返程车次，以及往返接驳选择与费用联动，设备 Release 构建产物为 0.5.3（7）。2026-08-31 的联网实查中，“上海→苏州”和“苏州→上海”各返回 8 个可购车次；“苏州站→苏州吴宫泛太平洋酒店”取得 18 分钟驾车路线与 98 分钟步行路线，当前环境未返回公交路线，应用按预期标成距离估算。RollingGo 对 3 个苏州酒店候选均返回可展示的每晚价与购买链接。密钥只保存在被 Git 忽略的节点环境文件中。
+0.5.4 发布前验证结果：29/29 iOS 单元测试、8/8 XCUITest、9/9 Node 测试通过；iPhone 17 Pro 模拟器真实生成一份带地图的完整方案 PDF，并进入系统分享页显示“存储到文件”。自动化样本生成 4 页 A4 PDF 与包含 15 个日程事件的 `.ics`，四页均完成渲染检查；设备 Release 构建产物为 0.5.4（8）。地图快照不可用时，PDF 会留下明确说明，不会绘制虚构路线。密钥只保存在被 Git 忽略的节点环境文件中。
 
 0.4.0 Android 发布前验证结果：4/4 规划逻辑单元测试、1/1 Android 12 Compose 端到端流程和 lint 通过。APK 在 API 31 arm64 模拟器完成安装与视觉检查，并实际连接同一报价节点，显示 RollingGo 酒店实时价和铁路 12306 班次、票价、余票、接驳距离与抓取时间。APK 为调试签名预览包，尚未替代生产签名和真机矩阵。
 

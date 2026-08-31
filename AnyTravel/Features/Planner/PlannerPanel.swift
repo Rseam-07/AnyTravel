@@ -412,6 +412,40 @@ struct PlannerPanel: View {
                 }
                 .buttonStyle(.plain)
 
+                Menu {
+                    Button {
+                        model.exportCurrentPlan(.pdf)
+                    } label: {
+                        Label("分享完整 PDF", systemImage: "doc.richtext")
+                    }
+                    Button {
+                        model.exportCurrentPlan(.calendar)
+                    } label: {
+                        Label("导出日历文件", systemImage: "calendar.badge.plus")
+                    }
+                    .disabled(!model.canExportCalendar)
+                    Button {
+                        model.exportCurrentPlan(.pdfAndCalendar)
+                    } label: {
+                        Label("PDF 与日历一起带走", systemImage: "square.and.arrow.up.on.square")
+                    }
+                    .disabled(!model.canExportCalendar)
+                } label: {
+                    Group {
+                        if model.isExportingPlan {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                    }
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(model.isExportingPlan)
+                .accessibilityLabel(model.isExportingPlan ? "正在导出行程" : "导出与分享")
+                .accessibilityIdentifier("plan-export-menu")
+
                 Button {
                     model.saveCurrentTrip()
                 } label: {
@@ -420,6 +454,16 @@ struct PlannerPanel: View {
                         .frame(minHeight: 44)
                 }
                 .buttonStyle(.plain)
+            }
+
+            if let exportStatusMessage = model.exportStatusMessage {
+                HStack(spacing: 7) {
+                    ProgressView().controlSize(.small)
+                    Text(exportStatusMessage)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
             Group {

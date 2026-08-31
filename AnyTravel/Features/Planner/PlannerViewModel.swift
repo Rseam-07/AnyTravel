@@ -58,6 +58,10 @@ final class PlannerViewModel {
     var transferRoutesByOptionID: [LocalTransferOption.ID: MKRoute] = [:]
     var isTransferLoading = false
     var transferStatusMessage: String?
+    var isExportingPlan = false
+    var exportStatusMessage: String?
+    var sharePayload: PlanSharePayload?
+    var exportFeedbackTrigger = 0
     var isLogisticsLoading = false
     var logisticsStatusMessage: String?
     var quoteRefreshState: QuoteRefreshState = .idle
@@ -72,6 +76,7 @@ final class PlannerViewModel {
     @ObservationIgnored private let logisticsSearchService: LogisticsSearchService
     @ObservationIgnored private let transportEngine: TransportRecommendationEngine
     @ObservationIgnored private let localTransferService: LocalTransferService
+    @ObservationIgnored private let planExportService: PlanExportService
     @ObservationIgnored private let expensePlanner: ExpensePlanner
     @ObservationIgnored private let scheduleBuilder: ScheduleBuilder
     @ObservationIgnored private let pricingBackendClient: PricingBackendClient
@@ -80,6 +85,7 @@ final class PlannerViewModel {
     @ObservationIgnored private var revealTask: Task<Void, Never>?
     @ObservationIgnored private var logisticsTask: Task<Void, Never>?
     @ObservationIgnored private var transferTask: Task<Void, Never>?
+    @ObservationIgnored private var exportTask: Task<Void, Never>?
     @ObservationIgnored private var recoveryAction: RecoveryAction?
     @ObservationIgnored private var activeSavedTripID: SavedTrip.ID?
     @ObservationIgnored private var itineraryNeedsLogisticsRefresh = false
@@ -94,6 +100,7 @@ final class PlannerViewModel {
         logisticsSearchService: LogisticsSearchService = LogisticsSearchService(),
         transportEngine: TransportRecommendationEngine = TransportRecommendationEngine(),
         localTransferService: LocalTransferService = LocalTransferService(),
+        planExportService: PlanExportService = PlanExportService(),
         expensePlanner: ExpensePlanner = ExpensePlanner(),
         scheduleBuilder: ScheduleBuilder = ScheduleBuilder(),
         pricingBackendClient: PricingBackendClient = PricingBackendClient(),
@@ -106,6 +113,7 @@ final class PlannerViewModel {
         self.logisticsSearchService = logisticsSearchService
         self.transportEngine = transportEngine
         self.localTransferService = localTransferService
+        self.planExportService = planExportService
         self.expensePlanner = expensePlanner
         self.scheduleBuilder = scheduleBuilder
         self.pricingBackendClient = pricingBackendClient
@@ -120,6 +128,7 @@ final class PlannerViewModel {
         revealTask?.cancel()
         logisticsTask?.cancel()
         transferTask?.cancel()
+        exportTask?.cancel()
     }
 
     var currentDay: ItineraryDay? {
@@ -187,6 +196,10 @@ final class PlannerViewModel {
 
     var totalBudget: Int {
         draft.budgetPerPerson * max(draft.logistics.travelers, 1)
+    }
+
+    var canExportCalendar: Bool {
+        draft.logistics.startDate != nil && !itineraryDays.isEmpty
     }
 
     var currentSchedule: [ScheduleItem] {
@@ -890,6 +903,41 @@ final class PlannerViewModel {
         }
     }
 
+    func exportCurrentPlan(_ format: PlanExportFormat) {
+        guard phase == .ready, !itineraryDays.isEmpty else {
+            errorMessage = PlanExportError.noItinerary.localizedDescription
+            return
+        }
+        if format != .pdf, !canExportCalendar {
+            errorMessage = PlanExportError.missingDates.localizedDescription
+            return
+        }
+
+        exportTask?.cancel()
+        let payload = currentExportPayload()
+        isExportingPlan = true
+        exportStatusMessage = format == .calendar ? "正在把每天的时刻写进日历" : "正在把地图与行程折成随身文件"
+        exportTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.isExportingPlan = false }
+            do {
+                let urls = try await self.planExportService.export(format, payload: payload)
+                guard !Task.isCancelled else { return }
+                self.exportStatusMessage = nil
+                self.noticeMessage = urls.count == 1
+                    ? "行程文件已经整理好，正在打开分享。"
+                    : "PDF 与日历已经整理好，正在打开分享。"
+                self.sharePayload = PlanSharePayload(title: payload.title, urls: urls)
+                self.exportFeedbackTrigger += 1
+            } catch is CancellationError {
+                return
+            } catch {
+                self.exportStatusMessage = nil
+                self.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
     func loadSavedTrip(_ trip: SavedTrip) {
         routeTask?.cancel()
         revealTask?.cancel()
@@ -950,6 +998,46 @@ final class PlannerViewModel {
             await self?.loadRoutesForSelectedDay(reveal: true)
         }
         refreshLogisticsInBackground()
+    }
+
+    private func currentExportPayload() -> PlanExportPayload {
+        let exportDays = itineraryDays.map { day in
+            let date = draft.logistics.startDate.flatMap {
+                Calendar.current.date(byAdding: .day, value: day.index, to: $0)
+            }
+            let segments = (routesByDay[day.index] ?? []).map {
+                Self.coordinates(from: $0.route.polyline)
+            }
+            return PlanExportDay(
+                itinerary: day,
+                date: date,
+                schedule: scheduleBuilder.build(for: day, pace: draft.pace, accommodation: selectedAccommodation),
+                routeSegments: segments
+            )
+        }
+        let destinationName = destination?.title ?? draft.destination
+        return PlanExportPayload(
+            title: "\(destinationName) · \(draft.dayCount)天旅行方案",
+            draft: draft,
+            days: exportDays,
+            accommodation: selectedAccommodation,
+            outboundTransport: selectedTransport,
+            returnTransport: selectedReturnTransport,
+            outboundTransfer: selectedOutboundTransfer,
+            returnTransfer: selectedReturnTransfer,
+            expenses: expenseLines,
+            generatedAt: .now
+        )
+    }
+
+    private static func coordinates(from polyline: MKPolyline) -> [Coordinate] {
+        guard polyline.pointCount > 0 else { return [] }
+        var coordinates = [CLLocationCoordinate2D](
+            repeating: CLLocationCoordinate2D(latitude: 0, longitude: 0),
+            count: polyline.pointCount
+        )
+        polyline.getCoordinates(&coordinates, range: NSRange(location: 0, length: polyline.pointCount))
+        return coordinates.map(Coordinate.init)
     }
 
     func deleteSavedTrip(_ trip: SavedTrip) {
@@ -1492,6 +1580,7 @@ final class PlannerViewModel {
         routeTask?.cancel()
         revealTask?.cancel()
         logisticsTask?.cancel()
+        exportTask?.cancel()
         draft = preferencesStore.applyingSavedPreferences()
         phase = .destination
         destination = nil
@@ -1518,6 +1607,9 @@ final class PlannerViewModel {
         isLogisticsLoading = false
         logisticsStatusMessage = nil
         quoteRefreshState = .idle
+        isExportingPlan = false
+        exportStatusMessage = nil
+        sharePayload = nil
         originResolution = nil
         activeSavedTripID = nil
         itineraryEditorPresented = false

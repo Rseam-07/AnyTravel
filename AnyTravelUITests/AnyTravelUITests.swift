@@ -62,6 +62,13 @@ final class AnyTravelUITests: XCTestCase {
 
         let accommodationTab = app.buttons["住宿"]
         XCTAssertTrue(accommodationTab.waitForExistence(timeout: 5))
+        let exportMenu = app.buttons["plan-export-menu"]
+        XCTAssertTrue(exportMenu.exists)
+        XCTAssertTrue(exportMenu.isHittable)
+        exportMenu.tap()
+        XCTAssertTrue(app.buttons["分享完整 PDF"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["导出日历文件"].exists)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.08)).tap()
         accommodationTab.tap()
         XCTAssertTrue(app.staticTexts["住宿比价 · 1个候选"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["¥468/晚"].exists)
@@ -104,6 +111,29 @@ final class AnyTravelUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["抵达接驳"].exists)
         XCTAssertTrue(app.staticTexts["返程接驳"].exists)
         XCTAssertTrue(app.staticTexts["机动金"].exists)
+    }
+
+    func testCompletePlanExportsPDFToSystemShareSheet() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-test-ready"]
+        app.launch()
+
+        let exportMenu = app.buttons["plan-export-menu"]
+        XCTAssertTrue(exportMenu.waitForExistence(timeout: 5))
+        XCTAssertTrue(exportMenu.isHittable)
+        exportMenu.tap()
+
+        let exportPDF = app.buttons["分享完整 PDF"]
+        XCTAssertTrue(exportPDF.waitForExistence(timeout: 2))
+        exportPDF.tap()
+
+        let shareSheet = app.otherElements["ActivityListView"]
+        XCTAssertTrue(shareSheet.waitForExistence(timeout: 12))
+        XCTAssertTrue(app.cells["保存到“文件”"].exists)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "完整方案 PDF 系统分享"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
     }
 
     func testGeneratedTripCanBeEditedWithoutStartingOver() {
