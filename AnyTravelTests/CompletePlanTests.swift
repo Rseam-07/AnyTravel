@@ -105,6 +105,124 @@ final class CompletePlanTests: XCTestCase {
     }
 
     @MainActor
+    func testSelectedTransfersBecomeExplicitExpensesWithoutDoubleCountingTheLocalEnvelope() {
+        var logistics = TripLogistics()
+        logistics.travelers = 2
+        let draft = TripDraft(destination: "苏州", budgetPerPerson: 3_000, logistics: logistics)
+        let outboundTransfer = LocalTransferOption(
+            direction: .outbound,
+            mode: .publicTransit,
+            originName: "苏州站",
+            destinationName: "测试酒店",
+            durationMinutes: 26,
+            distanceMeters: 5_200,
+            estimatedCostCNY: 8,
+            costNote: "按 2 人估算"
+        )
+        let returnTransfer = LocalTransferOption(
+            direction: .returnTrip,
+            mode: .taxi,
+            originName: "测试酒店",
+            destinationName: "苏州站",
+            durationMinutes: 18,
+            distanceMeters: 6_100,
+            estimatedCostCNY: 28,
+            costNote: "按里程估算"
+        )
+
+        let lines = ExpensePlanner().buildLines(
+            draft: draft,
+            accommodation: nil,
+            transport: nil,
+            outboundTransfer: outboundTransfer,
+            returnTransfer: returnTransfer
+        )
+
+        XCTAssertEqual(lines.first(where: { $0.id == "outbound-transfer" })?.amountCNY, 8)
+        XCTAssertEqual(lines.first(where: { $0.id == "return-transfer" })?.amountCNY, 28)
+        XCTAssertEqual(lines.first(where: { $0.id == "outbound-transfer" })?.source, .estimate)
+        XCTAssertEqual(lines.first(where: { $0.id == "local" })?.amountCNY, 384)
+        XCTAssertTrue(lines.first(where: { $0.id == "local" })?.detail.contains("扣除已选往返接驳") == true)
+    }
+
+    @MainActor
+    func testTransferPolicyAccountsForPartySizeAndLateArrival() {
+        let policy = LocalTransferPolicy()
+        XCTAssertEqual(
+            policy.estimatedCost(for: .publicTransit, distanceMeters: 5_200, durationMinutes: 26, travelers: 3),
+            6
+        )
+        XCTAssertEqual(
+            policy.estimatedCost(for: .taxi, distanceMeters: 5_200, durationMinutes: 20, travelers: 3),
+            25
+        )
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let lateArrival = calendar.date(from: DateComponents(year: 2026, month: 9, day: 10, hour: 23))
+        let options = [
+            LocalTransferOption(
+                direction: .outbound,
+                mode: .publicTransit,
+                originName: "车站",
+                destinationName: "酒店",
+                durationMinutes: 34,
+                distanceMeters: 6_000,
+                estimatedCostCNY: 6,
+                costNote: "估算"
+            ),
+            LocalTransferOption(
+                direction: .outbound,
+                mode: .taxi,
+                originName: "车站",
+                destinationName: "酒店",
+                durationMinutes: 18,
+                distanceMeters: 6_500,
+                estimatedCostCNY: 29,
+                costNote: "估算"
+            )
+        ]
+
+        XCTAssertEqual(
+            policy.recommendedMode(from: options, referenceDate: lateArrival, travelers: 1, calendar: calendar),
+            .taxi
+        )
+    }
+
+    @MainActor
+    func testTransferPolicyDoesNotPresentDistanceEstimateAsLiveTransitRecommendation() {
+        let options = [
+            LocalTransferOption(
+                direction: .outbound,
+                mode: .publicTransit,
+                originName: "车站",
+                destinationName: "酒店",
+                durationMinutes: 30,
+                distanceMeters: 6_000,
+                estimatedCostCNY: 4,
+                routeKind: .distanceEstimate,
+                costNote: "距离估算"
+            ),
+            LocalTransferOption(
+                direction: .outbound,
+                mode: .taxi,
+                originName: "车站",
+                destinationName: "酒店",
+                durationMinutes: 18,
+                distanceMeters: 6_500,
+                estimatedCostCNY: 29,
+                routeKind: .appleMaps,
+                costNote: "地图路线"
+            )
+        ]
+
+        XCTAssertEqual(
+            LocalTransferPolicy().recommendedMode(from: options, referenceDate: nil, travelers: 1),
+            .taxi
+        )
+    }
+
+    @MainActor
     func testSkippingTransportDoesNotInventATransportExpense() {
         var logistics = TripLogistics()
         logistics.skipTransport = true

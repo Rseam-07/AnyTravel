@@ -33,6 +33,66 @@ final class TripStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testPersistsSelectedDoorToDoorTransfers() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let fileURL = directory.appendingPathComponent("trips.json")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let outbound = LocalTransferOption(
+            direction: .outbound,
+            mode: .taxi,
+            originName: "苏州站",
+            destinationName: "测试酒店",
+            durationMinutes: 19,
+            distanceMeters: 6_980,
+            estimatedCostCNY: 32,
+            routeKind: .appleMaps,
+            costNote: "地图路线，价格按里程估算"
+        )
+        let returnTrip = LocalTransferOption(
+            direction: .returnTrip,
+            mode: .publicTransit,
+            originName: "测试酒店",
+            destinationName: "苏州站",
+            durationMinutes: 32,
+            distanceMeters: 6_980,
+            estimatedCostCNY: 4,
+            routeKind: .distanceEstimate,
+            costNote: "公交路线待复核"
+        )
+        let snapshot = LogisticsSnapshot(
+            accommodations: [],
+            selectedAccommodationID: nil,
+            transportOptions: [],
+            selectedTransportID: nil,
+            outboundTransferOptions: [outbound],
+            selectedOutboundTransferID: outbound.id,
+            returnTransferOptions: [returnTrip],
+            selectedReturnTransferID: returnTrip.id
+        )
+        let trip = SavedTrip(
+            title: "苏州 · 门到门",
+            draft: TripDraft(destination: "苏州"),
+            destinationCenter: Coordinate(latitude: 31.2989, longitude: 120.5853),
+            days: [],
+            logisticsSnapshot: snapshot
+        )
+
+        try TripStore(fileURL: fileURL).save(trip)
+        let restored = try XCTUnwrap(TripStore(fileURL: fileURL).trips.first?.logisticsSnapshot)
+        let restoredOutbound = try XCTUnwrap(restored.outboundTransferOptions?.first)
+
+        XCTAssertEqual(restored.selectedOutboundTransferID, outbound.id)
+        XCTAssertEqual(restoredOutbound.id, outbound.id)
+        XCTAssertEqual(restoredOutbound.mode, .taxi)
+        XCTAssertEqual(restoredOutbound.routeKind, .appleMaps)
+        XCTAssertEqual(restoredOutbound.estimatedCostCNY, 32)
+        XCTAssertEqual(restored.selectedReturnTransferID, returnTrip.id)
+        XCTAssertEqual(restored.returnTransferOptions?.first?.routeKind, .distanceEstimate)
+    }
+
+    @MainActor
     func testDeletePersists() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

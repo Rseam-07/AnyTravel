@@ -10,6 +10,18 @@ struct PlannerMapView: View {
         Map(position: $model.cameraPosition, interactionModes: .all, scope: mapScope) {
             UserAnnotation()
 
+            if let transferRoute = model.visibleTransferRoute {
+                MapPolyline(transferRoute)
+                    .stroke(.white.opacity(0.94), lineWidth: 11)
+                MapPolyline(transferRoute)
+                    .stroke(
+                        model.focusedTransportDirection == .outbound
+                            ? AnyTravelPalette.route
+                            : AnyTravelPalette.warm,
+                        style: StrokeStyle(lineWidth: 5.5, lineCap: .round, lineJoin: .round, dash: [4, 7])
+                    )
+            }
+
             ForEach(model.visibleLegs) { leg in
                 MapPolyline(leg.route)
                     .stroke(.white.opacity(0.92), lineWidth: 10)
@@ -65,6 +77,8 @@ struct PlannerMapView: View {
             }
         }
         .animation(AnyTravelMotion.route(reduceMotion: reduceMotion), value: model.visibleLegCount)
+        .animation(AnyTravelMotion.route(reduceMotion: reduceMotion), value: model.selectedOutboundTransferID)
+        .animation(AnyTravelMotion.route(reduceMotion: reduceMotion), value: model.selectedReturnTransferID)
     }
 }
 

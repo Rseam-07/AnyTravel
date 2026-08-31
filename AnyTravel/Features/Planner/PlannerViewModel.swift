@@ -50,6 +50,14 @@ final class PlannerViewModel {
     var selectedTransportID: TransportOption.ID?
     var returnTransportOptions: [TransportOption] = []
     var selectedReturnTransportID: TransportOption.ID?
+    var outboundTransferOptions: [LocalTransferOption] = []
+    var selectedOutboundTransferID: LocalTransferOption.ID?
+    var returnTransferOptions: [LocalTransferOption] = []
+    var selectedReturnTransferID: LocalTransferOption.ID?
+    var focusedTransportDirection: TransportDirection = .outbound
+    var transferRoutesByOptionID: [LocalTransferOption.ID: MKRoute] = [:]
+    var isTransferLoading = false
+    var transferStatusMessage: String?
     var isLogisticsLoading = false
     var logisticsStatusMessage: String?
     var quoteRefreshState: QuoteRefreshState = .idle
@@ -63,6 +71,7 @@ final class PlannerViewModel {
     @ObservationIgnored private let intentParser: PlannerIntentParser
     @ObservationIgnored private let logisticsSearchService: LogisticsSearchService
     @ObservationIgnored private let transportEngine: TransportRecommendationEngine
+    @ObservationIgnored private let localTransferService: LocalTransferService
     @ObservationIgnored private let expensePlanner: ExpensePlanner
     @ObservationIgnored private let scheduleBuilder: ScheduleBuilder
     @ObservationIgnored private let pricingBackendClient: PricingBackendClient
@@ -70,6 +79,7 @@ final class PlannerViewModel {
     @ObservationIgnored private var routeTask: Task<Void, Never>?
     @ObservationIgnored private var revealTask: Task<Void, Never>?
     @ObservationIgnored private var logisticsTask: Task<Void, Never>?
+    @ObservationIgnored private var transferTask: Task<Void, Never>?
     @ObservationIgnored private var recoveryAction: RecoveryAction?
     @ObservationIgnored private var activeSavedTripID: SavedTrip.ID?
     @ObservationIgnored private var itineraryNeedsLogisticsRefresh = false
@@ -83,6 +93,7 @@ final class PlannerViewModel {
         intentParser: PlannerIntentParser = PlannerIntentParser(),
         logisticsSearchService: LogisticsSearchService = LogisticsSearchService(),
         transportEngine: TransportRecommendationEngine = TransportRecommendationEngine(),
+        localTransferService: LocalTransferService = LocalTransferService(),
         expensePlanner: ExpensePlanner = ExpensePlanner(),
         scheduleBuilder: ScheduleBuilder = ScheduleBuilder(),
         pricingBackendClient: PricingBackendClient = PricingBackendClient(),
@@ -94,6 +105,7 @@ final class PlannerViewModel {
         self.intentParser = intentParser
         self.logisticsSearchService = logisticsSearchService
         self.transportEngine = transportEngine
+        self.localTransferService = localTransferService
         self.expensePlanner = expensePlanner
         self.scheduleBuilder = scheduleBuilder
         self.pricingBackendClient = pricingBackendClient
@@ -107,6 +119,7 @@ final class PlannerViewModel {
         routeTask?.cancel()
         revealTask?.cancel()
         logisticsTask?.cancel()
+        transferTask?.cancel()
     }
 
     var currentDay: ItineraryDay? {
@@ -141,12 +154,30 @@ final class PlannerViewModel {
         returnTransportOptions.first { $0.id == selectedReturnTransportID }
     }
 
+    var selectedOutboundTransfer: LocalTransferOption? {
+        outboundTransferOptions.first { $0.id == selectedOutboundTransferID }
+    }
+
+    var selectedReturnTransfer: LocalTransferOption? {
+        returnTransferOptions.first { $0.id == selectedReturnTransferID }
+    }
+
+    var visibleTransferRoute: MKRoute? {
+        guard planMapFocus == .transport else { return nil }
+        let selectedID = focusedTransportDirection == .outbound
+            ? selectedOutboundTransferID
+            : selectedReturnTransferID
+        return selectedID.flatMap { transferRoutesByOptionID[$0] }
+    }
+
     var expenseLines: [ExpenseLine] {
         expensePlanner.buildLines(
             draft: draft,
             accommodation: selectedAccommodation,
             transport: selectedTransport,
-            returnTransport: selectedReturnTransport
+            returnTransport: selectedReturnTransport,
+            outboundTransfer: selectedOutboundTransfer,
+            returnTransfer: selectedReturnTransfer
         )
     }
 
@@ -364,6 +395,48 @@ final class PlannerViewModel {
         selectedTransportID = train.id
         returnTransportOptions = [returnTrain]
         selectedReturnTransportID = returnTrain.id
+        let arrivalMetro = LocalTransferOption(
+            direction: .outbound,
+            mode: .publicTransit,
+            originName: "苏州站",
+            destinationName: hotel.name,
+            durationMinutes: 26,
+            distanceMeters: 5_200,
+            estimatedCostCNY: 8,
+            routeKind: .preview,
+            costNote: "按 2 人与里程估算，实际票制以当地为准",
+            recommendationReasons: ["时间、费用与换乘负担更均衡", "Apple Maps 路线约 5.2公里"],
+            isRecommended: true
+        )
+        let arrivalTaxi = LocalTransferOption(
+            direction: .outbound,
+            mode: .taxi,
+            originName: "苏州站",
+            destinationName: hotel.name,
+            durationMinutes: 18,
+            distanceMeters: 6_100,
+            estimatedCostCNY: 28,
+            routeKind: .preview,
+            costNote: "按里程与行车时间估算，不是网约车实时报价",
+            recommendationReasons: ["少一次换乘", "Apple Maps 驾车路线约 6.1公里"]
+        )
+        let returnMetro = LocalTransferOption(
+            direction: .returnTrip,
+            mode: .publicTransit,
+            originName: hotel.name,
+            destinationName: "苏州站",
+            durationMinutes: 28,
+            distanceMeters: 5_300,
+            estimatedCostCNY: 8,
+            routeKind: .preview,
+            costNote: "按 2 人与里程估算，实际票制以当地为准",
+            recommendationReasons: ["时间、费用与换乘负担更均衡", "建议至少提前 50 分钟出发"],
+            isRecommended: true
+        )
+        outboundTransferOptions = [arrivalMetro, arrivalTaxi]
+        selectedOutboundTransferID = arrivalMetro.id
+        returnTransferOptions = [returnMetro]
+        selectedReturnTransferID = returnMetro.id
         selectedDayIndex = 0
         phase = .ready
         fitCurrentDay(animated: false)
@@ -413,6 +486,8 @@ final class PlannerViewModel {
         quoteRefreshState = .idle
         returnTransportOptions = []
         selectedReturnTransportID = nil
+        clearLocalTransfers()
+        focusedTransportDirection = .outbound
         activityTitle = "正在拾起沿途值得停留的地方"
         activityDetail = "依照目的地、偏好与距离慢慢筛选"
         phase = .discovering
@@ -691,6 +766,7 @@ final class PlannerViewModel {
         selectedPlaceID = nil
         returnTransportOptions = []
         selectedReturnTransportID = nil
+        clearLocalTransfers()
         quoteRefreshState = .stale("日期、人数或出发方式变了，住宿与交通需要重新核价。")
         fitCurrentDay(animated: true)
         routeTask?.cancel()
@@ -796,7 +872,11 @@ final class PlannerViewModel {
                 transportOptions: transportOptions,
                 selectedTransportID: selectedTransportID,
                 returnTransportOptions: returnTransportOptions,
-                selectedReturnTransportID: selectedReturnTransportID
+                selectedReturnTransportID: selectedReturnTransportID,
+                outboundTransferOptions: outboundTransferOptions,
+                selectedOutboundTransferID: selectedOutboundTransferID,
+                returnTransferOptions: returnTransferOptions,
+                selectedReturnTransferID: selectedReturnTransferID
             )
         )
 
@@ -827,6 +907,11 @@ final class PlannerViewModel {
             selectedTransportID = snapshot.selectedTransportID
             returnTransportOptions = snapshot.returnTransportOptions ?? []
             selectedReturnTransportID = snapshot.selectedReturnTransportID
+            outboundTransferOptions = snapshot.outboundTransferOptions ?? []
+            selectedOutboundTransferID = snapshot.selectedOutboundTransferID
+            returnTransferOptions = snapshot.returnTransferOptions ?? []
+            selectedReturnTransferID = snapshot.selectedReturnTransferID
+            transferRoutesByOptionID = [:]
             let snapshotPoints = (snapshot.transportOptions + returnTransportOptions).compactMap(\.arrivalAccessPoint)
                 + snapshot.accommodations.flatMap { Array($0.nearestAccessPoints.values) }
             accessPoints = snapshotPoints.reduce(into: []) { points, point in
@@ -841,8 +926,14 @@ final class PlannerViewModel {
             selectedTransportID = nil
             returnTransportOptions = []
             selectedReturnTransportID = nil
+            outboundTransferOptions = []
+            selectedOutboundTransferID = nil
+            returnTransferOptions = []
+            selectedReturnTransferID = nil
+            transferRoutesByOptionID = [:]
         }
         originResolution = nil
+        focusedTransportDirection = .outbound
         destination = DestinationResolution(
             title: trip.draft.destination,
             coordinate: trip.destinationCenter,
@@ -1033,6 +1124,9 @@ final class PlannerViewModel {
             }
         }
 
+        logisticsStatusMessage = "正在把车站与住处之间的路接起来"
+        await refreshLocalTransfers()
+
         if wantsLiveQuotes, !draft.logistics.skipTransport, trimmedOrigin.isEmpty {
             pricingIssues.append("补充出发地后，才能读取班次与交通价格")
         }
@@ -1077,15 +1171,17 @@ final class PlannerViewModel {
         selectedPlaceID = nil
         returnTransportOptions = []
         selectedReturnTransportID = nil
+        clearLocalTransfers()
         rebuildTransportOptions()
         if draft.logistics.hasDates,
-           !draft.logistics.origin.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+           !draft.logistics.origin.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           pricingBackendClient.isConfigured {
             logisticsTask?.cancel()
             logisticsTask = Task { [weak self] in
                 guard let self else { return }
                 self.isLogisticsLoading = true
                 self.logisticsStatusMessage = "正在从新住处重新丈量抵达的路"
-                self.quoteRefreshState = self.pricingBackendClient.isConfigured ? .refreshing : .needsService
+                self.quoteRefreshState = .refreshing
                 do {
                     let result = try await self.refreshTransportQuotes()
                     let issues = result.issues.map(\.message).joined(separator: "；")
@@ -1110,9 +1206,15 @@ final class PlannerViewModel {
                 } catch {
                     self.quoteRefreshState = .failed(Self.pricingFailureText(error))
                 }
+                await self.refreshLocalTransfers()
                 self.isLogisticsLoading = false
                 self.logisticsStatusMessage = nil
             }
+        } else {
+            if draft.logistics.hasDates, !pricingBackendClient.isConfigured {
+                quoteRefreshState = .needsService
+            }
+            refreshLocalTransfersInBackground()
         }
         let camera = MapCamera(
             centerCoordinate: option.coordinate.clLocationCoordinate,
@@ -1124,6 +1226,7 @@ final class PlannerViewModel {
     }
 
     func selectTransport(_ option: TransportOption) {
+        focusedTransportDirection = option.journeyDirection
         if option.journeyDirection == .returnTrip {
             selectedReturnTransportID = option.id
         } else {
@@ -1134,6 +1237,45 @@ final class PlannerViewModel {
                 [accessPoint.coordinate, selectedAccommodation?.coordinate].compactMap { $0 },
                 animated: true
             )
+        }
+        refreshLocalTransfersInBackground()
+    }
+
+    func setTransportDirectionFocus(_ direction: TransportDirection) {
+        focusedTransportDirection = direction
+        let transfer = direction == .outbound ? selectedOutboundTransfer : selectedReturnTransfer
+        if let route = transfer.flatMap({ transferRoutesByOptionID[$0.id] }) {
+            setCamera(.rect(padded(route.polyline.boundingMapRect)), animated: true)
+            return
+        }
+        let transport = direction == .outbound ? selectedTransport : selectedReturnTransport
+        let coordinates = [transport?.arrivalAccessPoint?.coordinate, selectedAccommodation?.coordinate]
+            .compactMap { $0 }
+        if !coordinates.isEmpty { fitCoordinates(coordinates, animated: true) }
+    }
+
+    func selectLocalTransfer(_ option: LocalTransferOption) {
+        focusedTransportDirection = option.direction
+        if option.direction == .outbound {
+            selectedOutboundTransferID = option.id
+        } else {
+            selectedReturnTransferID = option.id
+        }
+        if let route = transferRoutesByOptionID[option.id] {
+            setCamera(.rect(padded(route.polyline.boundingMapRect)), animated: true)
+        } else {
+            let transport = option.direction == .outbound ? selectedTransport : selectedReturnTransport
+            fitCoordinates(
+                [transport?.arrivalAccessPoint?.coordinate, selectedAccommodation?.coordinate].compactMap { $0 },
+                animated: true
+            )
+        }
+    }
+
+    func refreshLocalTransfersInBackground() {
+        transferTask?.cancel()
+        transferTask = Task { [weak self] in
+            await self?.refreshLocalTransfers()
         }
     }
 
@@ -1181,6 +1323,88 @@ final class PlannerViewModel {
         preferencesStore.save(from: draft)
     }
 
+    private func clearLocalTransfers() {
+        transferTask?.cancel()
+        outboundTransferOptions = []
+        selectedOutboundTransferID = nil
+        returnTransferOptions = []
+        selectedReturnTransferID = nil
+        transferRoutesByOptionID = [:]
+        isTransferLoading = false
+        transferStatusMessage = nil
+    }
+
+    private func refreshLocalTransfers() async {
+        guard !draft.logistics.skipTransport,
+              let accommodation = selectedAccommodation else {
+            clearLocalTransfers()
+            return
+        }
+
+        let previousOutboundMode = selectedOutboundTransfer?.mode
+        let previousReturnMode = selectedReturnTransfer?.mode
+        isTransferLoading = true
+        transferStatusMessage = "正在向地图询问接驳路线"
+        defer { isTransferLoading = false }
+
+        var outboundResult = LocalTransferResult(options: [], routesByOptionID: [:], failedModes: [])
+        if let accessPoint = selectedTransport?.arrivalAccessPoint {
+            outboundResult = await localTransferService.buildOptions(
+                direction: .outbound,
+                accessPoint: accessPoint,
+                accommodation: accommodation,
+                travelers: draft.logistics.travelers,
+                referenceDate: selectedTransport?.arrivalTime
+            )
+        }
+        guard !Task.isCancelled else { return }
+
+        var returnResult = LocalTransferResult(options: [], routesByOptionID: [:], failedModes: [])
+        if let accessPoint = selectedReturnTransport?.arrivalAccessPoint {
+            let leaveHotelAt = selectedReturnTransport?.departureTime?.addingTimeInterval(-90 * 60)
+            returnResult = await localTransferService.buildOptions(
+                direction: .returnTrip,
+                accessPoint: accessPoint,
+                accommodation: accommodation,
+                travelers: draft.logistics.travelers,
+                referenceDate: leaveHotelAt
+            )
+        }
+        guard !Task.isCancelled else { return }
+
+        let newRoutes = outboundResult.routesByOptionID.merging(returnResult.routesByOptionID) { _, latest in latest }
+        if UIAccessibility.isReduceMotionEnabled {
+            outboundTransferOptions = outboundResult.options
+            returnTransferOptions = returnResult.options
+            transferRoutesByOptionID = newRoutes
+        } else {
+            withAnimation(.spring(response: 0.48, dampingFraction: 0.86)) {
+                outboundTransferOptions = outboundResult.options
+                returnTransferOptions = returnResult.options
+                transferRoutesByOptionID = newRoutes
+            }
+        }
+        selectedOutboundTransferID = outboundTransferOptions.first(where: { $0.mode == previousOutboundMode })?.id
+            ?? outboundTransferOptions.first(where: \.isRecommended)?.id
+            ?? outboundTransferOptions.first?.id
+        selectedReturnTransferID = returnTransferOptions.first(where: { $0.mode == previousReturnMode })?.id
+            ?? returnTransferOptions.first(where: \.isRecommended)?.id
+            ?? returnTransferOptions.first?.id
+
+        let failedCount = outboundResult.failedModes.count + returnResult.failedModes.count
+        let hasTransitEstimate = (outboundTransferOptions + returnTransferOptions)
+            .contains { $0.mode == .publicTransit && $0.routeKind == .distanceEstimate }
+        if outboundTransferOptions.isEmpty && returnTransferOptions.isEmpty {
+            transferStatusMessage = "Apple Maps 暂时没有带回可用接驳路线"
+        } else if hasTransitEstimate {
+            transferStatusMessage = "公交路线暂未返回，已按距离估算；出发前请在地图复核"
+        } else if failedCount > 0 {
+            transferStatusMessage = "部分接驳方式暂未返回，已保留可用路线"
+        } else {
+            transferStatusMessage = nil
+        }
+    }
+
     private func rebuildTransportOptions() {
         guard let destination else { return }
         guard !draft.logistics.skipTransport else {
@@ -1188,6 +1412,7 @@ final class PlannerViewModel {
             selectedTransportID = nil
             returnTransportOptions = []
             selectedReturnTransportID = nil
+            clearLocalTransfers()
             return
         }
         let previousMode = selectedTransport?.mode ?? draft.logistics.preferredLongDistanceMode
@@ -1288,6 +1513,8 @@ final class PlannerViewModel {
         selectedTransportID = nil
         returnTransportOptions = []
         selectedReturnTransportID = nil
+        clearLocalTransfers()
+        focusedTransportDirection = .outbound
         isLogisticsLoading = false
         logisticsStatusMessage = nil
         quoteRefreshState = .idle

@@ -73,6 +73,11 @@ final class AnyTravelUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS %@", "苏州站到住宿约4.6公里")
         ).firstMatch
         XCTAssertTrue(transferReason.exists)
+        let arrivalTaxi = app.buttons["local-transfer-outbound-taxi"]
+        XCTAssertTrue(arrivalTaxi.waitForExistence(timeout: 3))
+        XCTAssertTrue(arrivalTaxi.isHittable)
+        arrivalTaxi.tap()
+        XCTAssertTrue(arrivalTaxi.isSelected)
 
         let returnSegment = app.segmentedControls["transport-direction-picker"].buttons["返程"]
         XCTAssertTrue(returnSegment.waitForExistence(timeout: 3))
@@ -83,8 +88,12 @@ final class AnyTravelUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS %@", "住宿到苏州站约4.6公里")
         ).firstMatch
         XCTAssertTrue(returnTransferReason.exists)
+        let returnMetro = app.buttons["local-transfer-return-publicTransit"]
+        XCTAssertTrue(returnMetro.waitForExistence(timeout: 3))
+        XCTAssertTrue(returnMetro.isSelected)
+        XCTAssertTrue(app.staticTexts["验收样例"].exists)
         let returnScreenshot = XCTAttachment(screenshot: app.screenshot())
-        returnScreenshot.name = "往返交通独立选择"
+        returnScreenshot.name = "门到门接驳选择"
         returnScreenshot.lifetime = .keepAlways
         add(returnScreenshot)
 
@@ -92,6 +101,8 @@ final class AnyTravelUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["完整费用 · 2人"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["去程大交通"].exists)
         XCTAssertTrue(app.staticTexts["返程大交通"].exists)
+        XCTAssertTrue(app.staticTexts["抵达接驳"].exists)
+        XCTAssertTrue(app.staticTexts["返程接驳"].exists)
         XCTAssertTrue(app.staticTexts["机动金"].exists)
     }
 

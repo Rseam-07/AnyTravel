@@ -469,6 +469,9 @@ struct PlannerPanel: View {
                 let selected = model.planMapFocus == section
                 Button {
                     model.setPlanMapFocus(section)
+                    if section == .transport {
+                        model.setTransportDirectionFocus(selectedTransportDirection)
+                    }
                     if section != .itinerary { readyExpanded = true }
                 } label: {
                     Label(section.title, systemImage: section.symbolName)
@@ -510,6 +513,18 @@ struct PlannerPanel: View {
         selectedTransportDirection == .outbound
             ? model.selectedTransport
             : model.selectedReturnTransport
+    }
+
+    private var activeTransferOptions: [LocalTransferOption] {
+        selectedTransportDirection == .outbound
+            ? model.outboundTransferOptions
+            : model.returnTransferOptions
+    }
+
+    private var activeTransferSelection: LocalTransferOption? {
+        selectedTransportDirection == .outbound
+            ? model.selectedOutboundTransfer
+            : model.selectedReturnTransfer
     }
 
     private var readySectionSubtitle: String {
@@ -682,56 +697,125 @@ struct PlannerPanel: View {
             } else if model.isLogisticsLoading && model.transportOptions.isEmpty && model.returnTransportOptions.isEmpty {
                 loadingModule("正在比较每一种抵达远方的方式")
             } else {
-                if model.draft.logistics.endDate != nil || !model.returnTransportOptions.isEmpty {
-                    Picker("选择去程或返程", selection: $selectedTransportDirection) {
-                        Text("去程").tag(TransportDirection.outbound)
-                        Text("返程").tag(TransportDirection.returnTrip)
-                    }
-                    .pickerStyle(.segmented)
-                    .tint(AnyTravelPalette.route)
-                    .accessibilityIdentifier("transport-direction-picker")
-                }
-
-                if options.isEmpty {
-                    let title = selectedTransportDirection == .returnTrip ? "返程班次暂未抵达" : "暂时没有交通结果"
-                    let detail = selectedTransportDirection == .returnTrip
-                        ? "保留当前去程；刷新后会继续查询返程当天的班次与票价。"
-                        : "补充出发地与日期，或稍后重新查询。"
-                    HStack(spacing: 10) {
-                        Image(systemName: selectedTransportDirection == .returnTrip ? "arrow.uturn.backward.circle" : "tram")
-                            .foregroundStyle(AnyTravelPalette.route)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(title).font(.subheadline.weight(.semibold))
-                            Text(detail).font(.caption2).foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(11)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                } else {
-                    ScrollView(.horizontal) {
-                        HStack(spacing: 10) {
-                            ForEach(options) { option in
-                                transportCard(option)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 9) {
+                        if model.draft.logistics.endDate != nil || !model.returnTransportOptions.isEmpty {
+                            Picker("选择去程或返程", selection: $selectedTransportDirection) {
+                                Text("去程").tag(TransportDirection.outbound)
+                                Text("返程").tag(TransportDirection.returnTrip)
                             }
+                            .pickerStyle(.segmented)
+                            .tint(AnyTravelPalette.route)
+                            .accessibilityIdentifier("transport-direction-picker")
                         }
-                        .scrollTargetLayout()
+
+                        if options.isEmpty {
+                            let title = selectedTransportDirection == .returnTrip ? "返程班次暂未抵达" : "暂时没有交通结果"
+                            let detail = selectedTransportDirection == .returnTrip
+                                ? "保留当前去程；刷新后会继续查询返程当天的班次与票价。"
+                                : "补充出发地与日期，或稍后重新查询。"
+                            HStack(spacing: 10) {
+                                Image(systemName: selectedTransportDirection == .returnTrip ? "arrow.uturn.backward.circle" : "tram")
+                                    .foregroundStyle(AnyTravelPalette.route)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(title).font(.subheadline.weight(.semibold))
+                                    Text(detail).font(.caption2).foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(11)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        } else {
+                            ScrollView(.horizontal) {
+                                HStack(spacing: 10) {
+                                    ForEach(options) { option in
+                                        transportCard(option)
+                                    }
+                                }
+                                .scrollTargetLayout()
+                            }
+                            .scrollIndicators(.hidden)
+                            .scrollTargetBehavior(.viewAligned)
+                        }
+                        localTransferSection
+                        quoteRefreshBanner
+                        if let selectedOption {
+                            quoteStrip(selectedOption.quotes)
+                        }
                     }
-                    .scrollIndicators(.hidden)
-                    .scrollTargetBehavior(.viewAligned)
+                    .padding(.bottom, 2)
                 }
-                quoteRefreshBanner
-                if let selectedOption {
-                    quoteStrip(selectedOption.quotes)
-                }
+                .frame(maxHeight: readyExpanded ? 410 : 300)
+                .scrollIndicators(.hidden)
             }
         }
         .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: selectedTransportDirection)
+        .onChange(of: selectedTransportDirection) { _, direction in
+            model.setTransportDirectionFocus(direction)
+        }
         .onChange(of: model.returnTransportOptions.isEmpty) { _, returnIsEmpty in
             if returnIsEmpty && selectedTransportDirection == .returnTrip {
                 selectedTransportDirection = .outbound
             }
         }
+    }
+
+    private var localTransferSection: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 8) {
+                Label(
+                    selectedTransportDirection == .outbound ? "抵达接驳" : "返程接驳",
+                    systemImage: "point.topleft.down.to.point.bottomright.curvepath"
+                )
+                .font(.caption.weight(.bold))
+                .foregroundStyle(AnyTravelPalette.routeDark)
+                Spacer()
+                if model.isTransferLoading {
+                    ProgressView().controlSize(.small)
+                    Text("正在丈量")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Button {
+                        model.refreshLocalTransfersInBackground()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .frame(width: 40, height: 40)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("重新查询接驳路线")
+                }
+            }
+
+            if activeTransferOptions.isEmpty {
+                Text(model.transferStatusMessage ?? "选定车站与住宿后，会比较地铁公交、打车和步行。")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
+                    .padding(.horizontal, 10)
+                    .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            } else {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 8) {
+                        ForEach(activeTransferOptions) { option in
+                            localTransferCard(option)
+                        }
+                    }
+                    .scrollTargetLayout()
+                }
+                .scrollIndicators(.hidden)
+                .scrollTargetBehavior(.viewAligned)
+            }
+
+            if let status = model.transferStatusMessage, !activeTransferOptions.isEmpty {
+                Text(status)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.top, 2)
+        .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: model.isTransferLoading)
+        .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: activeTransferSelection?.id)
     }
 
     private var budgetReadyContent: some View {
@@ -988,6 +1072,65 @@ struct PlannerPanel: View {
         }
         .buttonStyle(AnyTravelPressStyle())
         .accessibilityIdentifier("transport-option-\(option.journeyDirection.rawValue)-\(option.id.uuidString)")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: selected)
+    }
+
+    private func localTransferCard(_ option: LocalTransferOption) -> some View {
+        let selected = option.direction == .outbound
+            ? model.selectedOutboundTransferID == option.id
+            : model.selectedReturnTransferID == option.id
+        let cost = option.estimatedCostCNY == 0 ? "无需费用" : "约¥\(option.estimatedCostCNY)"
+        return Button {
+            model.selectLocalTransfer(option)
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 7) {
+                    Image(systemName: option.mode.symbolName)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(selected ? .white : AnyTravelPalette.route)
+                        .frame(width: 28, height: 28)
+                        .background(selected ? AnyTravelPalette.route : AnyTravelPalette.route.opacity(0.10), in: Circle())
+                    Text(option.mode.title)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.primary)
+                    Spacer(minLength: 2)
+                    if option.isRecommended {
+                        Text("推荐")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(AnyTravelPalette.warm)
+                    }
+                }
+                Text("\(transportDurationText(option.durationMinutes)) · \(option.distanceMeters.anyTravelDistanceText)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                HStack {
+                    Text(cost)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(option.estimatedCostCNY == 0 ? AnyTravelPalette.routeDark : AnyTravelPalette.warm)
+                    Spacer()
+                    Text(option.routeKind.title)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(option.routeKind == .distanceEstimate ? AnyTravelPalette.warm : .secondary)
+                    Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(selected ? AnyTravelPalette.route : .secondary)
+                        .contentTransition(.symbolEffect(.replace))
+                }
+            }
+            .padding(9)
+            .frame(width: 178, alignment: .leading)
+            .frame(minHeight: 92, alignment: .leading)
+            .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                    .strokeBorder(selected ? AnyTravelPalette.route : .clear, lineWidth: 1.8)
+            }
+            .scaleEffect(selected && !reduceMotion ? 1 : 0.98)
+        }
+        .buttonStyle(AnyTravelPressStyle())
+        .accessibilityIdentifier("local-transfer-\(option.direction.rawValue)-\(option.mode.rawValue)")
+        .accessibilityLabel("\(option.direction.title)接驳，\(option.mode.title)，\(transportDurationText(option.durationMinutes))，\(cost)，\(option.routeKind.title)")
         .accessibilityAddTraits(selected ? .isSelected : [])
         .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: selected)
     }

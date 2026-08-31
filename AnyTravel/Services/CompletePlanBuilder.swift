@@ -132,7 +132,9 @@ struct ExpensePlanner {
         draft: TripDraft,
         accommodation: AccommodationOption?,
         transport: TransportOption?,
-        returnTransport: TransportOption? = nil
+        returnTransport: TransportOption? = nil,
+        outboundTransfer: LocalTransferOption? = nil,
+        returnTransfer: LocalTransferOption? = nil
     ) -> [ExpenseLine] {
         let totalBudget = draft.budgetPerPerson * max(draft.logistics.travelers, 1)
         let rooms = max((draft.logistics.travelers + 1) / 2, 1)
@@ -190,7 +192,26 @@ struct ExpensePlanner {
             ]
         }
 
-        return transportLines + [
+        let transferLines: [ExpenseLine]
+        if draft.logistics.skipTransport {
+            transferLines = []
+        } else {
+            transferLines = [outboundTransfer, returnTransfer].compactMap { option in
+                guard let option else { return nil }
+                return ExpenseLine(
+                    id: option.direction == .outbound ? "outbound-transfer" : "return-transfer",
+                    title: option.direction == .outbound ? "抵达接驳" : "返程接驳",
+                    detail: "\(option.mode.title) · \(durationText(option.durationMinutes)) · \(option.costNote)",
+                    amountCNY: option.estimatedCostCNY,
+                    source: .estimate
+                )
+            }
+        }
+        let transferTotal = transferLines.reduce(0) { $0 + $1.amountCNY }
+        let localTransportEnvelope = Int(Double(totalBudget) * 0.07)
+        let remainingLocalTransport = max(localTransportEnvelope - transferTotal, 0)
+
+        return transportLines + transferLines + [
             ExpenseLine(
                 id: "accommodation",
                 title: "住宿",
@@ -200,7 +221,13 @@ struct ExpensePlanner {
             ),
             ExpenseLine(id: "tickets", title: "景点与预约", detail: "按景点逐项核价前的额度", amountCNY: Int(Double(totalBudget) * 0.13), source: .budgetEnvelope),
             ExpenseLine(id: "meals", title: "餐饮", detail: "默认轻松节奏，预留正餐与休息", amountCNY: Int(Double(totalBudget) * 0.17), source: .budgetEnvelope),
-            ExpenseLine(id: "local", title: "市内交通", detail: "地铁、公交与必要打车", amountCNY: Int(Double(totalBudget) * 0.07), source: .budgetEnvelope),
+            ExpenseLine(
+                id: "local",
+                title: "市内交通",
+                detail: transferLines.isEmpty ? "地铁、公交与必要打车" : "扣除已选往返接驳后的市内交通额度",
+                amountCNY: remainingLocalTransport,
+                source: .budgetEnvelope
+            ),
             ExpenseLine(id: "buffer", title: "机动金", detail: "价格波动与临时调整", amountCNY: Int(Double(totalBudget) * 0.05), source: .budgetEnvelope)
         ]
     }
@@ -208,6 +235,12 @@ struct ExpensePlanner {
     private func totalAmount(for quote: ProviderQuote?, travelers: Int) -> Int? {
         guard let quote, let amount = quote.amountCNY else { return nil }
         return quote.unit == .perPerson ? amount * max(travelers, 1) : amount
+    }
+
+    private func durationText(_ minutes: Int) -> String {
+        guard minutes >= 60 else { return "约\(minutes)分钟" }
+        let remainder = minutes % 60
+        return remainder == 0 ? "约\(minutes / 60)小时" : "约\(minutes / 60)小时\(remainder)分钟"
     }
 }
 

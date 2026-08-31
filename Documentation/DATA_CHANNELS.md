@@ -8,6 +8,14 @@ App 直接使用 Apple MapKit：`MKLocalSearch` 搜索目的地、景点、酒�
 
 官方资料：[MKLocalSearch](https://developer.apple.com/documentation/mapkit/mklocalsearch)、[MKDirections](https://developer.apple.com/documentation/mapkit/mkdirections)。
 
+### 机场/车站与住宿之间的接驳
+
+iOS 0.5.3 会在用户选定大交通和住宿后，用 `MKDirections` 分别查询去程枢纽→住宿、住宿→返程枢纽的公共交通、驾车与步行路线。卡片保留 MapKit 返回的耗时和距离；公交费用按当地常见里程票制与同行人数估算，打车费用按里程和行车时间估算，均不写成平台实时报价。
+
+如果 MapKit 没有返回公共交通路线，但已经取得驾车或步行距离，App 会保留一张明确写着“距离估算”的公交卡，并提醒出发前复核。它不会绘制虚构的公交折线，也不会优先于已经取得的真实驾车路线。用户选中的往返接驳会分别写入费用表和本机旅册；接驳金额从原有市内交通额度中扣除，避免重复计算。
+
+2026-08-31 联网验收“苏州站→苏州吴宫泛太平洋酒店”时，MapKit 返回驾车 18 分钟、6.98 公里，步行 98 分钟、6.27 公里；公共交通在当前运行环境返回无可用路线，App 因而展示带复核提示的距离估算卡。
+
 ## 住宿价格
 
 ### RollingGo

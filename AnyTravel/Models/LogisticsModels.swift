@@ -308,6 +308,90 @@ struct TransportOption: Codable, Hashable, Identifiable, Sendable {
     var journeyDirection: TransportDirection { direction ?? .outbound }
 }
 
+enum LocalTransferMode: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
+    case publicTransit
+    case taxi
+    case walking
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .publicTransit: "地铁公交"
+        case .taxi: "打车"
+        case .walking: "步行"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .publicTransit: "tram.fill"
+        case .taxi: "car.fill"
+        case .walking: "figure.walk"
+        }
+    }
+}
+
+enum LocalTransferRouteKind: String, Codable, Hashable, Sendable {
+    case appleMaps
+    case distanceEstimate
+    case preview
+
+    var title: String {
+        switch self {
+        case .appleMaps: "地图路线"
+        case .distanceEstimate: "距离估算"
+        case .preview: "验收样例"
+        }
+    }
+}
+
+struct LocalTransferOption: Codable, Hashable, Identifiable, Sendable {
+    let id: UUID
+    var direction: TransportDirection
+    var mode: LocalTransferMode
+    var originName: String
+    var destinationName: String
+    var durationMinutes: Int
+    var distanceMeters: Double
+    var estimatedCostCNY: Int
+    var routeKind: LocalTransferRouteKind
+    var costNote: String
+    var recommendationReasons: [String]
+    var isRecommended: Bool
+    var capturedAt: Date
+
+    init(
+        id: UUID = UUID(),
+        direction: TransportDirection,
+        mode: LocalTransferMode,
+        originName: String,
+        destinationName: String,
+        durationMinutes: Int,
+        distanceMeters: Double,
+        estimatedCostCNY: Int,
+        routeKind: LocalTransferRouteKind = .appleMaps,
+        costNote: String,
+        recommendationReasons: [String] = [],
+        isRecommended: Bool = false,
+        capturedAt: Date = .now
+    ) {
+        self.id = id
+        self.direction = direction
+        self.mode = mode
+        self.originName = originName
+        self.destinationName = destinationName
+        self.durationMinutes = durationMinutes
+        self.distanceMeters = distanceMeters
+        self.estimatedCostCNY = estimatedCostCNY
+        self.routeKind = routeKind
+        self.costNote = costNote
+        self.recommendationReasons = recommendationReasons
+        self.isRecommended = isRecommended
+        self.capturedAt = capturedAt
+    }
+}
+
 struct LogisticsSnapshot: Codable, Hashable, Sendable {
     var accommodations: [AccommodationOption]
     var selectedAccommodationID: AccommodationOption.ID?
@@ -315,6 +399,10 @@ struct LogisticsSnapshot: Codable, Hashable, Sendable {
     var selectedTransportID: TransportOption.ID?
     var returnTransportOptions: [TransportOption]? = nil
     var selectedReturnTransportID: TransportOption.ID? = nil
+    var outboundTransferOptions: [LocalTransferOption]? = nil
+    var selectedOutboundTransferID: LocalTransferOption.ID? = nil
+    var returnTransferOptions: [LocalTransferOption]? = nil
+    var selectedReturnTransferID: LocalTransferOption.ID? = nil
 }
 
 enum QuoteRefreshState: Equatable, Sendable {
