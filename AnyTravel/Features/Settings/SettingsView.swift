@@ -7,6 +7,7 @@ struct SettingsView: View {
     @State private var activeProvider: ProviderAccount?
     @AppStorage(PricingBackendClient.serviceURLDefaultsKey) private var pricingServiceURL = ""
     @State private var serviceCheckResult: String?
+    @State private var serviceHealthy: Bool?
     @State private var checkingService = false
 
     var body: some View {
@@ -63,6 +64,7 @@ struct SettingsView: View {
                         serviceCheckResult = nil
                         Task {
                             let healthy = await PricingBackendClient().healthCheck(urlText: pricingServiceURL)
+                            serviceHealthy = healthy
                             serviceCheckResult = healthy ? "报价节点已经接上旅程" : "还没接上，请检查地址和服务状态"
                             checkingService = false
                         }
@@ -76,7 +78,7 @@ struct SettingsView: View {
                     if let serviceCheckResult {
                         Text(serviceCheckResult)
                             .font(.caption)
-                            .foregroundStyle(serviceCheckResult.contains("成功") ? AnyTravelPalette.route : AnyTravelPalette.warm)
+                            .foregroundStyle(serviceHealthy == true ? AnyTravelPalette.route : AnyTravelPalette.warm)
                     }
                 } header: {
                     Text("自己的报价驿站")
@@ -88,6 +90,9 @@ struct SettingsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .onDisappear {
                 model.persistPlanningDefaults()
+            }
+            .task {
+                await sessionStore.reconcileSavedSessions()
             }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

@@ -13,9 +13,36 @@ final class ProviderSessionStore {
         load()
     }
 
-    func markSessionReady(_ provider: ProviderAccount) {
+    private func markSessionReady(_ provider: ProviderAccount) {
         connectedAt[provider] = .now
         persist()
+    }
+
+    func saveCurrentSession(_ provider: ProviderAccount) async -> Bool {
+        let cookies = await WKWebsiteDataStore.default().httpCookieStore.allCookies()
+        let hasProviderCookie = cookies.contains { cookie in
+            provider.cookieDomains.contains(where: { cookie.domain.hasSuffix($0) })
+                && (cookie.expiresDate == nil || cookie.expiresDate! > .now)
+        }
+        guard hasProviderCookie else { return false }
+        markSessionReady(provider)
+        return true
+    }
+
+    func reconcileSavedSessions() async {
+        let cookies = await WKWebsiteDataStore.default().httpCookieStore.allCookies()
+        var changed = false
+        for provider in Array(connectedAt.keys) {
+            let stillAvailable = cookies.contains { cookie in
+                provider.cookieDomains.contains(where: { cookie.domain.hasSuffix($0) })
+                    && (cookie.expiresDate == nil || cookie.expiresDate! > .now)
+            }
+            if !stillAvailable {
+                connectedAt[provider] = nil
+                changed = true
+            }
+        }
+        if changed { persist() }
     }
 
     func isConnected(_ provider: ProviderAccount) -> Bool {

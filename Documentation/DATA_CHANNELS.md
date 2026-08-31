@@ -26,7 +26,7 @@ App 直接使用 Apple MapKit：`MKLocalSearch` 搜索目的地、景点、酒�
 
 ### 去哪儿、Trip.com 与住宿官网
 
-App 已提供应用内登录、Cookie 会话复用和购买页入口。去哪儿当前公开桌面酒店搜索入口会回到综合首页，其开放平台主要面向酒店供应商，因此 0.3.0 没有把它写成已验证的实时价格源。节点接口保留独立适配器位置，后续接入不会改变 iOS 数据模型。
+App 已提供应用内登录、Cookie 会话复用和购买页入口。iOS 0.5.0 会在保存前确认对应平台域名已有有效 Cookie，并在 Cookie 失效后撤销会话状态。去哪儿当前公开桌面酒店搜索入口会回到综合首页，其开放平台主要面向酒店供应商，因此没有把它写成已验证的实时价格源。节点接口保留独立适配器位置，后续接入不会改变 iOS 数据模型。
 
 平台资料：[去哪儿酒店开放平台](https://open.hotel.qunar.com/)、[携程分销合作](https://pages.ctrip.com/public/dlhz.htm)。
 
@@ -38,7 +38,7 @@ App 已提供应用内登录、Cookie 会话复用和购买页入口。去哪儿
 
 ## 航班
 
-iOS 数据模型已支持航班卡、机场到住宿距离、报价和购买链接。0.3.0 只显示明确的渠道查询入口；真正的聚合实时价需要后续配置合作接口。Skyscanner 的 Live Prices 接口采用 create/poll 流程，并要求 API key，接入时应按其[航班实时价格说明](https://developers.skyscanner.net/docs/flights-live-prices/overview)和[认证说明](https://developers.skyscanner.net/docs/getting-started/authentication)实现。
+iOS 数据模型已支持航班卡、机场到住宿距离、报价和购买链接。0.5.0 仍只显示明确的渠道查询入口；真正的聚合实时价需要后续配置合作接口。Skyscanner 的 Live Prices 接口采用 create/poll 流程，并要求 API key，接入时应按其[航班实时价格说明](https://developers.skyscanner.net/docs/flights-live-prices/overview)和[认证说明](https://developers.skyscanner.net/docs/getting-started/authentication)实现。
 
 ## 返回给 App 的共同字段
 

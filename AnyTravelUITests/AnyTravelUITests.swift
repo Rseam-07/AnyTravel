@@ -76,7 +76,71 @@ final class AnyTravelUITests: XCTestCase {
 
         app.buttons["费用"].tap()
         XCTAssertTrue(app.staticTexts["完整费用 · 2人"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["往返大交通"].exists)
+        XCTAssertTrue(app.staticTexts["去程大交通"].exists)
+        XCTAssertTrue(app.staticTexts["返程大交通"].exists)
         XCTAssertTrue(app.staticTexts["机动金"].exists)
+    }
+
+    func testGeneratedTripCanBeEditedWithoutStartingOver() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--skip-onboarding", "--ui-test-ready"]
+        app.launch()
+
+        let adjustButton = app.buttons["调整"]
+        XCTAssertTrue(adjustButton.waitForExistence(timeout: 5))
+        adjustButton.tap()
+
+        let editRouteButton = app.buttons["增删与调整路线"]
+        XCTAssertTrue(editRouteButton.waitForExistence(timeout: 2))
+        editRouteButton.tap()
+
+        XCTAssertTrue(app.navigationBars["编排行程"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["拙政园"].exists)
+        XCTAssertTrue(app.staticTexts["苏州博物馆"].exists)
+
+        app.buttons["调整拙政园"].tap()
+        let removeButton = app.buttons["移出行程"]
+        XCTAssertTrue(removeButton.waitForExistence(timeout: 2))
+        removeButton.tap()
+
+        XCTAssertFalse(app.staticTexts["拙政园"].exists)
+        XCTAssertTrue(app.staticTexts["苏州博物馆"].exists)
+        XCTAssertTrue(app.buttons["完成"].isHittable)
+    }
+
+    func testGeneratedTripCanChangeConditionsAndKeepItsPlan() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--skip-onboarding", "--ui-test-ready"]
+        app.launch()
+
+        XCTAssertTrue(app.buttons["调整"].waitForExistence(timeout: 5))
+        app.buttons["调整"].tap()
+        let conditionsButton = app.buttons["修改日期与出发条件"]
+        XCTAssertTrue(conditionsButton.waitForExistence(timeout: 2))
+        conditionsButton.tap()
+
+        XCTAssertTrue(app.navigationBars["调整旅行条件"].waitForExistence(timeout: 3))
+        let skipAccommodation = app.switches["trip-conditions-skip-accommodation"]
+        for _ in 0..<2 where !skipAccommodation.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(skipAccommodation.waitForExistence(timeout: 3))
+        XCTAssertTrue(skipAccommodation.isHittable)
+        // SwiftUI exposes the entire Form row as the switch element. Tap the
+        // visible control on the trailing edge instead of the row's midpoint.
+        skipAccommodation.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        let switchedOn = NSPredicate(format: "value == %@", "1")
+        expectation(for: switchedOn, evaluatedWith: skipAccommodation)
+        waitForExpectations(timeout: 2)
+        app.buttons["重新计算"].tap()
+
+        let accommodationTab = app.buttons["住宿"]
+        XCTAssertTrue(accommodationTab.waitForExistence(timeout: 3))
+        accommodationTab.tap()
+        XCTAssertTrue(app.staticTexts["已跳过住宿"].waitForExistence(timeout: 3))
+
+        app.buttons["行程"].tap()
+        XCTAssertTrue(app.staticTexts["苏州博物馆"].exists)
+        XCTAssertTrue(app.staticTexts["拙政园"].exists)
     }
 }

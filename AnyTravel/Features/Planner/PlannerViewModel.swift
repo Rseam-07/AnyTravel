@@ -32,6 +32,8 @@ final class PlannerViewModel {
     var planReadyFeedbackTrigger = 0
     var libraryPresented = false
     var settingsPresented = false
+    var itineraryEditorPresented = false
+    var conditionsEditorPresented = false
     var planMapFocus: PlanMapFocus = .itinerary
     var accommodations: [AccommodationOption] = []
     var selectedAccommodationID: AccommodationOption.ID?
@@ -40,6 +42,7 @@ final class PlannerViewModel {
     var selectedTransportID: TransportOption.ID?
     var isLogisticsLoading = false
     var logisticsStatusMessage: String?
+    var quoteRefreshState: QuoteRefreshState = .idle
     var originResolution: DestinationResolution?
     var activeProviderPage: ProviderBrowserDestination?
 
@@ -59,6 +62,7 @@ final class PlannerViewModel {
     @ObservationIgnored private var logisticsTask: Task<Void, Never>?
     @ObservationIgnored private var recoveryAction: RecoveryAction?
     @ObservationIgnored private var activeSavedTripID: SavedTrip.ID?
+    @ObservationIgnored private var itineraryNeedsLogisticsRefresh = false
     @ObservationIgnored private var didBootstrap = false
 
     init(
@@ -343,6 +347,7 @@ final class PlannerViewModel {
         selectedDayIndex = 0
         noticeMessage = nil
         errorMessage = nil
+        quoteRefreshState = .idle
         activityTitle = "正在拾起沿途值得停留的地方"
         activityDetail = "依照目的地、偏好与距离慢慢筛选"
         phase = .discovering
@@ -405,6 +410,142 @@ final class PlannerViewModel {
         fitCurrentDay(animated: true)
     }
 
+    func searchAdditionalPlaces(
+        matching query: String,
+        interest: TripInterest
+    ) async throws -> [TravelPlace] {
+        guard let destination else { throw PlanningError.destinationNotFound }
+        return try await searchService.searchPlaces(
+            matching: query,
+            around: destination,
+            interest: interest
+        )
+    }
+
+    @discardableResult
+    func addPlace(_ place: TravelPlace, to dayIndex: Int, refreshRoute: Bool = true) -> Bool {
+        guard let dayPosition = itineraryDays.firstIndex(where: { $0.index == dayIndex }) else { return false }
+        let alreadyIncluded = itineraryDays.flatMap(\.stops).contains { existing in
+            let sameName = existing.name.localizedCaseInsensitiveCompare(place.name) == .orderedSame
+            let distance = CLLocation(
+                latitude: existing.coordinate.latitude,
+                longitude: existing.coordinate.longitude
+            ).distance(
+                from: CLLocation(latitude: place.coordinate.latitude, longitude: place.coordinate.longitude)
+            )
+            return sameName && distance < 160
+        }
+        guard !alreadyIncluded else {
+            noticeMessage = "“\(place.name)”已经在这段旅程里。"
+            return false
+        }
+
+        itineraryDays[dayPosition].stops.append(place)
+        selectedDayIndex = dayIndex
+        selectedPlaceID = place.id
+        itineraryDidChange(
+            dayIndex: dayIndex,
+            message: "已把“\(place.name)”放进第 \(dayIndex + 1) 天。",
+            refreshRoute: refreshRoute
+        )
+        return true
+    }
+
+    func moveStops(
+        fromOffsets: IndexSet,
+        toOffset: Int,
+        in dayIndex: Int,
+        refreshRoute: Bool = true
+    ) {
+        guard let dayPosition = itineraryDays.firstIndex(where: { $0.index == dayIndex }) else { return }
+        itineraryDays[dayPosition].stops.move(fromOffsets: fromOffsets, toOffset: toOffset)
+        itineraryDidChange(
+            dayIndex: dayIndex,
+            message: "第 \(dayIndex + 1) 天的先后次序已经重新排好。",
+            refreshRoute: refreshRoute
+        )
+    }
+
+    func movePlace(
+        _ place: TravelPlace,
+        by offset: Int,
+        in dayIndex: Int,
+        refreshRoute: Bool = true
+    ) {
+        guard let dayPosition = itineraryDays.firstIndex(where: { $0.index == dayIndex }),
+              let currentIndex = itineraryDays[dayPosition].stops.firstIndex(where: { $0.id == place.id }) else {
+            return
+        }
+        let targetIndex = currentIndex + offset
+        guard itineraryDays[dayPosition].stops.indices.contains(targetIndex) else { return }
+        let moved = itineraryDays[dayPosition].stops.remove(at: currentIndex)
+        itineraryDays[dayPosition].stops.insert(moved, at: targetIndex)
+        itineraryDidChange(
+            dayIndex: dayIndex,
+            message: "“\(place.name)”已经挪到新的顺序。",
+            refreshRoute: refreshRoute
+        )
+    }
+
+    @discardableResult
+    func removePlace(
+        _ place: TravelPlace,
+        from dayIndex: Int,
+        refreshRoute: Bool = true
+    ) -> Bool {
+        guard let dayPosition = itineraryDays.firstIndex(where: { $0.index == dayIndex }),
+              itineraryDays[dayPosition].stops.contains(where: { $0.id == place.id }) else {
+            return false
+        }
+        guard itineraryDays[dayPosition].stops.count > 1 else {
+            noticeMessage = "每一天至少留下一处停靠；可以先添一个地点，再移走这一处。"
+            return false
+        }
+        itineraryDays[dayPosition].stops.removeAll { $0.id == place.id }
+        if selectedPlaceID == place.id { selectedPlaceID = nil }
+        itineraryDidChange(
+            dayIndex: dayIndex,
+            message: "已把“\(place.name)”移出第 \(dayIndex + 1) 天。",
+            refreshRoute: refreshRoute
+        )
+        return true
+    }
+
+    func finishItineraryEditing() {
+        itineraryEditorPresented = false
+        guard itineraryNeedsLogisticsRefresh else { return }
+        itineraryNeedsLogisticsRefresh = false
+        refreshLogisticsInBackground()
+    }
+
+    func applyConditionChanges() {
+        persistPlanningDefaults()
+        routesByDay = [:]
+        failedSegmentsByDay = [:]
+        visibleLegCount = 0
+        selectedPlaceID = nil
+        quoteRefreshState = .stale("日期、人数或出发方式变了，住宿与交通需要重新核价。")
+        fitCurrentDay(animated: true)
+        routeTask?.cancel()
+        routeTask = Task { [weak self] in
+            await self?.loadRoutesForSelectedDay(reveal: true)
+        }
+        refreshLogisticsInBackground()
+    }
+
+    func handleQuoteRefreshAction() {
+        switch quoteRefreshState {
+        case .idle, .needsDates:
+            conditionsEditorPresented = true
+        case .needsService:
+            settingsPresented = true
+        case .stale, .partial, .noResults, .failed, .updated:
+            refreshLogisticsInBackground()
+        case .refreshing:
+            break
+        }
+    }
+
     func userMovedMap() {
         guard cameraPosition.positionedByUser else { return }
         revealTask?.cancel()
@@ -440,12 +581,15 @@ final class PlannerViewModel {
 
         if let excludedTerm = intent.excludedPlaceTerm {
             let originalCount = itineraryDays.reduce(0) { $0 + $1.stops.count }
-            itineraryDays = itineraryDays.compactMap { day in
+            let filteredDays = itineraryDays.compactMap { day in
                 var updated = day
                 updated.stops.removeAll {
                     $0.name.localizedCaseInsensitiveContains(excludedTerm)
                 }
                 return updated.stops.isEmpty ? nil : updated
+            }
+            itineraryDays = filteredDays.enumerated().map { index, day in
+                ItineraryDay(index: index, stops: day.stops)
             }
             let updatedCount = itineraryDays.reduce(0) { $0 + $1.stops.count }
 
@@ -455,8 +599,10 @@ final class PlannerViewModel {
                 selectedDayIndex = itineraryDays.first?.index ?? 0
                 adjustmentText = ""
                 noticeMessage = "已移除包含“\(excludedTerm)”的地点。"
+                quoteRefreshState = .stale("景点分布变了，住处距离与接驳方式需要重新丈量。")
                 fitCurrentDay(animated: true)
                 await loadRoutesForSelectedDay(reveal: true)
+                refreshLogisticsInBackground()
                 return
             }
 
@@ -510,12 +656,20 @@ final class PlannerViewModel {
             selectedAccommodationID = snapshot.selectedAccommodationID
             transportOptions = snapshot.transportOptions
             selectedTransportID = snapshot.selectedTransportID
+            let snapshotPoints = snapshot.transportOptions.compactMap(\.arrivalAccessPoint)
+                + snapshot.accommodations.flatMap { Array($0.nearestAccessPoints.values) }
+            accessPoints = snapshotPoints.reduce(into: []) { points, point in
+                guard !points.contains(where: { $0.name == point.name && $0.kind == point.kind }) else { return }
+                points.append(point)
+            }
         } else {
             accommodations = []
             selectedAccommodationID = nil
+            accessPoints = []
             transportOptions = []
             selectedTransportID = nil
         }
+        originResolution = nil
         destination = DestinationResolution(
             title: trip.draft.destination,
             coordinate: trip.destinationCenter,
@@ -525,14 +679,13 @@ final class PlannerViewModel {
             )
         )
         phase = .ready
+        quoteRefreshState = .stale("正在复核旅册里留下的价格与班次。")
         libraryPresented = false
         fitCurrentDay(animated: true)
         routeTask = Task { [weak self] in
             await self?.loadRoutesForSelectedDay(reveal: true)
         }
-        if trip.logisticsSnapshot == nil {
-            refreshLogisticsInBackground()
-        }
+        refreshLogisticsInBackground()
     }
 
     func deleteSavedTrip(_ trip: SavedTrip) {
@@ -624,6 +777,22 @@ final class PlannerViewModel {
         logisticsStatusMessage = "正在寻找落脚处与抵达的车站"
         defer { isLogisticsLoading = false }
 
+        let wantsLiveQuotes = draft.logistics.hasDates
+        let canRequestLiveQuotes = wantsLiveQuotes && pricingBackendClient.isConfigured
+        if !wantsLiveQuotes {
+            quoteRefreshState = .needsDates
+        } else if !pricingBackendClient.isConfigured {
+            quoteRefreshState = .needsService
+        } else {
+            quoteRefreshState = .refreshing
+        }
+
+        var receivedQuoteCount = 0
+        var latestCapture: Date?
+        var allResultsCached = true
+        var pricingIssues: [String] = []
+        var pricingFailures: [String] = []
+
         if draft.logistics.skipAccommodation {
             accommodations = []
             selectedAccommodationID = nil
@@ -640,11 +809,23 @@ final class PlannerViewModel {
             )
             guard !Task.isCancelled else { return }
             logisticsStatusMessage = draft.logistics.hasDates ? "正在把当天的住宿价格带回来" : "正在沿景点整理合适的落脚处"
-            let updatedAccommodations = await pricingBackendClient.enrichAccommodationQuotes(
-                discovery.options,
-                destination: draft.destination,
-                logistics: draft.logistics
-            )
+            var updatedAccommodations = discovery.options
+            if canRequestLiveQuotes {
+                do {
+                    let result = try await pricingBackendClient.enrichAccommodationQuotes(
+                        discovery.options,
+                        destination: draft.destination,
+                        logistics: draft.logistics
+                    )
+                    updatedAccommodations = result.value
+                    receivedQuoteCount += result.receivedCount
+                    latestCapture = max(latestCapture ?? result.capturedAt, result.capturedAt)
+                    allResultsCached = allResultsCached && result.isCached
+                    pricingIssues.append(contentsOf: result.issues.map(\.message))
+                } catch {
+                    pricingFailures.append(Self.pricingFailureText(error))
+                }
+            }
             guard !Task.isCancelled else { return }
             if UIAccessibility.isReduceMotionEnabled {
                 accommodations = updatedAccommodations
@@ -666,9 +847,47 @@ final class PlannerViewModel {
         }
         guard !Task.isCancelled else { return }
         rebuildTransportOptions()
-        if draft.logistics.hasDates, !trimmedOrigin.isEmpty {
+        if canRequestLiveQuotes, !draft.logistics.skipTransport, !trimmedOrigin.isEmpty {
             logisticsStatusMessage = "正在读取班次、余票与这一刻的价格"
-            await refreshTransportQuotes()
+            do {
+                let result = try await refreshTransportQuotes()
+                receivedQuoteCount += result.receivedCount
+                latestCapture = max(latestCapture ?? result.capturedAt, result.capturedAt)
+                allResultsCached = allResultsCached && result.isCached
+                pricingIssues.append(contentsOf: result.issues.map(\.message))
+            } catch {
+                pricingFailures.append(Self.pricingFailureText(error))
+            }
+        }
+
+        if wantsLiveQuotes, !draft.logistics.skipTransport, trimmedOrigin.isEmpty {
+            pricingIssues.append("补充出发地后，才能读取班次与交通价格")
+        }
+
+        guard !Task.isCancelled else { return }
+        let issueMessage = Self.firstUniqueMessages(in: pricingIssues).joined(separator: "；")
+        let failureMessage = Self.firstUniqueMessages(in: pricingFailures).joined(separator: "；")
+        if wantsLiveQuotes, pricingBackendClient.isConfigured {
+            if receivedQuoteCount > 0, (!failureMessage.isEmpty || !issueMessage.isEmpty) {
+                quoteRefreshState = .partial(
+                    capturedAt: latestCapture,
+                    count: receivedQuoteCount,
+                    message: [failureMessage, issueMessage].filter { !$0.isEmpty }.joined(separator: "；")
+                )
+            } else if receivedQuoteCount > 0, let latestCapture {
+                quoteRefreshState = .updated(
+                    capturedAt: latestCapture,
+                    count: receivedQuoteCount,
+                    cached: allResultsCached
+                )
+            } else if !failureMessage.isEmpty {
+                quoteRefreshState = .failed(failureMessage)
+            } else {
+                quoteRefreshState = .noResults(
+                    capturedAt: latestCapture,
+                    message: issueMessage.isEmpty ? "渠道没有返回匹配的房型或班次，可以稍后再试。" : issueMessage
+                )
+            }
         }
 
         if accommodations.isEmpty, !draft.logistics.skipAccommodation {
@@ -691,7 +910,31 @@ final class PlannerViewModel {
                 guard let self else { return }
                 self.isLogisticsLoading = true
                 self.logisticsStatusMessage = "正在从新住处重新丈量抵达的路"
-                await self.refreshTransportQuotes()
+                self.quoteRefreshState = self.pricingBackendClient.isConfigured ? .refreshing : .needsService
+                do {
+                    let result = try await self.refreshTransportQuotes()
+                    let issues = result.issues.map(\.message).joined(separator: "；")
+                    if result.receivedCount > 0, issues.isEmpty {
+                        self.quoteRefreshState = .updated(
+                            capturedAt: result.capturedAt,
+                            count: result.receivedCount,
+                            cached: result.isCached
+                        )
+                    } else if result.receivedCount > 0 {
+                        self.quoteRefreshState = .partial(
+                            capturedAt: result.capturedAt,
+                            count: result.receivedCount,
+                            message: issues
+                        )
+                    } else {
+                        self.quoteRefreshState = .noResults(
+                            capturedAt: result.capturedAt,
+                            message: issues.isEmpty ? "当前住处暂时没有匹配的交通报价。" : issues
+                        )
+                    }
+                } catch {
+                    self.quoteRefreshState = .failed(Self.pricingFailureText(error))
+                }
                 self.isLogisticsLoading = false
                 self.logisticsStatusMessage = nil
             }
@@ -757,6 +1000,11 @@ final class PlannerViewModel {
 
     private func rebuildTransportOptions() {
         guard let destination else { return }
+        guard !draft.logistics.skipTransport else {
+            transportOptions = []
+            selectedTransportID = nil
+            return
+        }
         let previousMode = selectedTransport?.mode ?? draft.logistics.preferredLongDistanceMode
         transportOptions = transportEngine.buildOptions(
             origin: originResolution,
@@ -770,8 +1018,8 @@ final class PlannerViewModel {
             ?? transportOptions.first?.id
     }
 
-    private func refreshTransportQuotes() async {
-        let updated = await pricingBackendClient.enrichTransportOptions(
+    private func refreshTransportQuotes() async throws -> PricingEnrichmentResult<[TransportOption]> {
+        let result = try await pricingBackendClient.enrichTransportOptions(
             transportOptions,
             origin: draft.logistics.origin,
             destination: draft.destination,
@@ -779,18 +1027,28 @@ final class PlannerViewModel {
             accessPoints: accessPoints,
             accommodation: selectedAccommodation
         )
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled else { throw CancellationError() }
         if UIAccessibility.isReduceMotionEnabled {
-            transportOptions = updated
+            transportOptions = result.value
         } else {
             withAnimation(.spring(response: 0.46, dampingFraction: 0.88)) {
-                transportOptions = updated
+                transportOptions = result.value
             }
         }
         if !transportOptions.contains(where: { $0.id == selectedTransportID }) {
             selectedTransportID = transportOptions.first(where: \.isRecommended)?.id
                 ?? transportOptions.first?.id
         }
+        return result
+    }
+
+    private static func pricingFailureText(_ error: Error) -> String {
+        (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+    }
+
+    private static func firstUniqueMessages(in messages: [String], limit: Int = 2) -> [String] {
+        var seen: Set<String> = []
+        return messages.filter { seen.insert($0).inserted }.prefix(limit).map(\.self)
     }
 
     func openInMaps(_ place: TravelPlace) {
@@ -833,8 +1091,12 @@ final class PlannerViewModel {
         selectedTransportID = nil
         isLogisticsLoading = false
         logisticsStatusMessage = nil
+        quoteRefreshState = .idle
         originResolution = nil
         activeSavedTripID = nil
+        itineraryEditorPresented = false
+        conditionsEditorPresented = false
+        itineraryNeedsLogisticsRefresh = false
         cameraPosition = .region(Self.initialRegion)
     }
 
@@ -842,6 +1104,23 @@ final class PlannerViewModel {
         let all = MapAppearance.allCases
         guard let index = all.firstIndex(of: mapAppearance) else { return }
         mapAppearance = all[(index + 1) % all.count]
+    }
+
+    private func itineraryDidChange(dayIndex: Int, message: String, refreshRoute: Bool) {
+        routesByDay[dayIndex] = nil
+        failedSegmentsByDay[dayIndex] = nil
+        visibleLegCount = 0
+        noticeMessage = message
+        quoteRefreshState = .stale("景点分布变了，住处距离与接驳方式需要重新丈量。")
+        itineraryNeedsLogisticsRefresh = true
+        fitCurrentDay(animated: true)
+
+        guard refreshRoute, selectedDayIndex == dayIndex else { return }
+        routeTask?.cancel()
+        revealTask?.cancel()
+        routeTask = Task { [weak self] in
+            await self?.loadRoutesForSelectedDay(reveal: true)
+        }
     }
 
     private func loadRoutesForSelectedDay(reveal: Bool) async {

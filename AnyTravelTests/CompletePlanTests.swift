@@ -61,9 +61,24 @@ final class CompletePlanTests: XCTestCase {
 
         let lines = ExpensePlanner().buildLines(draft: draft, accommodation: hotel, transport: train)
 
-        XCTAssertEqual(lines.first(where: { $0.id == "transport" })?.amountCNY, 80)
+        XCTAssertEqual(lines.first(where: { $0.id == "outbound-transport" })?.amountCNY, 80)
+        XCTAssertEqual(lines.first(where: { $0.id == "return-transport" })?.amountCNY, 80)
         XCTAssertEqual(lines.first(where: { $0.id == "accommodation" })?.amountCNY, 1_000)
-        XCTAssertEqual(lines.first(where: { $0.id == "transport" })?.source, .live)
+        XCTAssertEqual(lines.first(where: { $0.id == "outbound-transport" })?.source, .live)
+        XCTAssertEqual(lines.first(where: { $0.id == "return-transport" })?.source, .budgetEnvelope)
+        XCTAssertTrue(lines.first(where: { $0.id == "return-transport" })?.detail.contains("尚非返程实时报价") == true)
+    }
+
+    @MainActor
+    func testSkippingTransportDoesNotInventATransportExpense() {
+        var logistics = TripLogistics()
+        logistics.skipTransport = true
+        let draft = TripDraft(destination: "苏州", budgetPerPerson: 3_000, logistics: logistics)
+
+        let lines = ExpensePlanner().buildLines(draft: draft, accommodation: nil, transport: nil)
+
+        XCTAssertEqual(lines.first(where: { $0.id == "transport" })?.amountCNY, 0)
+        XCTAssertEqual(lines.first(where: { $0.id == "transport" })?.detail, "已按你的选择暂时跳过")
     }
 
     @MainActor

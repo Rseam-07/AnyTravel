@@ -104,6 +104,50 @@ struct MapSearchService {
         return selected
     }
 
+    func searchPlaces(
+        matching query: String,
+        around destination: DestinationResolution,
+        interest: TripInterest
+    ) async throws -> [TravelPlace] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = "\(destination.title) \(trimmed)"
+        request.region = destination.region
+        request.resultTypes = .pointOfInterest
+
+        let response = try await MKLocalSearch(request: request).start()
+        let center = CLLocation(
+            latitude: destination.coordinate.latitude,
+            longitude: destination.coordinate.longitude
+        )
+        var seen = Set<String>()
+
+        return response.mapItems.compactMap { item -> TravelPlace? in
+            guard let name = item.name?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty else {
+                return nil
+            }
+            let coordinate = item.anyTravelCoordinate
+            guard center.distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)) <= 60_000 else {
+                return nil
+            }
+            let key = deduplicationKey(name: name, coordinate: coordinate)
+            guard seen.insert(key).inserted else { return nil }
+            return TravelPlace(
+                name: name,
+                address: item.anyTravelAddress,
+                coordinate: Coordinate(coordinate),
+                interest: interest
+            )
+        }
+        .sorted {
+            distance(from: center, to: $0.coordinate) < distance(from: center, to: $1.coordinate)
+        }
+        .prefix(12)
+        .map { $0 }
+    }
+
     private func normalizedCityRegion(
         proposed: MKCoordinateRegion,
         around coordinate: CLLocationCoordinate2D

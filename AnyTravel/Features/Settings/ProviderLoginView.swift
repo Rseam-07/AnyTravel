@@ -8,6 +8,8 @@ struct ProviderLoginView: View {
     @State private var currentURL: URL?
     @State private var isLoading = true
     @State private var loadError: String?
+    @State private var sessionError: String?
+    @State private var isSavingSession = false
 
     var body: some View {
         NavigationStack {
@@ -43,6 +45,12 @@ struct ProviderLoginView: View {
                         .foregroundStyle(AnyTravelPalette.warm)
                         .padding(10)
                 }
+                if let sessionError {
+                    Label(sessionError, systemImage: "exclamationmark.circle")
+                        .font(.caption)
+                        .foregroundStyle(AnyTravelPalette.warm)
+                        .padding(10)
+                }
             }
             .navigationTitle("连接\(provider.title)")
             .navigationBarTitleDisplayMode(.inline)
@@ -51,11 +59,27 @@ struct ProviderLoginView: View {
                     Button("取消") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("保存此会话") {
-                        sessionStore.markSessionReady(provider)
-                        dismiss()
+                    Button {
+                        isSavingSession = true
+                        sessionError = nil
+                        Task {
+                            let saved = await sessionStore.saveCurrentSession(provider)
+                            isSavingSession = false
+                            if saved {
+                                dismiss()
+                            } else {
+                                sessionError = "还没有检测到\(provider.title)留下的网页会话，请先让页面加载完成并登录。"
+                            }
+                        }
+                    } label: {
+                        if isSavingSession {
+                            ProgressView()
+                        } else {
+                            Text("保存此会话")
+                        }
                     }
                     .fontWeight(.semibold)
+                    .disabled(isLoading || currentURL == nil || isSavingSession)
                 }
             }
         }

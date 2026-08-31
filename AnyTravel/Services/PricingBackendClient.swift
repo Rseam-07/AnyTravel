@@ -1,18 +1,103 @@
 import Foundation
 
+struct PricingEnrichmentResult<Value: Sendable>: Sendable {
+    var value: Value
+    var receivedCount: Int
+    var capturedAt: Date
+    var isCached: Bool
+    var issues: [PricingProviderIssue]
+}
+
+struct PricingProviderIssue: Hashable, Sendable {
+    var provider: String
+    var status: String
+    var detail: String?
+
+    var message: String {
+        let name = providerDisplayName
+        switch status {
+        case "disabled": return "\(name)尚未在报价节点启用"
+        case "login_required": return "\(name)需要在报价节点重新登录"
+        case "dependency_missing": return "\(name)的采集组件尚未安装"
+        case "city_id_missing": return "\(name)暂时无法识别这座城市"
+        case "station_not_found": return "\(name)暂时无法识别出发地或到达地"
+        case "failed": return "\(name)本次没有返回结果"
+        default:
+            let trimmed = detail?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return trimmed.isEmpty ? "\(name)本次没有返回结果" : trimmed
+        }
+    }
+
+    private var providerDisplayName: String {
+        switch provider.lowercased() {
+        case "rollinggo": "道旅 RollingGo"
+        case "ctrip": "携程"
+        case "qunar": "去哪儿"
+        case "trip.com", "tripcom": "Trip.com"
+        case "12306", "railway12306": "铁路 12306"
+        case "unknown": "报价渠道"
+        default: provider
+        }
+    }
+}
+
+enum PricingBackendError: LocalizedError, Equatable {
+    case serviceNotConfigured
+    case missingDates
+    case invalidResponse
+    case httpFailure(statusCode: Int, message: String?)
+    case network(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .serviceNotConfigured:
+            "还没有连接报价节点。"
+        case .missingDates:
+            "先添上出发与返程日期，才能查询当天价格。"
+        case .invalidResponse:
+            "报价节点返回了无法识别的数据。"
+        case let .httpFailure(statusCode, message):
+            if let message, !message.isEmpty {
+                "报价节点暂时拒绝了请求（\(statusCode)：\(message)）。"
+            } else {
+                "报价节点暂时拒绝了请求（\(statusCode)）。"
+            }
+        case let .network(message):
+            "暂时没有接上报价节点：\(message)"
+        }
+    }
+}
+
 struct PricingBackendClient {
     static let serviceURLDefaultsKey = "AnyTravelPricingServiceURL"
+
+    private let session: URLSession
+    private let defaults: UserDefaults
+
+    init(session: URLSession = .shared, defaults: UserDefaults = .standard) {
+        self.session = session
+        self.defaults = defaults
+    }
+
+    var isConfigured: Bool { configuredBaseURL() != nil }
 
     func enrichAccommodationQuotes(
         _ accommodations: [AccommodationOption],
         destination: String,
         logistics: TripLogistics
-    ) async -> [AccommodationOption] {
-        guard let baseURL = configuredBaseURL(),
-              let startDate = logistics.startDate,
-              let endDate = logistics.endDate,
-              !accommodations.isEmpty else {
-            return accommodations
+    ) async throws -> PricingEnrichmentResult<[AccommodationOption]> {
+        guard let baseURL = configuredBaseURL() else { throw PricingBackendError.serviceNotConfigured }
+        guard let startDate = logistics.startDate, let endDate = logistics.endDate else {
+            throw PricingBackendError.missingDates
+        }
+        guard !accommodations.isEmpty else {
+            return PricingEnrichmentResult(
+                value: accommodations,
+                receivedCount: 0,
+                capturedAt: .now,
+                isCached: false,
+                issues: []
+            )
         }
 
         let endpoint = baseURL.appendingPathComponent("v1/quotes/accommodations")
@@ -38,15 +123,28 @@ struct PricingBackendClient {
             request.timeoutInterval = 25
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(requestBody)
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await session.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse,
                   (200..<300).contains(httpResponse.statusCode) else {
-                return accommodations
+                throw Self.httpError(response: response, data: data)
             }
             let payload = try JSONDecoder.anyTravelPricing.decode(AccommodationQuoteResponse.self, from: data)
-            return merge(payload.quotes, into: accommodations)
+            let recognizedCount = payload.quotes.filter {
+                TravelProvider(backendName: $0.provider) != nil && $0.amountCNY > 0
+            }.count
+            return PricingEnrichmentResult(
+                value: merge(payload.quotes, into: accommodations),
+                receivedCount: recognizedCount,
+                capturedAt: payload.capturedAt,
+                isCached: payload.cached,
+                issues: payload.diagnostics.compactMap(\.providerIssue)
+            )
+        } catch let error as PricingBackendError {
+            throw error
+        } catch is DecodingError {
+            throw PricingBackendError.invalidResponse
         } catch {
-            return accommodations
+            throw PricingBackendError.network(error.localizedDescription)
         }
     }
 
@@ -57,11 +155,17 @@ struct PricingBackendClient {
         logistics: TripLogistics,
         accessPoints: [AccessPoint],
         accommodation: AccommodationOption?
-    ) async -> [TransportOption] {
-        guard let baseURL = configuredBaseURL(),
-              let departureDate = logistics.startDate,
-              !origin.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return currentOptions
+    ) async throws -> PricingEnrichmentResult<[TransportOption]> {
+        guard let baseURL = configuredBaseURL() else { throw PricingBackendError.serviceNotConfigured }
+        guard let departureDate = logistics.startDate else { throw PricingBackendError.missingDates }
+        guard !origin.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return PricingEnrichmentResult(
+                value: currentOptions,
+                receivedCount: 0,
+                capturedAt: .now,
+                isCached: false,
+                issues: []
+            )
         }
 
         let endpoint = baseURL.appendingPathComponent("v1/quotes/transport")
@@ -80,10 +184,10 @@ struct PricingBackendClient {
             request.timeoutInterval = 35
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(requestBody)
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await session.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse,
                   (200..<300).contains(httpResponse.statusCode) else {
-                return currentOptions
+                throw Self.httpError(response: response, data: data)
             }
             let payload = try JSONDecoder.anyTravelPricing.decode(TransportQuoteResponse.self, from: data)
             var liveOptions = payload.options.compactMap { backendOption in
@@ -98,20 +202,39 @@ struct PricingBackendClient {
                     fallbackAccessPoint: fallbackAccessPoint
                 )
             }
-            guard !liveOptions.isEmpty else { return currentOptions }
+            guard !liveOptions.isEmpty else {
+                return PricingEnrichmentResult(
+                    value: currentOptions,
+                    receivedCount: 0,
+                    capturedAt: payload.capturedAt,
+                    isCached: payload.cached,
+                    issues: payload.diagnostics.compactMap(\.providerIssue)
+                )
+            }
             let recommendedMode = logistics.preferredLongDistanceMode
             for index in liveOptions.indices {
                 liveOptions[index].isRecommended = index == liveOptions.startIndex
                     && (recommendedMode == nil || recommendedMode == liveOptions[index].mode)
             }
             let liveModes = Set(liveOptions.map(\.mode))
-            return (liveOptions + currentOptions.filter { !liveModes.contains($0.mode) })
+            let merged = (liveOptions + currentOptions.filter { !liveModes.contains($0.mode) })
                 .sorted { lhs, rhs in
                     if lhs.isRecommended != rhs.isRecommended { return lhs.isRecommended }
                     return (lhs.durationMinutes ?? .max) < (rhs.durationMinutes ?? .max)
                 }
+            return PricingEnrichmentResult(
+                value: merged,
+                receivedCount: liveOptions.count,
+                capturedAt: payload.capturedAt,
+                isCached: payload.cached,
+                issues: payload.diagnostics.compactMap(\.providerIssue)
+            )
+        } catch let error as PricingBackendError {
+            throw error
+        } catch is DecodingError {
+            throw PricingBackendError.invalidResponse
         } catch {
-            return currentOptions
+            throw PricingBackendError.network(error.localizedDescription)
         }
     }
 
@@ -123,7 +246,7 @@ struct PricingBackendClient {
         do {
             var request = URLRequest(url: healthURL)
             request.timeoutInterval = 6
-            let (_, response) = try await URLSession.shared.data(for: request)
+            let (_, response) = try await session.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else { return false }
             return (200..<300).contains(httpResponse.statusCode)
         } catch {
@@ -132,8 +255,14 @@ struct PricingBackendClient {
     }
 
     private func configuredBaseURL() -> URL? {
-        let value = UserDefaults.standard.string(forKey: Self.serviceURLDefaultsKey) ?? ""
+        let value = defaults.string(forKey: Self.serviceURLDefaultsKey) ?? ""
         return Self.normalizedURL(value)
+    }
+
+    private static func httpError(response: URLResponse, data: Data) -> PricingBackendError {
+        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+        let message = (try? JSONDecoder().decode(BackendErrorResponse.self, from: data))?.error
+        return .httpFailure(statusCode: statusCode, message: message)
     }
 
     private static func normalizedURL(_ value: String) -> URL? {
@@ -287,6 +416,9 @@ private struct AccommodationQuoteRequest: Codable {
 
 private struct AccommodationQuoteResponse: Codable {
     var quotes: [BackendAccommodationQuote]
+    var diagnostics: [BackendDiagnostic]
+    var capturedAt: Date
+    var cached: Bool
 }
 
 private struct TransportQuoteRequest: Codable {
@@ -300,6 +432,24 @@ private struct TransportQuoteRequest: Codable {
 
 private struct TransportQuoteResponse: Codable {
     var options: [BackendTransportOption]
+    var diagnostics: [BackendDiagnostic]
+    var capturedAt: Date
+    var cached: Bool
+}
+
+private struct BackendDiagnostic: Codable {
+    var provider: String
+    var status: String
+    var detail: String?
+
+    var providerIssue: PricingProviderIssue? {
+        guard status != "ok" else { return nil }
+        return PricingProviderIssue(provider: provider, status: status, detail: detail)
+    }
+}
+
+private struct BackendErrorResponse: Codable {
+    var error: String
 }
 
 private struct BackendTransportOption: Codable {

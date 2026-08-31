@@ -138,9 +138,12 @@ struct ExpensePlanner {
         let nights = draft.logistics.skipAccommodation ? 0 : max(draft.logistics.nights, max(draft.dayCount - 1, 0))
 
         let transportQuote = transport?.quotes.bestUsableQuote
-        let transportAmount = transportQuote?.amountCNY.map { amount in
+        let quotedOutboundAmount = transportQuote?.amountCNY.map { amount in
             transportQuote?.unit == .perPerson ? amount * max(draft.logistics.travelers, 1) : amount
-        } ?? Int(Double(totalBudget) * 0.24)
+        }
+        let roundTripEnvelope = Int(Double(totalBudget) * 0.24)
+        let outboundAmount = quotedOutboundAmount ?? roundTripEnvelope / 2
+        let returnAmount = quotedOutboundAmount ?? (roundTripEnvelope - outboundAmount)
 
         let hotelQuote = accommodation?.quotes.bestUsableQuote
         let accommodationAmount: Int
@@ -152,14 +155,40 @@ struct ExpensePlanner {
             accommodationAmount = Int(Double(totalBudget) * 0.34)
         }
 
-        return [
-            ExpenseLine(
-                id: "transport",
-                title: "往返大交通",
-                detail: transportQuote.map { "\($0.provider.title) · \($0.kind.title)" } ?? "先留出总预算的 24%",
-                amountCNY: transportAmount,
-                source: transportQuote?.kind == .live ? .live : .budgetEnvelope
-            ),
+        let transportLines: [ExpenseLine]
+        if draft.logistics.skipTransport {
+            transportLines = [
+                ExpenseLine(
+                    id: "transport",
+                    title: "大交通",
+                    detail: "已按你的选择暂时跳过",
+                    amountCNY: 0,
+                    source: .budgetEnvelope
+                )
+            ]
+        } else {
+            transportLines = [
+                ExpenseLine(
+                    id: "outbound-transport",
+                    title: "去程大交通",
+                    detail: transportQuote.map { "\($0.provider.title) · \($0.kind.title) · 当前去程" }
+                        ?? "先留出往返交通预算的一半",
+                    amountCNY: outboundAmount,
+                    source: transportQuote?.kind == .live ? .live : .budgetEnvelope
+                ),
+                ExpenseLine(
+                    id: "return-transport",
+                    title: "返程大交通",
+                    detail: quotedOutboundAmount == nil
+                        ? "先留出往返交通预算的一半"
+                        : "按当前去程价格预留 · 尚非返程实时报价",
+                    amountCNY: returnAmount,
+                    source: .budgetEnvelope
+                )
+            ]
+        }
+
+        return transportLines + [
             ExpenseLine(
                 id: "accommodation",
                 title: "住宿",

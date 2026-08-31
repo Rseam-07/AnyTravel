@@ -30,6 +30,16 @@ struct RootView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $bindableModel.itineraryEditorPresented) {
+            ItineraryEditorView(model: model)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $bindableModel.conditionsEditorPresented) {
+            TripConditionsView(model: model)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
         .sheet(item: $bindableModel.activeProviderPage) { destination in
             ProviderBrowserView(destination: destination)
         }
@@ -61,6 +71,7 @@ struct RootView: View {
         .sensoryFeedback(.selection, trigger: model.planMapFocus)
         .sensoryFeedback(.selection, trigger: model.selectedDayIndex)
         .task {
+            await providerSessionStore.reconcileSavedSessions()
             await model.bootstrapIfNeeded()
             #if DEBUG
             guard ProcessInfo.processInfo.arguments.contains("--motion-showcase-ready") else { return }

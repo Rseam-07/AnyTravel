@@ -148,6 +148,22 @@ struct ProviderQuote: Codable, Hashable, Identifiable, Sendable {
         guard let amountCNY else { return kind.title }
         return "¥\(amountCNY.formatted(.number.grouping(.automatic)))\(unit.suffix)"
     }
+
+    var freshnessText: String? {
+        guard let capturedAt else { return nil }
+        let minutes = max(Int(Date.now.timeIntervalSince(capturedAt) / 60), 0)
+        switch minutes {
+        case 0...2: return "刚刚"
+        case 3..<30: return "\(minutes)分钟前"
+        case 30..<120: return "\(minutes)分钟前 · 请复核"
+        default: return capturedAt.formatted(date: .abbreviated, time: .shortened) + " · 请刷新"
+        }
+    }
+
+    var isStale: Bool {
+        guard let capturedAt else { return false }
+        return Date.now.timeIntervalSince(capturedAt) >= 30 * 60
+    }
 }
 
 enum AccessPointKind: String, Codable, Hashable, Sendable {
@@ -280,6 +296,75 @@ struct LogisticsSnapshot: Codable, Hashable, Sendable {
     var selectedAccommodationID: AccommodationOption.ID?
     var transportOptions: [TransportOption]
     var selectedTransportID: TransportOption.ID?
+}
+
+enum QuoteRefreshState: Equatable, Sendable {
+    case idle
+    case needsDates
+    case needsService
+    case stale(String)
+    case refreshing
+    case updated(capturedAt: Date, count: Int, cached: Bool)
+    case partial(capturedAt: Date?, count: Int, message: String)
+    case noResults(capturedAt: Date?, message: String)
+    case failed(String)
+
+    var title: String {
+        switch self {
+        case .idle: "价格会在条件齐全后抵达"
+        case .needsDates: "日期还没有落定"
+        case .needsService: "报价驿站尚未连接"
+        case .stale: "行程刚刚有了变化"
+        case .refreshing: "正在带回这一刻的价格"
+        case .updated: "这一刻的价格已经抵达"
+        case .partial: "部分价格已经抵达"
+        case .noResults: "这一次还没有找到可用价格"
+        case .failed: "价格在途中暂时走散了"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .idle:
+            "添上日期并连接报价节点后，可以读取渠道报价。"
+        case .needsDates:
+            "添上出发与返程日，才能按当日库存核价。"
+        case .needsService:
+            "在设置中填入开源报价节点地址，密钥仍只留在服务端。"
+        case let .stale(message), let .failed(message):
+            message
+        case .refreshing:
+            "住宿、班次与余票会逐一更新，已有方案仍可继续查看。"
+        case let .updated(capturedAt, count, cached):
+            "共带回\(count)条结果 · \(capturedAt.formatted(date: .omitted, time: .shortened))\(cached ? " · 命中短时缓存" : "")"
+        case let .partial(capturedAt, count, message):
+            "已带回\(count)条结果\(capturedAt.map { " · \($0.formatted(date: .omitted, time: .shortened))" } ?? "")；\(message)"
+        case let .noResults(capturedAt, message):
+            "\(capturedAt.map { "\($0.formatted(date: .omitted, time: .shortened)) · " } ?? "")\(message)"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .idle, .needsDates: "calendar.badge.clock"
+        case .needsService: "network.slash"
+        case .stale: "arrow.trianglehead.2.clockwise.rotate.90"
+        case .refreshing: "arrow.trianglehead.2.clockwise.rotate.90"
+        case .updated: "checkmark.seal.fill"
+        case .partial: "circle.lefthalf.filled"
+        case .noResults: "magnifyingglass"
+        case .failed: "exclamationmark.triangle.fill"
+        }
+    }
+
+    var actionTitle: String? {
+        switch self {
+        case .idle, .needsDates: "补充条件"
+        case .needsService: "去连接"
+        case .stale, .partial, .noResults, .failed: "再试一次"
+        case .refreshing, .updated: nil
+        }
+    }
 }
 
 enum ExpenseSource: String, Codable, Hashable, Sendable {

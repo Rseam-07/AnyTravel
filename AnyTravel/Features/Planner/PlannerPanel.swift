@@ -393,6 +393,24 @@ struct PlannerPanel: View {
                         .contentTransition(.opacity)
                 }
                 Spacer()
+                Menu {
+                    Button {
+                        model.itineraryEditorPresented = true
+                    } label: {
+                        Label("增删与调整路线", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                    }
+                    Button {
+                        model.conditionsEditorPresented = true
+                    } label: {
+                        Label("修改日期与出发条件", systemImage: "calendar.badge.clock")
+                    }
+                } label: {
+                    Label("调整", systemImage: "slider.horizontal.3")
+                        .font(.caption.weight(.semibold))
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.plain)
+
                 Button {
                     model.saveCurrentTrip()
                 } label: {
@@ -616,6 +634,7 @@ struct PlannerPanel: View {
                 loadingModule("正沿着景点的分布，寻找今晚的窗与灯")
             } else if model.accommodations.isEmpty {
                 emptyLogisticsModule(title: "暂时没有住宿结果", actionTitle: "重新查找")
+                quoteRefreshBanner
             } else {
                 ScrollView(.horizontal) {
                     HStack(spacing: 10) {
@@ -627,6 +646,8 @@ struct PlannerPanel: View {
                 }
                 .scrollIndicators(.hidden)
                 .scrollTargetBehavior(.viewAligned)
+
+                quoteRefreshBanner
 
                 if let selected = model.selectedAccommodation {
                     quoteStrip(selected.quotes)
@@ -652,6 +673,7 @@ struct PlannerPanel: View {
                 }
                 .scrollIndicators(.hidden)
                 .scrollTargetBehavior(.viewAligned)
+                quoteRefreshBanner
                 if let selected = model.selectedTransport {
                     quoteStrip(selected.quotes)
                 }
@@ -932,9 +954,10 @@ struct PlannerPanel: View {
                                 .foregroundStyle(quote.amountCNY == nil ? AnyTravelPalette.routeDark : AnyTravelPalette.warm)
                             HStack(spacing: 3) {
                                 Text(quote.kind.title)
-                                if let capturedAt = quote.capturedAt {
+                                if let freshnessText = quote.freshnessText {
                                     Text("·")
-                                    Text(capturedAt, format: .dateTime.hour().minute())
+                                    Text(freshnessText)
+                                        .foregroundStyle(quote.isStale ? AnyTravelPalette.warm : .secondary)
                                 }
                             }
                             .font(.system(size: 9))
@@ -949,7 +972,7 @@ struct PlannerPanel: View {
                 }
 
                 Button {
-                    model.refreshLogisticsInBackground()
+                    model.handleQuoteRefreshAction()
                 } label: {
                     VStack(alignment: .leading, spacing: 3) {
                         RefreshPriceIcon(isLoading: model.isLogisticsLoading)
@@ -965,11 +988,69 @@ struct PlannerPanel: View {
                     .background(AnyTravelPalette.route.opacity(0.09), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
                 }
                 .buttonStyle(AnyTravelPressStyle())
-                .disabled(!model.draft.logistics.hasDates || model.isLogisticsLoading)
-                .opacity(model.draft.logistics.hasDates ? 1 : 0.55)
+                .disabled(model.isLogisticsLoading)
+                .opacity(model.isLogisticsLoading ? 0.55 : 1)
             }
         }
         .scrollIndicators(.hidden)
+    }
+
+    private var quoteRefreshBanner: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(quoteStatusColor.opacity(0.12))
+                    .frame(width: 36, height: 36)
+                if model.quoteRefreshState == .refreshing {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(quoteStatusColor)
+                } else {
+                    Image(systemName: model.quoteRefreshState.symbolName)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(quoteStatusColor)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(model.quoteRefreshState.title)
+                    .font(.caption.weight(.bold))
+                Text(model.quoteRefreshState.detail)
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 4)
+
+            if let actionTitle = model.quoteRefreshState.actionTitle {
+                Button(actionTitle) {
+                    model.handleQuoteRefreshAction()
+                }
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(quoteStatusColor)
+                .frame(minWidth: 52, minHeight: 44)
+            }
+        }
+        .padding(.horizontal, 10)
+        .frame(minHeight: 58)
+        .background(quoteStatusColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(quoteStatusColor.opacity(0.12), lineWidth: 1)
+        }
+        .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: model.quoteRefreshState)
+    }
+
+    private var quoteStatusColor: Color {
+        switch model.quoteRefreshState {
+        case .updated:
+            AnyTravelPalette.route
+        case .partial, .noResults, .failed:
+            AnyTravelPalette.warm
+        case .idle, .needsDates, .needsService, .stale, .refreshing:
+            AnyTravelPalette.routeDark
+        }
     }
 
     private func skippedModule(title: String, detail: String, symbol: String) -> some View {
