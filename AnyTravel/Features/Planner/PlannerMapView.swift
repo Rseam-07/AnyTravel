@@ -33,6 +33,27 @@ struct PlannerMapView: View {
                     EmptyView()
                 }
             }
+
+            ForEach(model.visibleAccommodations) { option in
+                Annotation(coordinate: option.coordinate.clLocationCoordinate, anchor: .center) {
+                    AccommodationMarker(
+                        option: option,
+                        isSelected: model.selectedAccommodationID == option.id
+                    ) {
+                        model.selectAccommodation(option)
+                    }
+                } label: {
+                    EmptyView()
+                }
+            }
+
+            ForEach(model.visibleAccessPoints) { point in
+                Annotation(coordinate: point.coordinate.clLocationCoordinate, anchor: .bottom) {
+                    AccessPointMarker(point: point)
+                } label: {
+                    EmptyView()
+                }
+            }
         }
         .mapStyle(model.mapAppearance.mapStyle)
         .mapScope(mapScope)
@@ -42,6 +63,59 @@ struct PlannerMapView: View {
                 model.userMovedMap()
             }
         }
+    }
+}
+
+private struct AccommodationMarker: View {
+    let option: AccommodationOption
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: "bed.double.fill")
+                    .font(.caption.bold())
+                    .foregroundStyle(.white)
+                    .frame(width: 34, height: 34)
+                    .background(isSelected ? AnyTravelPalette.warm : AnyTravelPalette.route, in: Circle())
+                if isSelected {
+                    Text(option.name)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AnyTravelPalette.ink)
+                        .lineLimit(1)
+                        .padding(.horizontal, 10)
+                        .frame(maxWidth: 180, minHeight: 34)
+                        .background(.background.opacity(0.96), in: Capsule())
+                }
+            }
+            .padding(5)
+            .shadow(color: .black.opacity(0.16), radius: 7, y: 3)
+        }
+        .buttonStyle(AnyTravelPressStyle())
+        .accessibilityLabel("住宿，\(option.name)")
+    }
+}
+
+private struct AccessPointMarker: View {
+    let point: AccessPoint
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Label(point.name, systemImage: point.kind.symbolName)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(AnyTravelPalette.ink)
+                .padding(.horizontal, 9)
+                .frame(minHeight: 32)
+                .background(.background.opacity(0.96), in: Capsule())
+            Image(systemName: "triangle.fill")
+                .font(.system(size: 9))
+                .foregroundStyle(.background.opacity(0.96))
+                .rotationEffect(.degrees(180))
+                .offset(y: -6)
+        }
+        .shadow(color: .black.opacity(0.16), radius: 7, y: 3)
+        .accessibilityElement(children: .combine)
     }
 }
 

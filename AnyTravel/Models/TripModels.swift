@@ -127,8 +127,49 @@ struct TripDraft: Codable, Equatable, Hashable, Sendable {
     var dayCount = 3
     var budgetPerPerson = 3_000
     var interests: Set<TripInterest> = [.gardens, .culture, .food]
-    var pace: TripPace = .balanced
+    var pace: TripPace = .relaxed
     var travelMode: TravelMode = .walking
+    var logistics = TripLogistics()
+
+    init(
+        destination: String = "",
+        dayCount: Int = 3,
+        budgetPerPerson: Int = 3_000,
+        interests: Set<TripInterest> = [.gardens, .culture, .food],
+        pace: TripPace = .relaxed,
+        travelMode: TravelMode = .walking,
+        logistics: TripLogistics = TripLogistics()
+    ) {
+        self.destination = destination
+        self.dayCount = dayCount
+        self.budgetPerPerson = budgetPerPerson
+        self.interests = interests
+        self.pace = pace
+        self.travelMode = travelMode
+        self.logistics = logistics
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case destination
+        case dayCount
+        case budgetPerPerson
+        case interests
+        case pace
+        case travelMode
+        case logistics
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        destination = try container.decodeIfPresent(String.self, forKey: .destination) ?? ""
+        dayCount = try container.decodeIfPresent(Int.self, forKey: .dayCount) ?? 3
+        budgetPerPerson = try container.decodeIfPresent(Int.self, forKey: .budgetPerPerson) ?? 3_000
+        interests = try container.decodeIfPresent(Set<TripInterest>.self, forKey: .interests)
+            ?? [.gardens, .culture, .food]
+        pace = try container.decodeIfPresent(TripPace.self, forKey: .pace) ?? .relaxed
+        travelMode = try container.decodeIfPresent(TravelMode.self, forKey: .travelMode) ?? .walking
+        logistics = try container.decodeIfPresent(TripLogistics.self, forKey: .logistics) ?? TripLogistics()
+    }
 
     var summary: String {
         "\(dayCount)天 · 约¥\(budgetPerPerson)/人 · \(pace.title)"
@@ -175,6 +216,7 @@ struct SavedTrip: Codable, Hashable, Identifiable, Sendable {
     var draft: TripDraft
     var destinationCenter: Coordinate
     var days: [ItineraryDay]
+    var logisticsSnapshot: LogisticsSnapshot?
 
     init(
         id: UUID = UUID(),
@@ -182,7 +224,8 @@ struct SavedTrip: Codable, Hashable, Identifiable, Sendable {
         createdAt: Date = .now,
         draft: TripDraft,
         destinationCenter: Coordinate,
-        days: [ItineraryDay]
+        days: [ItineraryDay],
+        logisticsSnapshot: LogisticsSnapshot? = nil
     ) {
         self.id = id
         self.title = title
@@ -190,6 +233,7 @@ struct SavedTrip: Codable, Hashable, Identifiable, Sendable {
         self.draft = draft
         self.destinationCenter = destinationCenter
         self.days = days
+        self.logisticsSnapshot = logisticsSnapshot
     }
 }
 

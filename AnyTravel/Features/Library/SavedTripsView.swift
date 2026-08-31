@@ -10,9 +10,9 @@ struct SavedTripsView: View {
             Group {
                 if model.tripStore.trips.isEmpty {
                     ContentUnavailableView(
-                        "还没有保存的行程",
-                        systemImage: "map",
-                        description: Text("路线生成后，点击“保存”就会出现在这里。")
+                        "旅册还是空白",
+                        systemImage: "book.closed",
+                        description: Text("把一段路线收进行囊，它就会留在这里，等你再次翻开。")
                     )
                 } else {
                     List {
@@ -23,7 +23,7 @@ struct SavedTripsView: View {
                             }
                         }
 
-                        Section("这台设备上的行程") {
+                        Section("收进这台设备的旅程") {
                             ForEach(model.tripStore.trips) { trip in
                                 Button {
                                     model.loadSavedTrip(trip)
@@ -45,7 +45,7 @@ struct SavedTripsView: View {
                     .listStyle(.insetGrouped)
                 }
             }
-            .navigationTitle("已保存行程")
+            .navigationTitle("我的旅册")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

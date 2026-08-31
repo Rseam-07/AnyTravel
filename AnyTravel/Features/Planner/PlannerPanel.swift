@@ -40,10 +40,10 @@ struct PlannerPanel: View {
         VStack(alignment: .leading, spacing: 13) {
             handle
             VStack(alignment: .leading, spacing: 4) {
-                Text("从地图开始，不填长表格")
+                Text("从地图出发")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AnyTravelPalette.route)
-                Text("想把哪里变成一段行程？")
+                Text("下一段迁徙，想落在哪里？")
                     .font(.title2.bold())
             }
 
@@ -101,7 +101,7 @@ struct PlannerPanel: View {
                 }
             }
 
-            primaryButton(title: "在地图上定位", systemImage: "location.magnifyingglass") {
+            primaryButton(title: "在地图上唤醒目的地", systemImage: "location.magnifyingglass") {
                 destinationFocused = false
                 Task { await model.resolveDestination() }
             }
@@ -115,10 +115,10 @@ struct PlannerPanel: View {
             handle
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("地图已定位到 \(model.destination?.title ?? model.draft.destination)")
+                    Text("地图已抵达 \(model.destination?.title ?? model.draft.destination)")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(AnyTravelPalette.route)
-                    Text("再加几个条件")
+                    Text("再告诉我一点旅途偏好")
                         .font(.title2.bold())
                 }
                 Spacer()
@@ -132,68 +132,161 @@ struct PlannerPanel: View {
                 .frame(minHeight: 44)
             }
 
-            HStack(spacing: 10) {
-                compactStepper(
-                    title: "天数",
-                    valueText: "\(model.draft.dayCount)天",
-                    decrementDisabled: model.draft.dayCount <= 1,
-                    incrementDisabled: model.draft.dayCount >= 7,
-                    decrement: { model.draft.dayCount = max(1, model.draft.dayCount - 1) },
-                    increment: { model.draft.dayCount = min(7, model.draft.dayCount + 1) }
-                )
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 10) {
+                        compactStepper(
+                            title: "天数",
+                            valueText: "\(model.draft.dayCount)天",
+                            decrementDisabled: model.draft.dayCount <= 1,
+                            incrementDisabled: model.draft.dayCount >= 7,
+                            decrement: { model.draft.dayCount = max(1, model.draft.dayCount - 1) },
+                            increment: { model.draft.dayCount = min(7, model.draft.dayCount + 1) }
+                        )
 
+                        compactStepper(
+                            title: "人均预算",
+                            valueText: "¥\(model.draft.budgetPerPerson.formatted(.number.grouping(.automatic)))",
+                            decrementDisabled: model.draft.budgetPerPerson <= 1_000,
+                            incrementDisabled: model.draft.budgetPerPerson >= 30_000,
+                            decrement: { model.draft.budgetPerPerson = max(1_000, model.draft.budgetPerPerson - 500) },
+                            increment: { model.draft.budgetPerPerson = min(30_000, model.draft.budgetPerPerson + 500) }
+                        )
+                    }
+
+                    logisticsInputCard
+
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 8) {
+                            ForEach(TripInterest.allCases) { interest in
+                                interestChip(interest)
+                            }
+                        }
+                    }
+                    .scrollIndicators(.hidden)
+
+                    HStack(spacing: 10) {
+                        Menu {
+                            ForEach(TripPace.allCases) { pace in
+                                Button(pace.title) { model.draft.pace = pace }
+                            }
+                        } label: {
+                            Label(model.draft.pace.title, systemImage: "speedometer")
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(.plain)
+                        .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                        Menu {
+                            ForEach(TravelMode.allCases) { mode in
+                                Button {
+                                    model.draft.travelMode = mode
+                                } label: {
+                                    Label(mode.title, systemImage: mode.symbolName)
+                                }
+                            }
+                        } label: {
+                            Label(model.draft.travelMode.title, systemImage: model.draft.travelMode.symbolName)
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(.plain)
+                        .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .font(.caption.weight(.semibold))
+                }
+            }
+            .frame(maxHeight: 410)
+            .scrollIndicators(.hidden)
+
+            primaryButton(title: "让旅程在地图上展开", systemImage: "point.topleft.down.to.point.bottomright.curvepath") {
+                Task { await model.generatePlan() }
+            }
+        }
+    }
+
+    private var logisticsInputCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("出发与落脚", systemImage: "arrow.triangle.branch")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AnyTravelPalette.routeDark)
+                Spacer()
+                Text("都可留白，路上再决定")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 9) {
+                Image(systemName: "location.circle")
+                    .foregroundStyle(AnyTravelPalette.route)
+                TextField("常用出发地（可不填）", text: $model.draft.logistics.origin)
+                    .textInputAutocapitalization(.never)
                 compactStepper(
-                    title: "人均预算",
-                    valueText: "¥\(model.draft.budgetPerPerson.formatted(.number.grouping(.automatic)))",
-                    decrementDisabled: model.draft.budgetPerPerson <= 1_000,
-                    incrementDisabled: model.draft.budgetPerPerson >= 30_000,
-                    decrement: { model.draft.budgetPerPerson = max(1_000, model.draft.budgetPerPerson - 500) },
-                    increment: { model.draft.budgetPerPerson = min(30_000, model.draft.budgetPerPerson + 500) }
+                    title: "人数",
+                    valueText: "\(model.draft.logistics.travelers)人",
+                    decrementDisabled: model.draft.logistics.travelers <= 1,
+                    incrementDisabled: model.draft.logistics.travelers >= 8,
+                    decrement: { model.draft.logistics.travelers = max(1, model.draft.logistics.travelers - 1) },
+                    increment: { model.draft.logistics.travelers = min(8, model.draft.logistics.travelers + 1) }
                 )
+                .frame(width: 116)
+            }
+            .padding(.leading, 12)
+            .frame(minHeight: 50)
+            .background(.background.opacity(0.72), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+            if model.draft.logistics.hasDates,
+               let startDate = model.draft.logistics.startDate,
+               let endDate = model.draft.logistics.endDate {
+                HStack(spacing: 8) {
+                    DatePicker(
+                        "出发",
+                        selection: Binding(get: { startDate }, set: model.updateStartDate),
+                        in: Calendar.current.startOfDay(for: .now)...,
+                        displayedComponents: .date
+                    )
+                    DatePicker(
+                        "返程",
+                        selection: Binding(get: { endDate }, set: model.updateEndDate),
+                        in: startDate...,
+                        displayedComponents: .date
+                    )
+                    Button("清除") { model.setDatesEnabled(false) }
+                        .font(.caption.weight(.semibold))
+                        .frame(minHeight: 44)
+                }
+                .font(.caption)
+            } else {
+                Button {
+                    model.setDatesEnabled(true)
+                } label: {
+                    Label("添上日期，听见当天的价格", systemImage: "calendar.badge.plus")
+                        .font(.caption.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.plain)
+                .background(.background.opacity(0.72), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
 
             ScrollView(.horizontal) {
-                HStack(spacing: 8) {
-                    ForEach(TripInterest.allCases) { interest in
-                        interestChip(interest)
+                HStack(spacing: 7) {
+                    modePreferenceChip(nil, title: "让地图推荐", symbol: "wand.and.stars")
+                    ForEach(LongDistanceMode.allCases) { mode in
+                        modePreferenceChip(mode, title: mode.shortTitle, symbol: mode.symbolName)
                     }
                 }
             }
             .scrollIndicators(.hidden)
 
-            HStack(spacing: 10) {
-                Menu {
-                    ForEach(TripPace.allCases) { pace in
-                        Button(pace.title) { model.draft.pace = pace }
-                    }
-                } label: {
-                    Label(model.draft.pace.title, systemImage: "speedometer")
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(.plain)
-                .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-                Menu {
-                    ForEach(TravelMode.allCases) { mode in
-                        Button {
-                            model.draft.travelMode = mode
-                        } label: {
-                            Label(mode.title, systemImage: mode.symbolName)
-                        }
-                    }
-                } label: {
-                    Label(model.draft.travelMode.title, systemImage: model.draft.travelMode.symbolName)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(.plain)
-                .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            HStack(spacing: 14) {
+                Toggle("住处稍后再定", isOn: $model.draft.logistics.skipAccommodation)
+                Toggle("大交通稍后再定", isOn: $model.draft.logistics.skipTransport)
             }
-            .font(.caption.weight(.semibold))
-
-            primaryButton(title: "让地图生成路线", systemImage: "point.topleft.down.to.point.bottomright.curvepath") {
-                Task { await model.generatePlan() }
-            }
+            .font(.caption)
+            .toggleStyle(.switch)
         }
+        .padding(12)
+        .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
     }
 
     private var discoveringPanel: some View {
@@ -230,7 +323,7 @@ struct PlannerPanel: View {
     private var failurePanel: some View {
         VStack(alignment: .leading, spacing: 13) {
             handle
-            Label("这一步没有完成", systemImage: "exclamationmark.triangle.fill")
+            Label("这一段路暂时没有接上", systemImage: "exclamationmark.triangle.fill")
                 .font(.headline)
                 .foregroundStyle(AnyTravelPalette.warm)
             Text(model.errorMessage ?? "发生了未知错误。")
@@ -277,41 +370,16 @@ struct PlannerPanel: View {
             .buttonStyle(.plain)
             .accessibilityLabel(readyExpanded ? "收起行程详情" : "展开行程详情")
 
-            ScrollView(.horizontal) {
-                HStack(spacing: 7) {
-                    ForEach(model.itineraryDays) { day in
-                        Button(day.title) {
-                            model.selectDay(day.index)
-                        }
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(model.selectedDayIndex == day.index ? .white : AnyTravelPalette.routeDark)
-                        .padding(.horizontal, 13)
-                        .frame(minHeight: 38)
-                        .background(
-                            model.selectedDayIndex == day.index
-                                ? AnyTravelPalette.routeColor(for: day.index)
-                                : AnyTravelPalette.softSurface,
-                            in: Capsule()
-                        )
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-            .scrollIndicators(.hidden)
+            planSectionTabs
 
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("\(model.destination?.title ?? model.draft.destination) · \(model.currentDay?.title ?? "行程")")
+                    Text(readySectionTitle)
                         .font(.title3.bold())
-                    if let routeSummary = model.routeSummary {
-                        Text(routeSummary)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else if model.isRouteLoading {
-                        Text("正在加载真实路线…")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    Text(readySectionSubtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
                 }
                 Spacer()
                 Button {
@@ -324,13 +392,19 @@ struct PlannerPanel: View {
                 .buttonStyle(.plain)
             }
 
-            if let selectedPlace = model.selectedPlace {
-                selectedPlaceCard(selectedPlace)
-            } else if readyExpanded {
-                stopsList
-            } else {
-                compactStopsStrip
+            Group {
+                switch model.planMapFocus {
+                case .itinerary:
+                    itineraryReadyContent
+                case .accommodation:
+                    accommodationReadyContent
+                case .transport:
+                    transportReadyContent
+                case .budget:
+                    budgetReadyContent
+                }
             }
+            .transition(.opacity.combined(with: .scale(scale: 0.98)))
 
             if let notice = model.noticeMessage {
                 HStack(alignment: .firstTextBaseline, spacing: 7) {
@@ -347,13 +421,100 @@ struct PlannerPanel: View {
                 .foregroundStyle(AnyTravelPalette.secondaryInk)
             }
 
+            if readyExpanded {
+                Text("地图给出方向，价格留下来路：地点与路线来自 Apple Maps；每条报价都标注渠道、口径与抓取时间。")
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+        .animation(.snappy(duration: 0.28), value: model.planMapFocus)
+    }
+
+    private var planSectionTabs: some View {
+        HStack(spacing: 6) {
+            ForEach(PlanMapFocus.allCases) { section in
+                Button {
+                    model.setPlanMapFocus(section)
+                    if section != .itinerary { readyExpanded = true }
+                } label: {
+                    Label(section.title, systemImage: section.symbolName)
+                        .font(.caption2.weight(.semibold))
+                        .labelStyle(.titleAndIcon)
+                        .frame(maxWidth: .infinity, minHeight: 40)
+                        .foregroundStyle(model.planMapFocus == section ? .white : AnyTravelPalette.routeDark)
+                        .background(
+                            model.planMapFocus == section ? AnyTravelPalette.route : AnyTravelPalette.softSurface,
+                            in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+                        )
+                }
+                .buttonStyle(AnyTravelPressStyle())
+                .accessibilityAddTraits(model.planMapFocus == section ? .isSelected : [])
+            }
+        }
+    }
+
+    private var readySectionTitle: String {
+        let destination = model.destination?.title ?? model.draft.destination
+        return switch model.planMapFocus {
+        case .itinerary: "\(destination) · \(model.currentDay?.title ?? "行程")"
+        case .accommodation: "住宿比价 · \(model.accommodations.count)个候选"
+        case .transport: "抵达方式 · \(model.selectedTransport?.mode.shortTitle ?? "待选择")"
+        case .budget: "完整费用 · \(model.draft.logistics.travelers)人"
+        }
+    }
+
+    private var readySectionSubtitle: String {
+        switch model.planMapFocus {
+        case .itinerary:
+            model.routeSummary ?? (model.isRouteLoading ? "路线正沿着地图醒来…" : "默认把脚步放慢，想改随时说")
+        case .accommodation:
+            model.selectedAccommodation.map { "已选\($0.name) · 到景点平均\($0.attractionDistanceMeters.anyTravelDistanceText)" }
+                ?? (model.isLogisticsLoading ? "正在地图上查找真实住宿" : "按景点分布与枢纽距离排序")
+        case .transport:
+            model.selectedTransport.map { option in
+                option.durationMinutes.map { "门到门规则估算约\($0 / 60)小时\($0 % 60)分 · 等待实时报价" }
+                    ?? "补充出发地和日期后比较班次与价格"
+            } ?? "补充条件后自动推荐，也可以先指定方式"
+        case .budget:
+            "计划¥\(model.plannedExpenseTotal.formatted(.number.grouping(.automatic))) / 预算¥\(model.totalBudget.formatted(.number.grouping(.automatic)))"
+        }
+    }
+
+    private var itineraryReadyContent: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            ScrollView(.horizontal) {
+                HStack(spacing: 7) {
+                    ForEach(model.itineraryDays) { day in
+                        Button(day.title) { model.selectDay(day.index) }
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(model.selectedDayIndex == day.index ? .white : AnyTravelPalette.routeDark)
+                            .padding(.horizontal, 13)
+                            .frame(minHeight: 38)
+                            .background(
+                                model.selectedDayIndex == day.index
+                                    ? AnyTravelPalette.routeColor(for: day.index)
+                                    : AnyTravelPalette.softSurface,
+                                in: Capsule()
+                            )
+                            .buttonStyle(.plain)
+                    }
+                }
+            }
+            .scrollIndicators(.hidden)
+
+            if let selectedPlace = model.selectedPlace {
+                selectedPlaceCard(selectedPlace)
+            } else if readyExpanded {
+                itineraryTimeline
+            } else {
+                compactStopsStrip
+            }
+
             HStack(spacing: 8) {
                 TextField(
                     "比如：轻松一点，多安排美食",
-                    text: Binding(
-                        get: { model.adjustmentText },
-                        set: { model.adjustmentText = $0 }
-                    )
+                    text: Binding(get: { model.adjustmentText }, set: { model.adjustmentText = $0 })
                 )
                 .focused($adjustmentFocused)
                 .submitLabel(.send)
@@ -381,14 +542,112 @@ struct PlannerPanel: View {
             .padding(.trailing, 7)
             .frame(minHeight: 50)
             .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+    }
 
-            if readyExpanded {
-                Text("地点与路线来自 Apple Maps；营业时间、票价与临时闭馆信息请在出发前再次核对。")
-                    .font(.system(size: 9.5))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+    private var itineraryTimeline: some View {
+        ScrollView {
+            LazyVStack(spacing: 8) {
+                ForEach(model.currentSchedule) { item in
+                    Button {
+                        guard let placeID = item.placeID,
+                              let place = model.currentStops.first(where: { $0.id == placeID }) else { return }
+                        model.selectPlace(place)
+                    } label: {
+                        HStack(alignment: .top, spacing: 10) {
+                            Text(item.timeText)
+                                .font(.caption2.monospacedDigit().weight(.semibold))
+                                .foregroundStyle(AnyTravelPalette.routeDark)
+                                .frame(width: 78, alignment: .leading)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.title).font(.subheadline.weight(.semibold))
+                                Text(item.detail).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
+        .frame(maxHeight: 238)
+        .scrollIndicators(.hidden)
+    }
+
+    private var accommodationReadyContent: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            if model.draft.logistics.skipAccommodation {
+                skippedModule(title: "已跳过住宿", detail: "仍会保留路线与交通方案，返回条件页即可补上住宿。", symbol: "bed.double")
+            } else if model.isLogisticsLoading && model.accommodations.isEmpty {
+                loadingModule("正沿着景点的分布，寻找今晚的窗与灯")
+            } else if model.accommodations.isEmpty {
+                emptyLogisticsModule(title: "暂时没有住宿结果", actionTitle: "重新查找")
+            } else {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 10) {
+                        ForEach(model.accommodations) { option in
+                            accommodationCard(option)
+                        }
+                    }
+                }
+                .scrollIndicators(.hidden)
+
+                if let selected = model.selectedAccommodation {
+                    quoteStrip(selected.quotes)
+                }
+            }
+        }
+    }
+
+    private var transportReadyContent: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            if model.draft.logistics.skipTransport {
+                skippedModule(title: "已跳过大交通", detail: "景点与住宿仍可继续规划，之后补出发地即可重算。", symbol: "tram")
+            } else if model.isLogisticsLoading && model.transportOptions.isEmpty {
+                loadingModule("正在比较每一种抵达远方的方式")
+            } else {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 10) {
+                        ForEach(model.transportOptions) { option in
+                            transportCard(option)
+                        }
+                    }
+                }
+                .scrollIndicators(.hidden)
+                if let selected = model.selectedTransport {
+                    quoteStrip(selected.quotes)
+                }
+            }
+        }
+    }
+
+    private var budgetReadyContent: some View {
+        ScrollView {
+            LazyVStack(spacing: 7) {
+                ForEach(model.expenseLines) { line in
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(line.title).font(.subheadline.weight(.semibold))
+                            Text("\(line.detail) · \(line.source.title)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                        Spacer()
+                        Text("¥\(line.amountCNY.formatted(.number.grouping(.automatic)))")
+                            .font(.subheadline.monospacedDigit().weight(.bold))
+                    }
+                    .padding(10)
+                    .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+            }
+        }
+        .frame(maxHeight: 260)
+        .scrollIndicators(.hidden)
     }
 
     private var compactStopsStrip: some View {
@@ -502,6 +761,213 @@ struct PlannerPanel: View {
         .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
     }
 
+    private func accommodationCard(_ option: AccommodationOption) -> some View {
+        let selected = model.selectedAccommodationID == option.id
+        let pricedQuote = option.quotes
+            .filter { $0.amountCNY != nil }
+            .min { ($0.amountCNY ?? .max) < ($1.amountCNY ?? .max) }
+        return Button {
+            model.selectAccommodation(option)
+        } label: {
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(alignment: .top) {
+                    Image(systemName: "bed.double.fill")
+                        .foregroundStyle(selected ? .white : AnyTravelPalette.route)
+                        .frame(width: 30, height: 30)
+                        .background(selected ? AnyTravelPalette.route : AnyTravelPalette.route.opacity(0.10), in: Circle())
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(option.name)
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        Text(option.address)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+
+                Text(option.recommendationReasons.prefix(2).joined(separator: " · "))
+                    .font(.caption2)
+                    .foregroundStyle(AnyTravelPalette.secondaryInk)
+                    .lineLimit(2)
+
+                HStack {
+                    Text(pricedQuote?.priceText ?? "多渠道正在核价")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(pricedQuote == nil ? AnyTravelPalette.routeDark : AnyTravelPalette.warm)
+                    Spacer()
+                    if let pricedQuote {
+                        Text(pricedQuote.kind.title)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(selected ? AnyTravelPalette.route : .secondary)
+                }
+            }
+            .padding(11)
+            .frame(width: 258, alignment: .leading)
+            .frame(minHeight: 118)
+            .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 17, style: .continuous)
+                    .strokeBorder(selected ? AnyTravelPalette.route : .clear, lineWidth: 2)
+            }
+        }
+        .buttonStyle(AnyTravelPressStyle())
+        .accessibilityLabel("\(option.name)，\(pricedQuote?.priceText ?? "等待报价")")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private func transportCard(_ option: TransportOption) -> some View {
+        let selected = model.selectedTransportID == option.id
+        let duration = option.durationMinutes.map { "约\($0 / 60)小时\($0 % 60)分" } ?? "耗时待比较"
+        return Button {
+            model.selectTransport(option)
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: option.mode.symbolName)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 34, height: 34)
+                        .background(option.isRecommended ? AnyTravelPalette.warm : AnyTravelPalette.route, in: Circle())
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(option.title).font(.subheadline.weight(.bold)).foregroundStyle(.primary)
+                        Text(duration).font(.caption2).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if option.isRecommended {
+                        Text("推荐")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(AnyTravelPalette.warm)
+                    }
+                }
+
+                Text(option.recommendationReasons.prefix(2).joined(separator: " · "))
+                    .font(.caption2)
+                    .foregroundStyle(AnyTravelPalette.secondaryInk)
+                    .lineLimit(2)
+
+                HStack {
+                    Text(option.quotes.contains(where: { $0.amountCNY != nil }) ? "已有报价" : "班次与价格待核")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AnyTravelPalette.routeDark)
+                    Spacer()
+                    Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(selected ? AnyTravelPalette.route : .secondary)
+                }
+            }
+            .padding(11)
+            .frame(width: 265, alignment: .leading)
+            .frame(minHeight: 118)
+            .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 17, style: .continuous)
+                    .strokeBorder(selected ? AnyTravelPalette.route : .clear, lineWidth: 2)
+            }
+        }
+        .buttonStyle(AnyTravelPressStyle())
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private func quoteStrip(_ quotes: [ProviderQuote]) -> some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+                ForEach(quotes) { quote in
+                    Button {
+                        model.openQuote(quote)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 5) {
+                                Text(quote.provider.title).font(.caption2.weight(.semibold))
+                                Image(systemName: quote.bookingURL == nil ? "clock" : "arrow.up.right")
+                                    .font(.system(size: 9, weight: .bold))
+                            }
+                            Text(quote.priceText)
+                                .font(.caption.monospacedDigit().weight(.bold))
+                                .foregroundStyle(quote.amountCNY == nil ? AnyTravelPalette.routeDark : AnyTravelPalette.warm)
+                            HStack(spacing: 3) {
+                                Text(quote.kind.title)
+                                if let capturedAt = quote.capturedAt {
+                                    Text("·")
+                                    Text(capturedAt, format: .dateTime.hour().minute())
+                                }
+                            }
+                            .font(.system(size: 9))
+                            .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 10)
+                        .frame(minWidth: 108, minHeight: 58, alignment: .leading)
+                        .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    }
+                    .buttonStyle(AnyTravelPressStyle())
+                    .accessibilityHint(quote.note)
+                }
+
+                Button {
+                    model.refreshLogisticsInBackground()
+                } label: {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.caption.weight(.bold))
+                        Text("刷新此刻价格")
+                            .font(.caption2.weight(.semibold))
+                        Text(model.draft.logistics.hasDates ? "按当前日期" : "请先添上日期")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.secondary)
+                    }
+                    .foregroundStyle(AnyTravelPalette.routeDark)
+                    .padding(.horizontal, 10)
+                    .frame(minWidth: 112, minHeight: 58, alignment: .leading)
+                    .background(AnyTravelPalette.route.opacity(0.09), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                }
+                .buttonStyle(AnyTravelPressStyle())
+                .disabled(!model.draft.logistics.hasDates || model.isLogisticsLoading)
+                .opacity(model.draft.logistics.hasDates ? 1 : 0.55)
+            }
+        }
+        .scrollIndicators(.hidden)
+    }
+
+    private func skippedModule(title: String, detail: String, symbol: String) -> some View {
+        Label {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.subheadline.weight(.semibold))
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+            }
+        } icon: {
+            Image(systemName: symbol).foregroundStyle(AnyTravelPalette.route)
+        }
+        .padding(13)
+        .frame(maxWidth: .infinity, minHeight: 78, alignment: .leading)
+        .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func loadingModule(_ title: String) -> some View {
+        HStack(spacing: 11) {
+            ProgressView().tint(AnyTravelPalette.route)
+            Text(title).font(.subheadline.weight(.medium))
+        }
+        .padding(13)
+        .frame(maxWidth: .infinity, minHeight: 68, alignment: .leading)
+        .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func emptyLogisticsModule(title: String, actionTitle: String) -> some View {
+        HStack {
+            Text(title).font(.subheadline.weight(.medium))
+            Spacer()
+            Button(actionTitle) { model.refreshLogisticsInBackground() }
+                .font(.caption.weight(.bold))
+                .frame(minHeight: 44)
+        }
+        .padding(.horizontal, 13)
+        .frame(minHeight: 68)
+        .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
     private func primaryButton(
         title: String,
         systemImage: String,
@@ -528,6 +994,26 @@ struct PlannerPanel: View {
                 .frame(minHeight: 44)
                 .foregroundStyle(selected ? .white : AnyTravelPalette.routeDark)
                 .background(selected ? AnyTravelPalette.route : AnyTravelPalette.softSurface, in: Capsule())
+        }
+        .buttonStyle(AnyTravelPressStyle())
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private func modePreferenceChip(
+        _ mode: LongDistanceMode?,
+        title: String,
+        symbol: String
+    ) -> some View {
+        let selected = model.draft.logistics.preferredLongDistanceMode == mode
+        return Button {
+            model.draft.logistics.preferredLongDistanceMode = mode
+        } label: {
+            Label(title, systemImage: symbol)
+                .font(.caption2.weight(.semibold))
+                .padding(.horizontal, 11)
+                .frame(minHeight: 40)
+                .foregroundStyle(selected ? .white : AnyTravelPalette.routeDark)
+                .background(selected ? AnyTravelPalette.route : Color.white.opacity(0.72), in: Capsule())
         }
         .buttonStyle(AnyTravelPressStyle())
         .accessibilityAddTraits(selected ? .isSelected : [])

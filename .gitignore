@@ -6,3 +6,8 @@ xcuserdata/
 *.ipa
 *.dSYM.zip
 *.xcarchive
+.playwright-cli/
+output/playwright/
+Backend/node_modules/
+Backend/.data/
+Backend/.env

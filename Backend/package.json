@@ -1,0 +1,18 @@
+{
+  "name": "anytravel-pricing-node",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Self-hosted quote aggregator for AnyTravel",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test",
+    "login:ctrip": "node scripts/login-ctrip.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.55.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

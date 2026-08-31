@@ -33,6 +33,17 @@ struct PlannerChrome: View {
                 .anyTravelGlassCard(cornerRadius: 18)
 
                 Button {
+                    model.settingsPresented = true
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 17, weight: .semibold))
+                        .frame(width: 48, height: 48)
+                }
+                .buttonStyle(AnyTravelPressStyle())
+                .anyTravelGlassCircle()
+                .accessibilityLabel("旅途偏好与价格渠道")
+
+                Button {
                     model.libraryPresented = true
                 } label: {
                     Image(systemName: "suitcase.rolling")

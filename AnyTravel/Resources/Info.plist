@@ -20,6 +20,13 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>用于连接你自行运行的 AnyTravel 开源报价节点，获取住宿与交通比价结果。</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>用于把地图移动到你当前的位置，方便规划从身边出发的路线。</string>
 	<key>UILaunchStoryboardName</key>

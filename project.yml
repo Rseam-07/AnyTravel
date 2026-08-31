@@ -36,6 +36,9 @@ targets:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSRequiresIPhoneOS: true
         NSLocationWhenInUseUsageDescription: 用于把地图移动到你当前的位置，方便规划从身边出发的路线。
+        NSLocalNetworkUsageDescription: 用于连接你自行运行的 AnyTravel 开源报价节点，获取住宿与交通比价结果。
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
         UILaunchStoryboardName: LaunchScreen
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
@@ -48,8 +51,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.anytravel.app
         PRODUCT_NAME: AnyTravel
-        MARKETING_VERSION: 0.1.0
-        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 0.2.0
+        CURRENT_PROJECT_VERSION: 2
         GENERATE_INFOPLIST_FILE: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
