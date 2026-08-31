@@ -11,3 +11,21 @@ output/playwright/
 Backend/node_modules/
 Backend/.data/
 Backend/.env
+
+# Generated release artifacts and local design/tool scratch space
+*.apk
+*.aab
+Artifacts/
+work/
+exports/
+
+# Android local toolchain and build state
+.gradle/
+.android-sdk/
+Android/.gradle/
+Android/.idea/
+Android/local.properties
+Android/**/build/
+Android/.kotlin/
+.gradle-user-home/
+*.iml

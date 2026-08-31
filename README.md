@@ -2,7 +2,7 @@
 
 > 旅行是一场诗意的迁徙。AnyTravel 让每一次选择，都在地图上长成旅程。
 
-AnyTravel 是一款地图优先的开源 iOS 旅行规划应用。用户不必先填完一张长表格：可以先选车次，也可以先挑住处；可以从预算出发，也可以只说“我想去XX”。路线、住宿、抵达枢纽和每天的安排都会在背景地图上随选择更新。
+AnyTravel 是一款地图优先的开源 iOS 与 Android 旅行规划应用。用户不必先填完一张长表格：可以先选车次，也可以先挑住处；可以从预算出发，也可以只说“我想去XX”。路线、住宿、抵达枢纽和每天的安排都会在背景地图上随选择更新。
 
 <p align="center">
   <img src="Documentation/Brand/Exports/folded-horizon.png" width="128" alt="AnyTravel 折叠远方图标">
@@ -14,10 +14,18 @@ AnyTravel 是一款地图优先的开源 iOS 旅行规划应用。用户不必�
 
 动效实录：[首次启动与初始化](Documentation/Demo/onboarding-motion.mp4) · [地图、住宿、交通与费用联动](Documentation/Demo/map-plan-motion.mp4)
 
+下载：[iOS 0.3.0 无签名 IPA](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.3.0) · [Android 0.4.0 APK](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.4.0)
+
+<p align="center">
+  <img src="Documentation/Screenshots/android-welcome.png" width="30%" alt="Android 欢迎页">
+  <img src="Documentation/Screenshots/android-plan.png" width="30%" alt="Android 地图方案">
+  <img src="Documentation/Screenshots/android-live-stays.png" width="30%" alt="Android 实时酒店比价">
+</p>
+
 ## 一段旅程如何展开
 
 - 第一次打开应用时，先看四页简短介绍，再留下常用出发地、人数和预算。行程默认保持轻松节奏。
-- 携程、去哪儿、Trip.com 和铁路 12306 可在应用内登录。密码只提交给平台网页；报价与购买页会沿用同一 WebKit 会话。
+- iOS 可在应用内登录携程、去哪儿、Trip.com 和铁路 12306；Android 0.4 先提供平台页面入口。密码只提交给平台网页，AnyTravel 不读取或保存密码。
 - 日期、预算、兴趣、住宿和交通没有固定填写顺序，每一项都可以暂时留白。
 - `MKLocalSearch` 会寻找真实景点、酒店、民宿和交通枢纽；`MKDirections` 会逐段绘制当前日路线。
 - 选定住处后，交通建议会结合抵达时间、车站或机场到住处的距离、总耗时和票价重新排列。
@@ -29,11 +37,11 @@ AnyTravel 是一款地图优先的开源 iOS 旅行规划应用。用户不必�
 
 | 内容 | 当前实现 | 结果如何展示 |
 | --- | --- | --- |
-| 地点与市内路线 | Apple MapKit 实时搜索与路径计算 | 地图标记、逐段路线、距离与预计时间 |
+| 地点与市内路线 | iOS 使用 Apple MapKit；Android 使用人工核对目的地包与系统 Geocoder | 地图标记、逐日顺序、距离与预计时间；Android 0.4 明确标注路线为示意 |
 | 酒店与民宿位置 | Apple Maps 候选；按景点均距和交通枢纽距离排序 | 地图卡片与推荐理由 |
-| 酒店实时价格 | RollingGo MCP（配置密钥后）；携程持久化浏览器会话（用户自行登录后） | 渠道、每晚/总价口径、抓取时间、购买入口 |
+| 酒店实时价格 | 两端支持 RollingGo MCP（配置密钥后）；iOS 另支持用户自行登录后的携程持久化浏览器会话 | 渠道、每晚/总价口径、抓取时间、购买入口 |
 | 铁路班次与票价 | 铁路 12306 公开查询页，只读查询 | 车次、发到时间、余票、席别价格与官方购票页 |
-| 去哪儿与 Trip.com | 应用内登录、会话复用和购买页入口 | 未接通实时适配器时明确显示“到渠道查询” |
+| 去哪儿与 Trip.com | iOS 支持应用内登录与会话复用；Android 提供购买页入口 | 未接通实时适配器时明确显示“到渠道查询” |
 | 航班 | 已预留携程、去哪儿与 Skyscanner 适配位置 | 当前先提供渠道入口，不把估算冒充实时票价 |
 
 各适配器的状态、输入输出与验证边界见 [数据渠道说明](Documentation/DATA_CHANNELS.md)。铁路购票链接始终指向 [铁路 12306 官方页面](https://www.12306.cn/mormhweb/zxdt/202412/t20241211_43192.html)。RollingGo 接入参考其[官方开源仓库](https://github.com/RollingGo-AI/RollingGo-hotel-MCP-CN)。
@@ -56,6 +64,17 @@ open AnyTravel.xcodeproj
 - `--ui-test-ready`：载入带明确“演示价”标识的苏州完整方案，只用于界面验收。
 - `--force-onboarding --motion-showcase`：在 Debug 中自动播放首次启动动效。
 - `--ui-test-ready --motion-showcase-ready`：在 Debug 中自动播放地图方案标签与镜头联动。
+
+## 运行 Android 应用
+
+要求：JDK 17、Android SDK Platform 37.0 与 Build Tools 37.0.0；最低运行系统 Android 12（API 31）。
+
+```sh
+cd Android
+./gradlew testDebugUnitTest assembleDebug
+```
+
+现代手机优先安装 `app-arm64-v8a-debug.apk`；不确定处理器时使用 `app-universal-debug.apk`。连接 Android 12 或更新版本的设备后，可运行 `./gradlew connectedDebugAndroidTest`。更多数据与签名边界见 [Android 说明](Android/README.md)。
 
 ## 运行开源报价节点
 
@@ -87,6 +106,8 @@ cd Backend && npm test
 ```
 
 0.3.0 发布前验证结果：13/13 iOS 单元测试、4/4 XCUITest、8/8 Node 测试通过；Release 配置模拟器构建通过，产物版本为 0.3.0（3）。2026-08-31 的联网抽查中，“上海→苏州”返回 8 个可购车次及余票、展示价格与购买入口；RollingGo 对 3 个苏州酒店候选完成逐店实时查询，3 个均返回可展示的每晚价与购买链接。密钥只保存在被 Git 忽略的节点环境文件中。
+
+0.4.0 Android 发布前验证结果：4/4 规划逻辑单元测试、1/1 Android 12 Compose 端到端流程和 lint 通过。APK 在 API 31 arm64 模拟器完成安装与视觉检查，并实际连接同一报价节点，显示 RollingGo 酒店实时价和铁路 12306 班次、票价、余票、接驳距离与抓取时间。APK 为调试签名预览包，尚未替代生产签名和真机矩阵。
 
 ## 隐私与边界
 
