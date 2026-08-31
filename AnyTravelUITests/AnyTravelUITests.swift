@@ -55,6 +55,62 @@ final class AnyTravelUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["苏州市 · 3天"].waitForExistence(timeout: 3))
     }
 
+    func testBusyTripCanBecomeRelaxedWithoutReplacingItsStops() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--skip-onboarding", "--ui-test-ready", "--ui-test-busy"]
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["这段行程有点赶"].waitForExistence(timeout: 5))
+        let relaxButton = app.buttons["relax-plan-action"]
+        XCTAssertTrue(relaxButton.isHittable)
+        relaxButton.tap()
+
+        XCTAssertTrue(app.staticTexts["relaxed-plan-success"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["第 4 天"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["苏州博物馆"].exists)
+
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "忙碌行程一键铺松"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    func testAssistantSettingsExposeManagedAndSecureCustomModes() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--skip-onboarding", "--ui-test-ready", "--ui-test-settings"]
+        app.launch()
+
+        XCTAssertTrue(app.navigationBars["旅途偏好与价格渠道"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["旅途里的智能向导"].exists)
+        let managedModel = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "GLM-5.3-Flash")
+        ).firstMatch
+        XCTAssertTrue(managedModel.waitForExistence(timeout: 2))
+
+        let providerPicker = app.segmentedControls["assistant-provider-picker"]
+        XCTAssertTrue(providerPicker.waitForExistence(timeout: 2))
+        let customMode = providerPicker.buttons["自定义服务"]
+        XCTAssertTrue(customMode.waitForExistence(timeout: 2))
+        customMode.tap()
+
+        XCTAssertTrue(app.textFields["assistant-custom-base-url"].waitForExistence(timeout: 2))
+        let customModel = app.textFields["assistant-custom-model"]
+        for _ in 0..<2 where !customModel.exists { app.swipeUp() }
+        XCTAssertTrue(customModel.waitForExistence(timeout: 3))
+        let customAPIKey = app.secureTextFields["assistant-custom-api-key"]
+        for _ in 0..<2 where !customAPIKey.exists { app.swipeUp() }
+        XCTAssertTrue(customAPIKey.waitForExistence(timeout: 3))
+
+        let tongcheng = app.staticTexts["同程旅行"]
+        for _ in 0..<4 where !tongcheng.exists { app.swipeUp() }
+        XCTAssertTrue(tongcheng.waitForExistence(timeout: 3))
+
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "智能向导与平台登录设置"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
     func testCompletePlanTabsExposeStayTransportAndExpenseDetails() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-test-ready"]

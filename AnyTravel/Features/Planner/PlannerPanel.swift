@@ -595,6 +595,16 @@ struct PlannerPanel: View {
 
     private var itineraryReadyContent: some View {
         VStack(alignment: .leading, spacing: 9) {
+            if let paceStatusMessage = model.paceStatusMessage {
+                pacingSuccessCard(paceStatusMessage)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
+            }
+
+            if model.planPacingAssessment.needsAttention {
+                pacingAdvisoryCard(model.planPacingAssessment)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
+            }
+
             ScrollView(.horizontal) {
                 HStack(spacing: 7) {
                     ForEach(model.itineraryDays) { day in
@@ -630,9 +640,14 @@ struct PlannerPanel: View {
                 compactStopsStrip
             }
 
+            if let assistantReply = model.assistantReply {
+                assistantReplyCard(assistantReply)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+
             HStack(spacing: 8) {
                 TextField(
-                    "比如：轻松一点，多安排美食",
+                    "说出想改变的脚步、预算或地图焦点",
                     text: Binding(get: { model.adjustmentText }, set: { model.adjustmentText = $0 })
                 )
                 .focused($adjustmentFocused)
@@ -646,14 +661,21 @@ struct PlannerPanel: View {
                     adjustmentFocused = false
                     Task { await model.applyAdjustment() }
                 } label: {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 38, height: 38)
-                        .background(AnyTravelPalette.route, in: Circle())
+                    Group {
+                        if model.isAssistantResponding {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(.white)
+                        }
+                    }
+                    .frame(width: 38, height: 38)
+                    .background(AnyTravelPalette.route, in: Circle())
                 }
                 .buttonStyle(AnyTravelPressStyle())
-                .disabled(model.adjustmentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(model.adjustmentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isAssistantResponding)
                 .opacity(model.adjustmentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.45 : 1)
                 .accessibilityLabel("应用路线修改")
             }
@@ -661,6 +683,91 @@ struct PlannerPanel: View {
             .padding(.trailing, 7)
             .frame(minHeight: 50)
             .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .animation(AnyTravelMotion.settle(reduceMotion: reduceMotion), value: model.planPacingAssessment.level)
+        .animation(AnyTravelMotion.settle(reduceMotion: reduceMotion), value: model.assistantReply)
+    }
+
+    private func assistantReplyCard(_ reply: String) -> some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: "sparkles")
+                .foregroundStyle(AnyTravelPalette.route)
+                .symbolEffect(.variableColor.iterative, value: model.assistantFeedbackTrigger)
+            Text(reply)
+                .font(.caption)
+                .foregroundStyle(AnyTravelPalette.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(AnyTravelPalette.route.opacity(0.08), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("assistant-reply")
+    }
+
+    private func pacingSuccessCard(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "leaf.fill")
+                .foregroundStyle(AnyTravelPalette.route)
+                .symbolEffect(.bounce, value: model.paceFeedbackTrigger)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("脚步已经慢下来")
+                    .font(.subheadline.weight(.bold))
+                Text(message)
+                    .font(.caption2)
+                    .foregroundStyle(AnyTravelPalette.secondaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(AnyTravelPalette.route.opacity(0.09), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 17, style: .continuous)
+                .strokeBorder(AnyTravelPalette.route.opacity(0.18), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("relaxed-plan-success")
+    }
+
+    private func pacingAdvisoryCard(_ assessment: PlanPacingAssessment) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: assessment.level == .rushed ? "wind" : "clock.badge.exclamationmark")
+                    .foregroundStyle(assessment.level == .rushed ? AnyTravelPalette.warm : AnyTravelPalette.route)
+                Text(assessment.title)
+                    .font(.subheadline.weight(.bold))
+                Spacer(minLength: 4)
+                if assessment.suggestedDayCount > model.itineraryDays.count {
+                    Text("建议 \(assessment.suggestedDayCount) 天")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(AnyTravelPalette.routeDark)
+                }
+            }
+
+            Text(assessment.detail)
+                .font(.caption2)
+                .foregroundStyle(AnyTravelPalette.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                model.relaxCurrentPlan()
+            } label: {
+                Label("让行程松一口气", systemImage: "leaf.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 42)
+                    .background(AnyTravelPalette.route, in: Capsule())
+            }
+            .buttonStyle(AnyTravelPressStyle())
+            .accessibilityIdentifier("relax-plan-action")
+        }
+        .padding(12)
+        .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 17, style: .continuous)
+                .strokeBorder(AnyTravelPalette.route.opacity(0.16), lineWidth: 1)
         }
     }
 

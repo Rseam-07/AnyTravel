@@ -9,6 +9,9 @@ struct SettingsView: View {
     @State private var serviceCheckResult: String?
     @State private var serviceHealthy: Bool?
     @State private var checkingService = false
+    @State private var customAPIKey = ""
+    @State private var assistantCheckResult: String?
+    @State private var checkingAssistant = false
 
     var body: some View {
         NavigationStack {
@@ -30,6 +33,118 @@ struct SettingsView: View {
                         step: 500
                     )
                     LabeledContent("默认脚步", value: "轻松")
+                }
+
+                Section {
+                    Picker(
+                        "回应来自",
+                        selection: Binding(
+                            get: { model.assistantSettings.mode },
+                            set: {
+                                model.assistantSettings.mode = $0
+                                assistantCheckResult = nil
+                            }
+                        )
+                    ) {
+                        ForEach(AssistantProviderMode.allCases) { provider in
+                            Text(provider.title)
+                                .tag(provider)
+                                .accessibilityIdentifier("assistant-mode-\(provider.rawValue)")
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("assistant-provider-picker")
+
+                    if model.assistantSettings.mode == .managed {
+                        LabeledContent("默认模型", value: "GLM-5.3-Flash")
+                        Text("模型钥匙只留在 AnyTravel 伴随服务的环境变量里；App 只送出当前行程和这一次指令。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        TextField(
+                            "OpenAI 兼容 Base URL",
+                            text: Binding(
+                                get: { model.assistantSettings.customBaseURL },
+                                set: { model.assistantSettings.customBaseURL = $0 }
+                            )
+                        )
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                        .accessibilityIdentifier("assistant-custom-base-url")
+
+                        TextField(
+                            "模型名称",
+                            text: Binding(
+                                get: { model.assistantSettings.customModel },
+                                set: { model.assistantSettings.customModel = $0 }
+                            )
+                        )
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .accessibilityIdentifier("assistant-custom-model")
+
+                        SecureField(
+                            model.assistantSettings.hasCustomAPIKey ? "已安全存入钥匙串；填写可替换" : "API Key",
+                            text: $customAPIKey
+                        )
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .accessibilityIdentifier("assistant-custom-api-key")
+
+                        HStack {
+                            Button(model.assistantSettings.hasCustomAPIKey ? "替换钥匙" : "存入钥匙串") {
+                                do {
+                                    try model.assistantSettings.saveCustomAPIKey(customAPIKey)
+                                    customAPIKey = ""
+                                    assistantCheckResult = "钥匙已经收好，页面不会再把它读出来。"
+                                } catch {
+                                    assistantCheckResult = error.localizedDescription
+                                }
+                            }
+                            .disabled(customAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                            Spacer()
+                            if model.assistantSettings.hasCustomAPIKey {
+                                Button("删除钥匙", role: .destructive) {
+                                    do {
+                                        try model.assistantSettings.deleteCustomAPIKey()
+                                        assistantCheckResult = "这把钥匙已经从本机离开。"
+                                    } catch {
+                                        assistantCheckResult = error.localizedDescription
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Button {
+                        checkingAssistant = true
+                        assistantCheckResult = nil
+                        Task {
+                            assistantCheckResult = await model.testAssistantConnection()
+                            checkingAssistant = false
+                        }
+                    } label: {
+                        HStack {
+                            Label("听一听智能向导的回声", systemImage: "sparkles")
+                            Spacer()
+                            if checkingAssistant { ProgressView() }
+                        }
+                    }
+                    .disabled(checkingAssistant)
+                    .accessibilityIdentifier("assistant-connection-test")
+
+                    if let assistantCheckResult {
+                        Text(assistantCheckResult)
+                            .font(.caption)
+                            .foregroundStyle(AnyTravelPalette.secondaryInk)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                } header: {
+                    Text("旅途里的智能向导")
+                } footer: {
+                    Text("自定义服务需兼容 OpenAI 的 chat/completions 接口。任何模型给出的地图动作都会先经过本地白名单校验。")
                 }
 
                 Section {

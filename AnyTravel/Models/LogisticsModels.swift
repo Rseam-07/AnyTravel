@@ -69,6 +69,7 @@ enum TransportDirection: String, Codable, Hashable, Sendable {
 enum TravelProvider: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
     case ctrip
     case qunar
+    case tongcheng
     case tripCom
     case skyscanner
     case rollingGo
@@ -82,6 +83,7 @@ enum TravelProvider: String, CaseIterable, Codable, Hashable, Identifiable, Send
         switch self {
         case .ctrip: "携程"
         case .qunar: "去哪儿"
+        case .tongcheng: "同程旅行"
         case .tripCom: "Trip.com"
         case .skyscanner: "Skyscanner"
         case .rollingGo: "道旅 RollingGo"

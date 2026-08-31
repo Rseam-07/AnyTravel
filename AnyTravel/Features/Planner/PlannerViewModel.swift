@@ -62,6 +62,11 @@ final class PlannerViewModel {
     var exportStatusMessage: String?
     var sharePayload: PlanSharePayload?
     var exportFeedbackTrigger = 0
+    var paceFeedbackTrigger = 0
+    var paceStatusMessage: String?
+    var isAssistantResponding = false
+    var assistantReply: String?
+    var assistantFeedbackTrigger = 0
     var isLogisticsLoading = false
     var logisticsStatusMessage: String?
     var quoteRefreshState: QuoteRefreshState = .idle
@@ -69,6 +74,7 @@ final class PlannerViewModel {
     var activeProviderPage: ProviderBrowserDestination?
 
     let tripStore: TripStore
+    let assistantSettings: AssistantSettingsStore
 
     @ObservationIgnored private let searchService: MapSearchService
     @ObservationIgnored private let routePlanner: RoutePlanner
@@ -77,6 +83,8 @@ final class PlannerViewModel {
     @ObservationIgnored private let transportEngine: TransportRecommendationEngine
     @ObservationIgnored private let localTransferService: LocalTransferService
     @ObservationIgnored private let planExportService: PlanExportService
+    @ObservationIgnored private let planPacingService: PlanPacingService
+    @ObservationIgnored private let assistantClient: TravelAssistantClient
     @ObservationIgnored private let expensePlanner: ExpensePlanner
     @ObservationIgnored private let scheduleBuilder: ScheduleBuilder
     @ObservationIgnored private let pricingBackendClient: PricingBackendClient
@@ -101,6 +109,9 @@ final class PlannerViewModel {
         transportEngine: TransportRecommendationEngine = TransportRecommendationEngine(),
         localTransferService: LocalTransferService = LocalTransferService(),
         planExportService: PlanExportService = PlanExportService(),
+        planPacingService: PlanPacingService = PlanPacingService(),
+        assistantClient: TravelAssistantClient = TravelAssistantClient(),
+        assistantSettings: AssistantSettingsStore = AssistantSettingsStore(),
         expensePlanner: ExpensePlanner = ExpensePlanner(),
         scheduleBuilder: ScheduleBuilder = ScheduleBuilder(),
         pricingBackendClient: PricingBackendClient = PricingBackendClient(),
@@ -114,6 +125,9 @@ final class PlannerViewModel {
         self.transportEngine = transportEngine
         self.localTransferService = localTransferService
         self.planExportService = planExportService
+        self.planPacingService = planPacingService
+        self.assistantClient = assistantClient
+        self.assistantSettings = assistantSettings
         self.expensePlanner = expensePlanner
         self.scheduleBuilder = scheduleBuilder
         self.pricingBackendClient = pricingBackendClient
@@ -200,6 +214,15 @@ final class PlannerViewModel {
 
     var canExportCalendar: Bool {
         draft.logistics.startDate != nil && !itineraryDays.isEmpty
+    }
+
+    var planPacingAssessment: PlanPacingAssessment {
+        planPacingService.assess(
+            days: itineraryDays,
+            travelMinutesByDay: routeTravelMinutesByDay,
+            failedSegmentsByDay: failedSegmentsByDay,
+            pace: draft.pace
+        )
     }
 
     var currentSchedule: [ScheduleItem] {
@@ -313,6 +336,9 @@ final class PlannerViewModel {
         logistics.travelers = 2
         logistics.preferredLongDistanceMode = .train
         draft = TripDraft(destination: "苏州市", dayCount: 3, logistics: logistics)
+        if ProcessInfo.processInfo.arguments.contains("--ui-test-busy") {
+            draft.pace = .full
+        }
         let center = Coordinate(latitude: 31.2989, longitude: 120.5853)
         destination = DestinationResolution(
             title: "苏州市",
@@ -336,6 +362,24 @@ final class PlannerViewModel {
                         name: "拙政园",
                         address: "苏州市姑苏区东北街178号",
                         coordinate: Coordinate(latitude: 31.3265, longitude: 120.6251),
+                        interest: .gardens
+                    ),
+                    TravelPlace(
+                        name: "狮子林",
+                        address: "苏州市姑苏区园林路23号",
+                        coordinate: Coordinate(latitude: 31.3231, longitude: 120.6290),
+                        interest: .gardens
+                    ),
+                    TravelPlace(
+                        name: "山塘街",
+                        address: "苏州市姑苏区山塘街",
+                        coordinate: Coordinate(latitude: 31.3173, longitude: 120.5964),
+                        interest: .culture
+                    ),
+                    TravelPlace(
+                        name: "网师园",
+                        address: "苏州市姑苏区阔家头巷11号",
+                        coordinate: Coordinate(latitude: 31.3012, longitude: 120.6301),
                         interest: .gardens
                     )
                 ]
@@ -363,6 +407,9 @@ final class PlannerViewModel {
                 ]
             )
         ]
+        if !ProcessInfo.processInfo.arguments.contains("--ui-test-busy") {
+            itineraryDays[0].stops.removeLast(3)
+        }
         let hotel = AccommodationOption(
             name: "苏州园林附近酒店",
             address: "苏州市姑苏区",
@@ -494,6 +541,7 @@ final class PlannerViewModel {
         failedSegmentsByDay = [:]
         selectedPlaceID = nil
         selectedDayIndex = 0
+        paceStatusMessage = nil
         noticeMessage = nil
         errorMessage = nil
         quoteRefreshState = .idle
@@ -821,9 +869,65 @@ final class PlannerViewModel {
     }
 
     func applyAdjustment() async {
-        let intent = intentParser.parse(adjustmentText)
+        let requestText = adjustmentText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !requestText.isEmpty else { return }
+        assistantReply = nil
+
+        if assistantSettings.isConfigured {
+            isAssistantResponding = true
+            defer { isAssistantResponding = false }
+            do {
+                let interpretation = try await assistantClient.interpret(
+                    input: requestText,
+                    context: assistantContext,
+                    settings: assistantSettings
+                )
+                assistantReply = interpretation.reply
+                assistantFeedbackTrigger += 1
+                adjustmentText = ""
+                if interpretation.actions.isEmpty {
+                    let localIntent = intentParser.parse(requestText)
+                    if localIntent.isRecognized {
+                        await applyDeterministicAdjustment(requestText)
+                    } else {
+                        noticeMessage = interpretation.reply
+                    }
+                } else {
+                    await applyAssistantActions(interpretation.actions)
+                }
+                return
+            } catch {
+                let localIntent = intentParser.parse(requestText)
+                assistantReply = "云端的回声暂时没有抵达。\(localIntent.isRecognized ? "这一步已由本机继续完成。" : "你仍可在设置里检查服务。")"
+                if localIntent.isRecognized {
+                    await applyDeterministicAdjustment(requestText)
+                    return
+                }
+                noticeMessage = error.localizedDescription
+                return
+            }
+        }
+
+        await applyDeterministicAdjustment(requestText)
+    }
+
+    private func applyDeterministicAdjustment(_ requestText: String) async {
+        let intent = intentParser.parse(requestText)
         guard intent.isRecognized else {
-            noticeMessage = "这句话暂时还不会改路线，可以试试“轻松一点”或“多安排美食”。"
+            noticeMessage = "这句话需要智能向导来听懂；可以先在设置里接通服务，或试试“轻松一点”“公交优先”。"
+            return
+        }
+
+        let onlyRequestsRelaxedPace = intent.pace == .relaxed
+            && intent.travelMode == nil
+            && intent.dayCount == nil
+            && intent.budgetPerPerson == nil
+            && intent.addedInterests.isEmpty
+            && intent.removedInterests.isEmpty
+            && intent.excludedPlaceTerm == nil
+        if phase == .ready, onlyRequestsRelaxedPace {
+            adjustmentText = ""
+            relaxCurrentPlan()
             return
         }
 
@@ -868,6 +972,166 @@ final class PlannerViewModel {
 
         adjustmentText = ""
         await generatePlan()
+    }
+
+    private func applyAssistantActions(_ actions: [TravelAssistantAction]) async {
+        var routesNeedRefresh = false
+        var logisticsNeedRefresh = false
+        var requestedRelaxation = false
+        var placeToFocus: TravelPlace?
+
+        for action in actions {
+            switch action.type {
+            case .setPace:
+                guard let pace = TripPace(rawValue: action.value) else { continue }
+                if pace == .relaxed, phase == .ready {
+                    requestedRelaxation = true
+                } else {
+                    draft.pace = pace
+                    paceStatusMessage = nil
+                }
+            case .setTravelMode:
+                guard let mode = TravelMode(rawValue: action.value), mode != draft.travelMode else { continue }
+                draft.travelMode = mode
+                routesNeedRefresh = phase == .ready
+            case .setBudget:
+                guard let budget = Int(action.value) else { continue }
+                draft.budgetPerPerson = min(max(budget, 1_000), 30_000)
+            case .focusPlace:
+                placeToFocus = itineraryDays.flatMap(\.stops).first { $0.name == action.value }
+            case .removePlace:
+                guard let day = itineraryDays.first(where: { day in
+                    day.stops.contains(where: { $0.name == action.value })
+                }), let place = day.stops.first(where: { $0.name == action.value }) else { continue }
+                if removePlace(place, from: day.index, refreshRoute: false) {
+                    routesNeedRefresh = true
+                    logisticsNeedRefresh = true
+                }
+            }
+        }
+
+        if requestedRelaxation {
+            relaxCurrentPlan()
+        }
+
+        if routesNeedRefresh, phase == .ready {
+            routeTask?.cancel()
+            revealTask?.cancel()
+            routesByDay = [:]
+            failedSegmentsByDay = [:]
+            visibleLegCount = 0
+            selectedPlaceID = nil
+            fitCurrentDay(animated: true)
+            await loadRoutesForSelectedDay(reveal: true)
+        }
+        if logisticsNeedRefresh, !requestedRelaxation {
+            refreshLogisticsInBackground()
+        }
+
+        if let placeToFocus,
+           let day = itineraryDays.first(where: { $0.stops.contains(where: { $0.id == placeToFocus.id }) }) {
+            selectedDayIndex = day.index
+            selectPlace(placeToFocus)
+        }
+        persistPlanningDefaults()
+        if let assistantReply { noticeMessage = assistantReply }
+    }
+
+    func testAssistantConnection() async -> String {
+        guard assistantSettings.isConfigured else {
+            return assistantSettings.mode == .managed
+                ? "先填写并接通 AnyTravel 伴随服务地址。"
+                : "请补齐服务地址、模型名，并把 API Key 存入钥匙串。"
+        }
+        do {
+            let result = try await assistantClient.interpret(
+                input: "只确认服务已经接通，不要修改行程。",
+                context: assistantContext,
+                settings: assistantSettings
+            )
+            return "已接通 \(result.model ?? assistantSettings.customModel)：\(result.reply)"
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    private var assistantContext: TravelAssistantContext {
+        TravelAssistantContext(
+            destination: destination?.title ?? draft.destination,
+            dayCount: max(draft.dayCount, itineraryDays.count),
+            budgetPerPerson: draft.budgetPerPerson,
+            pace: draft.pace.rawValue,
+            travelMode: draft.travelMode.rawValue,
+            selectedDayIndex: selectedDayIndex,
+            interests: draft.interests.map(\.rawValue).sorted(),
+            places: itineraryDays.flatMap { day in
+                day.stops.map {
+                    TravelAssistantPlaceContext(
+                        name: $0.name,
+                        dayIndex: day.index,
+                        interest: $0.interest.rawValue
+                    )
+                }
+            }
+        )
+    }
+
+    func relaxCurrentPlan() {
+        guard phase == .ready, !itineraryDays.isEmpty else { return }
+        let previousDayCount = itineraryDays.count
+        let totalStops = itineraryDays.reduce(0) { $0 + $1.stops.count }
+        let result = planPacingService.makeRelaxedItinerary(
+            from: itineraryDays,
+            travelMinutesByDay: routeTravelMinutesByDay,
+            failedSegmentsByDay: failedSegmentsByDay,
+            pace: draft.pace
+        )
+        let didChange = draft.pace != .relaxed || result.days != itineraryDays
+        guard didChange else {
+            noticeMessage = "这段行程已经很松弛了，午餐与休息都留有余地。"
+            return
+        }
+
+        routeTask?.cancel()
+        revealTask?.cancel()
+        draft.pace = .relaxed
+        draft.dayCount = result.days.count
+        itineraryDays = result.days
+        selectedDayIndex = min(selectedDayIndex, max(result.days.count - 1, 0))
+        selectedPlaceID = nil
+        routesByDay = [:]
+        failedSegmentsByDay = [:]
+        visibleLegCount = 0
+        if let startDate = draft.logistics.startDate, result.days.count != previousDayCount {
+            draft.logistics.endDate = Calendar.current.date(
+                byAdding: .day,
+                value: max(result.days.count - 1, 0),
+                to: startDate
+            )
+            returnTransportOptions = []
+            selectedReturnTransportID = nil
+        }
+        clearLocalTransfers()
+        clearItineraryHistory()
+        quoteRefreshState = .stale("行程节奏与日期变了，住宿晚数、返程和接驳需要重新核价。")
+        itineraryNeedsLogisticsRefresh = false
+        persistPlanningDefaults()
+        paceFeedbackTrigger += 1
+
+        if result.stillBusy {
+            paceStatusMessage = "已尽量铺开 \(totalStops) 处停留；七天内仍有一天超过两处，可以在路线编辑器里继续取舍。"
+        } else if result.days.count > previousDayCount {
+            paceStatusMessage = "已把 \(totalStops) 处停留从 \(previousDayCount) 天铺成 \(result.days.count) 天；返程与住宿正在重新核价。"
+        } else {
+            paceStatusMessage = "已把每天的时刻改成松弛节奏，路线与住宿距离正在重新丈量。"
+        }
+        noticeMessage = paceStatusMessage
+
+        fitCurrentDay(animated: true)
+        routeTask = Task { [weak self] in
+            await self?.loadRoutesForSelectedDay(reveal: true)
+        }
+        refreshLogisticsInBackground()
     }
 
     func saveCurrentTrip() {
@@ -1610,6 +1874,7 @@ final class PlannerViewModel {
         isExportingPlan = false
         exportStatusMessage = nil
         sharePayload = nil
+        paceStatusMessage = nil
         originResolution = nil
         activeSavedTripID = nil
         itineraryEditorPresented = false
@@ -1640,6 +1905,7 @@ final class PlannerViewModel {
         }
         visibleLegCount = 0
         noticeMessage = message
+        paceStatusMessage = nil
         quoteRefreshState = .stale("景点分布变了，住处距离与接驳方式需要重新丈量。")
         itineraryNeedsLogisticsRefresh = true
         fitCurrentDay(animated: true)
@@ -1877,6 +2143,12 @@ final class PlannerViewModel {
             }
         } else {
             cameraPosition = position
+        }
+    }
+
+    private var routeTravelMinutesByDay: [Int: Int] {
+        routesByDay.mapValues { legs in
+            max(Int((legs.reduce(0) { $0 + $1.route.expectedTravelTime } / 60).rounded()), 0)
         }
     }
 

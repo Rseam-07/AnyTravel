@@ -137,6 +137,13 @@ struct LogisticsSearchService {
                 note: note
             ),
             ProviderQuote(
+                provider: .tongcheng,
+                unit: .perNight,
+                kind: .checkOnProvider,
+                bookingURL: URL(string: "https://m.ly.com/hotel/"),
+                note: note
+            ),
+            ProviderQuote(
                 provider: .tripCom,
                 unit: .perNight,
                 kind: .checkOnProvider,

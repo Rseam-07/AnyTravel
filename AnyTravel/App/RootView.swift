@@ -73,12 +73,19 @@ struct RootView: View {
         .sensoryFeedback(.success, trigger: model.saveFeedbackTrigger)
         .sensoryFeedback(.success, trigger: model.planReadyFeedbackTrigger)
         .sensoryFeedback(.success, trigger: model.exportFeedbackTrigger)
+        .sensoryFeedback(.success, trigger: model.paceFeedbackTrigger)
+        .sensoryFeedback(.success, trigger: model.assistantFeedbackTrigger)
         .sensoryFeedback(.selection, trigger: model.planMapFocus)
         .sensoryFeedback(.selection, trigger: model.selectedDayIndex)
         .task {
             await providerSessionStore.reconcileSavedSessions()
             await model.bootstrapIfNeeded()
             #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--ui-test-settings") {
+                try? await Task.sleep(for: .milliseconds(250))
+                model.assistantSettings.mode = .managed
+                model.settingsPresented = true
+            }
             guard ProcessInfo.processInfo.arguments.contains("--motion-showcase-ready") else { return }
             try? await Task.sleep(for: .milliseconds(1_500))
             for focus in [PlanMapFocus.accommodation, .transport, .budget, .itinerary] {

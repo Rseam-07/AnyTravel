@@ -1,4 +1,6 @@
 import http from "node:http";
+import { AMapError, searchAMapPlaces } from "./amap-service.mjs";
+import { AssistantError, interpretAssistantRequest } from "./assistant-service.mjs";
 import { RequestError, searchAccommodationQuotes, searchTransportOptions } from "./quote-service.mjs";
 
 const port = Number(process.env.PORT || 8787);
@@ -15,7 +17,23 @@ const server = http.createServer(async (request, response) => {
   try {
     enforceRateLimit(request);
     if (request.method === "GET" && request.url === "/health") {
-      sendJSON(response, 200, { status: "ok", service: "anytravel-pricing", time: new Date().toISOString() });
+      sendJSON(response, 200, {
+        status: "ok",
+        service: "anytravel-companion",
+        assistant: process.env.ZAI_API_KEY ? "configured" : "disabled",
+        amap: process.env.AMAP_API_KEY ? "configured" : "disabled",
+        time: new Date().toISOString()
+      });
+      return;
+    }
+    if (request.method === "POST" && request.url === "/v1/assistant/interpret") {
+      const body = await readJSON(request);
+      sendJSON(response, 200, await interpretAssistantRequest(body));
+      return;
+    }
+    if (request.method === "POST" && request.url === "/v1/places/search") {
+      const body = await readJSON(request);
+      sendJSON(response, 200, await searchAMapPlaces(body));
       return;
     }
     if (request.method === "POST" && request.url === "/v1/quotes/accommodations") {
@@ -30,8 +48,19 @@ const server = http.createServer(async (request, response) => {
     }
     sendJSON(response, 404, { error: "not_found" });
   } catch (error) {
-    const status = error instanceof RequestError ? 400 : error.code === "RATE_LIMIT" ? 429 : 500;
-    sendJSON(response, status, { error: status === 500 ? "internal_error" : error.message });
+    const status = error instanceof RequestError
+      ? 400
+      : error instanceof AssistantError
+        ? error.status
+        : error instanceof AMapError
+          ? error.status
+        : error.code === "RATE_LIMIT" ? 429 : 500;
+    sendJSON(response, status, {
+      error: error instanceof AssistantError || error instanceof AMapError
+        ? error.code
+        : status === 500 ? "internal_error" : error.message,
+      message: error instanceof AssistantError || error instanceof AMapError ? error.message : undefined
+    });
   }
 });
 

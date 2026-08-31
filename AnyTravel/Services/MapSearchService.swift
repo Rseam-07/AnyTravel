@@ -3,6 +3,12 @@ import Foundation
 import MapKit
 
 struct MapSearchService {
+    private let amapClient: AMapPlaceClient
+
+    init(amapClient: AMapPlaceClient = AMapPlaceClient()) {
+        self.amapClient = amapClient
+    }
+
     func resolveDestination(_ query: String) async throws -> DestinationResolution {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw PlanningError.emptyDestination }
@@ -81,6 +87,27 @@ struct MapSearchService {
             } catch {
                 buckets[interest] = []
             }
+
+            if amapClient.isConfigured,
+               let amapPlaces = try? await amapClient.search(
+                   keywords: interest.searchTerm,
+                   city: draft.destination,
+                   interest: interest,
+                   limit: min(max(targetCount, 6), 20)
+               ) {
+                for place in amapPlaces {
+                    guard distance(from: center, to: place.coordinate) <= 45_000 else { continue }
+                    let key = deduplicationKey(
+                        name: place.name,
+                        coordinate: place.coordinate.clLocationCoordinate
+                    )
+                    guard seen.insert(key).inserted else { continue }
+                    buckets[interest, default: []].append(place)
+                }
+                buckets[interest]?.sort {
+                    distance(from: center, to: $0.coordinate) < distance(from: center, to: $1.coordinate)
+                }
+            }
         }
 
         var selected: [TravelPlace] = []
@@ -124,7 +151,7 @@ struct MapSearchService {
         )
         var seen = Set<String>()
 
-        return response.mapItems.compactMap { item -> TravelPlace? in
+        var places = response.mapItems.compactMap { item -> TravelPlace? in
             guard let name = item.name?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty else {
                 return nil
             }
@@ -144,8 +171,24 @@ struct MapSearchService {
         .sorted {
             distance(from: center, to: $0.coordinate) < distance(from: center, to: $1.coordinate)
         }
-        .prefix(12)
-        .map { $0 }
+        if amapClient.isConfigured,
+           let amapPlaces = try? await amapClient.search(
+               keywords: trimmed,
+               city: destination.title,
+               interest: interest,
+               limit: 12
+           ) {
+            for place in amapPlaces {
+                guard distance(from: center, to: place.coordinate) <= 60_000 else { continue }
+                let key = deduplicationKey(name: place.name, coordinate: place.coordinate.clLocationCoordinate)
+                guard seen.insert(key).inserted else { continue }
+                places.append(place)
+            }
+        }
+
+        return Array(places.sorted {
+            distance(from: center, to: $0.coordinate) < distance(from: center, to: $1.coordinate)
+        }.prefix(12))
     }
 
     private func normalizedCityRegion(

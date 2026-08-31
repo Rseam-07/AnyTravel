@@ -3,6 +3,7 @@ import Foundation
 enum ProviderAccount: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
     case ctrip
     case qunar
+    case tongcheng
     case tripCom
     case railway12306
 
@@ -12,6 +13,7 @@ enum ProviderAccount: String, CaseIterable, Codable, Hashable, Identifiable, Sen
         switch self {
         case .ctrip: "携程"
         case .qunar: "去哪儿"
+        case .tongcheng: "同程旅行"
         case .tripCom: "Trip.com"
         case .railway12306: "铁路12306"
         }
@@ -19,7 +21,7 @@ enum ProviderAccount: String, CaseIterable, Codable, Hashable, Identifiable, Sen
 
     var symbolName: String {
         switch self {
-        case .ctrip, .qunar, .tripCom: "bed.double.fill"
+        case .ctrip, .qunar, .tongcheng, .tripCom: "bed.double.fill"
         case .railway12306: "tram.fill"
         }
     }
@@ -28,6 +30,7 @@ enum ProviderAccount: String, CaseIterable, Codable, Hashable, Identifiable, Sen
         switch self {
         case .ctrip: URL(string: "https://passport.ctrip.com/user/login")!
         case .qunar: URL(string: "https://user.qunar.com/passport/login.jsp")!
+        case .tongcheng: URL(string: "https://m.ly.com/")!
         case .tripCom: URL(string: "https://www.trip.com/user/login/")!
         case .railway12306: URL(string: "https://kyfw.12306.cn/otn/resources/login.html")!
         }
@@ -37,6 +40,7 @@ enum ProviderAccount: String, CaseIterable, Codable, Hashable, Identifiable, Sen
         switch self {
         case .ctrip: ["ctrip.com", "c-ctrip.com"]
         case .qunar: ["qunar.com"]
+        case .tongcheng: ["ly.com", "17u.cn", "elong.com"]
         case .tripCom: ["trip.com"]
         case .railway12306: ["12306.cn"]
         }
@@ -46,6 +50,7 @@ enum ProviderAccount: String, CaseIterable, Codable, Hashable, Identifiable, Sen
         switch travelProvider {
         case .ctrip: self = .ctrip
         case .qunar: self = .qunar
+        case .tongcheng: self = .tongcheng
         case .tripCom: self = .tripCom
         case .railway12306: self = .railway12306
         case .skyscanner, .rollingGo, .propertyOfficial, .anyTravelEstimate: return nil

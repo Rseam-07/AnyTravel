@@ -112,6 +112,7 @@ struct TransportRecommendationEngine {
             return [
                 ProviderQuote(provider: .ctrip, unit: .perPerson, kind: .checkOnProvider, bookingURL: URL(string: "https://flights.ctrip.com/"), note: note),
                 ProviderQuote(provider: .qunar, unit: .perPerson, kind: .checkOnProvider, bookingURL: URL(string: "https://flight.qunar.com/"), note: note),
+                ProviderQuote(provider: .tongcheng, unit: .perPerson, kind: .checkOnProvider, bookingURL: URL(string: "https://m.ly.com/flight/"), note: note),
                 ProviderQuote(provider: .skyscanner, unit: .perPerson, kind: .requiresPartnerAccess, bookingURL: URL(string: "https://www.skyscanner.com/flights"), note: "实时航班适配器已预留")
             ]
         case .driving:
@@ -121,7 +122,8 @@ struct TransportRecommendationEngine {
         case .coach:
             return [
                 ProviderQuote(provider: .ctrip, unit: .perPerson, kind: .checkOnProvider, bookingURL: URL(string: "https://bus.ctrip.com/"), note: note),
-                ProviderQuote(provider: .qunar, unit: .perPerson, kind: .checkOnProvider, bookingURL: URL(string: "https://bus.qunar.com/"), note: note)
+                ProviderQuote(provider: .qunar, unit: .perPerson, kind: .checkOnProvider, bookingURL: URL(string: "https://bus.qunar.com/"), note: note),
+                ProviderQuote(provider: .tongcheng, unit: .perPerson, kind: .checkOnProvider, bookingURL: URL(string: "https://m.ly.com/bus/"), note: note)
             ]
         }
     }

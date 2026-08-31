@@ -6,6 +6,8 @@ AnyTravel 把每个来源做成独立适配器。某个渠道没有返回时，�
 
 App 直接使用 Apple MapKit：`MKLocalSearch` 搜索目的地、景点、酒店、民宿、机场和车站，`MKDirections` 计算当前日的真实路段。MapKit 返回的住宿网站会作为“住宿官网”入口保留，但是否为物业直营网站仍由用户在打开后判断。
 
+iOS 0.6.0 还会在伴随服务已接通时请求高德 Web 服务地点搜索。节点保留高德返回的 GCJ-02 原始坐标，并把近似反算的 WGS84 坐标连同 `sourceCRS`、`outputCRS` 一起返回；客户端只接受坐标语义完整、范围有效的候选，并明确标成“高德地图 · Web服务”。高德失败不会阻断 MapKit 结果。`AMAP_API_KEY` 必须是控制台中平台类型为“Web 服务”的 Key；当前提供的 Key 在 2026-08-31 联网验证中返回 `USERKEY_PLAT_NOMATCH (10009)`，因此尚未把它标记为可用来源。
+
 官方资料：[MKLocalSearch](https://developer.apple.com/documentation/mapkit/mklocalsearch)、[MKDirections](https://developer.apple.com/documentation/mapkit/mkdirections)。
 
 ### 机场/车站与住宿之间的接驳
@@ -32,9 +34,9 @@ iOS 0.5.3 会在用户选定大交通和住宿后，用 `MKDirections` 分别查
 
 2026-08-31 的联网验收中，3 个苏州酒店候选均取得实时展示价和购买链接。未匹配结果不会被错误贴到其他酒店卡片上。
 
-### 去哪儿、Trip.com 与住宿官网
+### 去哪儿、同程、Trip.com 与住宿官网
 
-App 已提供应用内登录、Cookie 会话复用和购买页入口。iOS 0.5.0 会在保存前确认对应平台域名已有有效 Cookie，并在 Cookie 失效后撤销会话状态。去哪儿当前公开桌面酒店搜索入口会回到综合首页，其开放平台主要面向酒店供应商，因此没有把它写成已验证的实时价格源。节点接口保留独立适配器位置，后续接入不会改变 iOS 数据模型。
+App 已提供应用内登录、Cookie 会话复用和购买页入口。iOS 会在保存前确认对应平台域名已有有效 Cookie，并在 Cookie 失效后撤销会话状态。同程会识别 `ly.com`、`17u.cn` 与 `elong.com` 的用户网页会话。去哪儿当前公开桌面酒店搜索入口会回到综合首页，其开放平台主要面向酒店供应商，因此没有把它写成已验证的实时价格源。节点接口保留独立适配器位置，后续接入不会改变 iOS 数据模型。
 
 平台资料：[去哪儿酒店开放平台](https://open.hotel.qunar.com/)、[携程分销合作](https://pages.ctrip.com/public/dlhz.htm)。
 
@@ -49,6 +51,12 @@ App 已提供应用内登录、Cookie 会话复用和购买页入口。iOS 0.5.0
 ## 航班
 
 iOS 数据模型已支持航班卡、机场到住宿距离、报价和购买链接。0.5.0 仍只显示明确的渠道查询入口；真正的聚合实时价需要后续配置合作接口。Skyscanner 的 Live Prices 接口采用 create/poll 流程，并要求 API key，接入时应按其[航班实时价格说明](https://developers.skyscanner.net/docs/flights-live-prices/overview)和[认证说明](https://developers.skyscanner.net/docs/getting-started/authentication)实现。
+
+## 智能向导
+
+`POST /v1/assistant/interpret` 使用服务端环境变量中的 `ZAI_API_KEY`、`ZAI_BASE_URL` 和 `ZAI_MODEL` 调用智谱 OpenAI 兼容接口，默认模型为 `glm-5.3-flash`。上下文只包含当前行程条件与已有地点；服务端只接受节奏、市内交通、预算、聚焦已有地点和移除已有地点五类动作，iOS 收到后还会再次校验名称、枚举和预算范围。
+
+iOS 设置也支持用户自己的 OpenAI 兼容服务。Base URL 与模型名保存在本机偏好，自定义 API Key 使用 Keychain 的“仅此设备”保护，页面不会把已保存 Key 读回明文。托管服务不可用时，已经能由本机确定的“轻松一点”“公交优先”等指令仍会继续执行；无法确定的内容会保留为可恢复的提示。
 
 ## 返回给 App 的共同字段
 

@@ -35,6 +35,7 @@ struct PricingProviderIssue: Hashable, Sendable {
         case "rollinggo": "道旅 RollingGo"
         case "ctrip": "携程"
         case "qunar": "去哪儿"
+        case "tongcheng", "ly": "同程旅行"
         case "trip.com", "tripcom": "Trip.com"
         case "12306", "railway12306": "铁路 12306"
         case "unknown": "报价渠道"
@@ -513,6 +514,7 @@ private extension TravelProvider {
         switch backendName.lowercased() {
         case "ctrip", "携程": self = .ctrip
         case "qunar", "去哪儿": self = .qunar
+        case "tongcheng", "ly", "同程旅行": self = .tongcheng
         case "trip.com", "tripcom": self = .tripCom
         case "skyscanner": self = .skyscanner
         case "rollinggo", "dida": self = .rollingGo
