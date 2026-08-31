@@ -105,7 +105,53 @@ final class AnyTravelUITests: XCTestCase {
 
         XCTAssertFalse(app.staticTexts["拙政园"].exists)
         XCTAssertTrue(app.staticTexts["苏州博物馆"].exists)
+
+        let undoButton = app.buttons["撤销"]
+        XCTAssertTrue(undoButton.isHittable)
+        undoButton.tap()
+        XCTAssertTrue(app.staticTexts["拙政园"].waitForExistence(timeout: 3))
+
+        let redoButton = app.buttons["重做"]
+        XCTAssertTrue(redoButton.isHittable)
+        redoButton.tap()
+        let gardenRemoved = NSPredicate(format: "exists == false")
+        expectation(for: gardenRemoved, evaluatedWith: app.staticTexts["拙政园"])
+        waitForExpectations(timeout: 3)
+
+        undoButton.tap()
+        XCTAssertTrue(app.staticTexts["拙政园"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["完成"].isHittable)
+    }
+
+    func testGeneratedTripCanCopyAStopToAnotherDay() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--skip-onboarding", "--ui-test-ready"]
+        app.launch()
+
+        XCTAssertTrue(app.buttons["调整"].waitForExistence(timeout: 5))
+        app.buttons["调整"].tap()
+        XCTAssertTrue(app.buttons["增删与调整路线"].waitForExistence(timeout: 2))
+        app.buttons["增删与调整路线"].tap()
+
+        XCTAssertTrue(app.navigationBars["编排行程"].waitForExistence(timeout: 3))
+        app.buttons["调整拙政园"].tap()
+        XCTAssertTrue(app.buttons["复制到另一天"].waitForExistence(timeout: 2))
+        app.buttons["复制到另一天"].tap()
+
+        let copyToDayTwo = app.buttons["copy-stop-to-day-1"]
+        XCTAssertTrue(copyToDayTwo.waitForExistence(timeout: 2))
+        copyToDayTwo.tap()
+
+        let dayTwo = app.buttons["itinerary-day-1"]
+        XCTAssertTrue(dayTwo.waitForExistence(timeout: 2))
+        dayTwo.tap()
+        XCTAssertTrue(app.staticTexts["平江路"].exists)
+        XCTAssertTrue(app.staticTexts["拙政园"].waitForExistence(timeout: 3))
+
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "跨天复制后的行程编辑器"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
     }
 
     func testGeneratedTripCanChangeConditionsAndKeepItsPlan() {

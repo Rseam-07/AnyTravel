@@ -6,6 +6,12 @@ import UIKit
 
 @Observable
 final class PlannerViewModel {
+    private struct ItineraryEditSnapshot: Equatable {
+        var days: [ItineraryDay]
+        var selectedDayIndex: Int
+        var selectedPlaceID: TravelPlace.ID?
+    }
+
     enum RecoveryAction {
         case resolveDestination
         case generatePlan
@@ -34,6 +40,8 @@ final class PlannerViewModel {
     var settingsPresented = false
     var itineraryEditorPresented = false
     var conditionsEditorPresented = false
+    var canUndoItineraryChange = false
+    var canRedoItineraryChange = false
     var planMapFocus: PlanMapFocus = .itinerary
     var accommodations: [AccommodationOption] = []
     var selectedAccommodationID: AccommodationOption.ID?
@@ -63,6 +71,8 @@ final class PlannerViewModel {
     @ObservationIgnored private var recoveryAction: RecoveryAction?
     @ObservationIgnored private var activeSavedTripID: SavedTrip.ID?
     @ObservationIgnored private var itineraryNeedsLogisticsRefresh = false
+    @ObservationIgnored private var itineraryUndoStack: [ItineraryEditSnapshot] = []
+    @ObservationIgnored private var itineraryRedoStack: [ItineraryEditSnapshot] = []
     @ObservationIgnored private var didBootstrap = false
 
     init(
@@ -269,6 +279,28 @@ final class PlannerViewModel {
                         interest: .gardens
                     )
                 ]
+            ),
+            ItineraryDay(
+                index: 1,
+                stops: [
+                    TravelPlace(
+                        name: "平江路",
+                        address: "苏州市姑苏区平江路",
+                        coordinate: Coordinate(latitude: 31.3114, longitude: 120.6297),
+                        interest: .culture
+                    )
+                ]
+            ),
+            ItineraryDay(
+                index: 2,
+                stops: [
+                    TravelPlace(
+                        name: "虎丘",
+                        address: "苏州市姑苏区虎丘山门内8号",
+                        coordinate: Coordinate(latitude: 31.3389, longitude: 120.5775),
+                        interest: .gardens
+                    )
+                ]
             )
         ]
         let hotel = AccommodationOption(
@@ -422,24 +454,19 @@ final class PlannerViewModel {
         )
     }
 
+    func isPlaceIncluded(_ place: TravelPlace) -> Bool {
+        containsEquivalentPlace(place)
+    }
+
     @discardableResult
     func addPlace(_ place: TravelPlace, to dayIndex: Int, refreshRoute: Bool = true) -> Bool {
         guard let dayPosition = itineraryDays.firstIndex(where: { $0.index == dayIndex }) else { return false }
-        let alreadyIncluded = itineraryDays.flatMap(\.stops).contains { existing in
-            let sameName = existing.name.localizedCaseInsensitiveCompare(place.name) == .orderedSame
-            let distance = CLLocation(
-                latitude: existing.coordinate.latitude,
-                longitude: existing.coordinate.longitude
-            ).distance(
-                from: CLLocation(latitude: place.coordinate.latitude, longitude: place.coordinate.longitude)
-            )
-            return sameName && distance < 160
-        }
-        guard !alreadyIncluded else {
+        guard !containsEquivalentPlace(place) else {
             noticeMessage = "“\(place.name)”已经在这段旅程里。"
             return false
         }
 
+        rememberItineraryForUndo()
         itineraryDays[dayPosition].stops.append(place)
         selectedDayIndex = dayIndex
         selectedPlaceID = place.id
@@ -457,8 +484,12 @@ final class PlannerViewModel {
         in dayIndex: Int,
         refreshRoute: Bool = true
     ) {
-        guard let dayPosition = itineraryDays.firstIndex(where: { $0.index == dayIndex }) else { return }
+        guard !fromOffsets.isEmpty,
+              let dayPosition = itineraryDays.firstIndex(where: { $0.index == dayIndex }) else { return }
+        let snapshot = currentItinerarySnapshot()
         itineraryDays[dayPosition].stops.move(fromOffsets: fromOffsets, toOffset: toOffset)
+        guard itineraryDays != snapshot.days else { return }
+        rememberItineraryForUndo(snapshot)
         itineraryDidChange(
             dayIndex: dayIndex,
             message: "第 \(dayIndex + 1) 天的先后次序已经重新排好。",
@@ -478,6 +509,7 @@ final class PlannerViewModel {
         }
         let targetIndex = currentIndex + offset
         guard itineraryDays[dayPosition].stops.indices.contains(targetIndex) else { return }
+        rememberItineraryForUndo()
         let moved = itineraryDays[dayPosition].stops.remove(at: currentIndex)
         itineraryDays[dayPosition].stops.insert(moved, at: targetIndex)
         itineraryDidChange(
@@ -501,6 +533,7 @@ final class PlannerViewModel {
             noticeMessage = "每一天至少留下一处停靠；可以先添一个地点，再移走这一处。"
             return false
         }
+        rememberItineraryForUndo()
         itineraryDays[dayPosition].stops.removeAll { $0.id == place.id }
         if selectedPlaceID == place.id { selectedPlaceID = nil }
         itineraryDidChange(
@@ -511,8 +544,107 @@ final class PlannerViewModel {
         return true
     }
 
+    @discardableResult
+    func movePlace(
+        _ place: TravelPlace,
+        from sourceDayIndex: Int,
+        to destinationDayIndex: Int,
+        refreshRoute: Bool = true
+    ) -> Bool {
+        guard sourceDayIndex != destinationDayIndex,
+              let sourcePosition = itineraryDays.firstIndex(where: { $0.index == sourceDayIndex }),
+              let destinationPosition = itineraryDays.firstIndex(where: { $0.index == destinationDayIndex }),
+              let placePosition = itineraryDays[sourcePosition].stops.firstIndex(where: { $0.id == place.id }) else {
+            return false
+        }
+        guard itineraryDays[sourcePosition].stops.count > 1 else {
+            noticeMessage = "每一天至少留下一处停靠；可以复制这一站，或先为当天添一个地点。"
+            return false
+        }
+        guard !containsEquivalentPlace(place, in: destinationDayIndex) else {
+            noticeMessage = "第 \(destinationDayIndex + 1) 天已经有“\(place.name)”。"
+            return false
+        }
+
+        rememberItineraryForUndo()
+        let movedPlace = itineraryDays[sourcePosition].stops.remove(at: placePosition)
+        itineraryDays[destinationPosition].stops.append(movedPlace)
+        if selectedPlaceID == place.id { selectedPlaceID = nil }
+        itineraryDidChange(
+            dayIndices: [sourceDayIndex, destinationDayIndex],
+            message: "已把“\(place.name)”移到第 \(destinationDayIndex + 1) 天。",
+            refreshRoute: refreshRoute
+        )
+        return true
+    }
+
+    @discardableResult
+    func duplicatePlace(
+        _ place: TravelPlace,
+        from sourceDayIndex: Int,
+        to destinationDayIndex: Int,
+        refreshRoute: Bool = true
+    ) -> TravelPlace? {
+        guard sourceDayIndex != destinationDayIndex,
+              itineraryDays.contains(where: { day in
+                  day.index == sourceDayIndex && day.stops.contains(where: { $0.id == place.id })
+              }),
+              let destinationPosition = itineraryDays.firstIndex(where: { $0.index == destinationDayIndex }) else {
+            return nil
+        }
+        guard !containsEquivalentPlace(place, in: destinationDayIndex) else {
+            noticeMessage = "第 \(destinationDayIndex + 1) 天已经有“\(place.name)”。"
+            return nil
+        }
+
+        let copiedPlace = TravelPlace(
+            name: place.name,
+            address: place.address,
+            coordinate: place.coordinate,
+            interest: place.interest,
+            source: place.source
+        )
+        rememberItineraryForUndo()
+        itineraryDays[destinationPosition].stops.append(copiedPlace)
+        itineraryDidChange(
+            dayIndices: [destinationDayIndex],
+            message: "已把“\(place.name)”也放进第 \(destinationDayIndex + 1) 天。",
+            refreshRoute: refreshRoute
+        )
+        return copiedPlace
+    }
+
+    func beginItineraryEditing() {
+        clearItineraryHistory()
+        noticeMessage = nil
+        itineraryEditorPresented = true
+    }
+
+    func undoItineraryChange(refreshRoute: Bool = true) {
+        guard let previous = itineraryUndoStack.popLast() else { return }
+        itineraryRedoStack.append(currentItinerarySnapshot())
+        restoreItinerarySnapshot(
+            previous,
+            message: "已撤回上一步，地图也回到先前的安排。",
+            refreshRoute: refreshRoute
+        )
+        syncItineraryHistoryAvailability()
+    }
+
+    func redoItineraryChange(refreshRoute: Bool = true) {
+        guard let next = itineraryRedoStack.popLast() else { return }
+        itineraryUndoStack.append(currentItinerarySnapshot())
+        restoreItinerarySnapshot(
+            next,
+            message: "已重新应用这一步，路线正在跟上。",
+            refreshRoute: refreshRoute
+        )
+        syncItineraryHistoryAvailability()
+    }
+
     func finishItineraryEditing() {
         itineraryEditorPresented = false
+        clearItineraryHistory()
         guard itineraryNeedsLogisticsRefresh else { return }
         itineraryNeedsLogisticsRefresh = false
         refreshLogisticsInBackground()
@@ -1097,6 +1229,7 @@ final class PlannerViewModel {
         itineraryEditorPresented = false
         conditionsEditorPresented = false
         itineraryNeedsLogisticsRefresh = false
+        clearItineraryHistory()
         cameraPosition = .region(Self.initialRegion)
     }
 
@@ -1107,20 +1240,102 @@ final class PlannerViewModel {
     }
 
     private func itineraryDidChange(dayIndex: Int, message: String, refreshRoute: Bool) {
-        routesByDay[dayIndex] = nil
-        failedSegmentsByDay[dayIndex] = nil
+        itineraryDidChange(dayIndices: [dayIndex], message: message, refreshRoute: refreshRoute)
+    }
+
+    private func itineraryDidChange(
+        dayIndices: Set<Int>,
+        message: String,
+        refreshRoute: Bool
+    ) {
+        for dayIndex in dayIndices {
+            routesByDay[dayIndex] = nil
+            failedSegmentsByDay[dayIndex] = nil
+        }
         visibleLegCount = 0
         noticeMessage = message
         quoteRefreshState = .stale("景点分布变了，住处距离与接驳方式需要重新丈量。")
         itineraryNeedsLogisticsRefresh = true
         fitCurrentDay(animated: true)
 
-        guard refreshRoute, selectedDayIndex == dayIndex else { return }
+        guard refreshRoute, dayIndices.contains(selectedDayIndex) else { return }
         routeTask?.cancel()
         revealTask?.cancel()
         routeTask = Task { [weak self] in
             await self?.loadRoutesForSelectedDay(reveal: true)
         }
+    }
+
+    private func currentItinerarySnapshot() -> ItineraryEditSnapshot {
+        ItineraryEditSnapshot(
+            days: itineraryDays,
+            selectedDayIndex: selectedDayIndex,
+            selectedPlaceID: selectedPlaceID
+        )
+    }
+
+    private func rememberItineraryForUndo(_ snapshot: ItineraryEditSnapshot? = nil) {
+        let snapshot = snapshot ?? currentItinerarySnapshot()
+        guard itineraryUndoStack.last != snapshot else { return }
+        itineraryUndoStack.append(snapshot)
+        if itineraryUndoStack.count > 30 {
+            itineraryUndoStack.removeFirst(itineraryUndoStack.count - 30)
+        }
+        itineraryRedoStack.removeAll()
+        syncItineraryHistoryAvailability()
+    }
+
+    private func restoreItinerarySnapshot(
+        _ snapshot: ItineraryEditSnapshot,
+        message: String,
+        refreshRoute: Bool
+    ) {
+        let affectedDays = Set(itineraryDays.map(\.index)).union(snapshot.days.map(\.index))
+        itineraryDays = snapshot.days
+        selectedDayIndex = itineraryDays.contains(where: { $0.index == snapshot.selectedDayIndex })
+            ? snapshot.selectedDayIndex
+            : itineraryDays.first?.index ?? 0
+        selectedPlaceID = itineraryDays
+            .first(where: { $0.index == selectedDayIndex })?
+            .stops
+            .contains(where: { $0.id == snapshot.selectedPlaceID }) == true
+            ? snapshot.selectedPlaceID
+            : nil
+        itineraryDidChange(
+            dayIndices: affectedDays,
+            message: message,
+            refreshRoute: refreshRoute
+        )
+    }
+
+    private func clearItineraryHistory() {
+        itineraryUndoStack.removeAll()
+        itineraryRedoStack.removeAll()
+        syncItineraryHistoryAvailability()
+    }
+
+    private func syncItineraryHistoryAvailability() {
+        canUndoItineraryChange = !itineraryUndoStack.isEmpty
+        canRedoItineraryChange = !itineraryRedoStack.isEmpty
+    }
+
+    private func containsEquivalentPlace(_ place: TravelPlace, in dayIndex: Int? = nil) -> Bool {
+        itineraryDays
+            .filter { dayIndex == nil || $0.index == dayIndex }
+            .flatMap(\.stops)
+            .contains { existing in
+                let sameName = existing.name.localizedCaseInsensitiveCompare(place.name) == .orderedSame
+                let distance = CLLocation(
+                    latitude: existing.coordinate.latitude,
+                    longitude: existing.coordinate.longitude
+                ).distance(
+                    from: CLLocation(
+                        latitude: place.coordinate.latitude,
+                        longitude: place.coordinate.longitude
+                    )
+                )
+                return sameName && distance < 160
+            }
     }
 
     private func loadRoutesForSelectedDay(reveal: Bool) async {

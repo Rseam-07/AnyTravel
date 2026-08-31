@@ -40,6 +40,62 @@ final class ItineraryEditingTests: XCTestCase {
     }
 
     @MainActor
+    func testCanMoveAndCopyAStopAcrossDays() throws {
+        let model = try makeModel()
+        let garden = place("拙政园", latitude: 31.3265)
+        let museum = place("苏州博物馆", latitude: 31.3247)
+        let canal = place("山塘街", latitude: 31.3200)
+        model.itineraryDays = [
+            ItineraryDay(index: 0, stops: [garden, museum]),
+            ItineraryDay(index: 1, stops: [canal])
+        ]
+
+        XCTAssertTrue(model.movePlace(museum, from: 0, to: 1, refreshRoute: false))
+        XCTAssertEqual(model.itineraryDays[0].stops.map(\.name), ["拙政园"])
+        XCTAssertEqual(model.itineraryDays[1].stops.map(\.name), ["山塘街", "苏州博物馆"])
+
+        let copiedGarden = try XCTUnwrap(
+            model.duplicatePlace(garden, from: 0, to: 1, refreshRoute: false)
+        )
+        XCTAssertEqual(copiedGarden.name, garden.name)
+        XCTAssertNotEqual(copiedGarden.id, garden.id)
+        XCTAssertEqual(model.itineraryDays[1].stops.map(\.name), ["山塘街", "苏州博物馆", "拙政园"])
+
+        XCTAssertFalse(model.movePlace(garden, from: 0, to: 1, refreshRoute: false))
+        XCTAssertEqual(model.itineraryDays[0].stops.map(\.name), ["拙政园"])
+        XCTAssertTrue(model.noticeMessage?.contains("至少留下一处") == true)
+    }
+
+    @MainActor
+    func testCanUndoAndRedoItineraryChanges() throws {
+        let model = try makeModel()
+        let first = place("拙政园", latitude: 31.3265)
+        let second = place("苏州博物馆", latitude: 31.3247)
+        let added = place("平江路", latitude: 31.3150)
+        model.itineraryDays = [ItineraryDay(index: 0, stops: [first, second])]
+        model.beginItineraryEditing()
+
+        XCTAssertTrue(model.removePlace(first, from: 0, refreshRoute: false))
+        XCTAssertEqual(model.currentStops.map(\.name), ["苏州博物馆"])
+        XCTAssertTrue(model.canUndoItineraryChange)
+        XCTAssertFalse(model.canRedoItineraryChange)
+
+        model.undoItineraryChange(refreshRoute: false)
+        XCTAssertEqual(model.currentStops.map(\.name), ["拙政园", "苏州博物馆"])
+        XCTAssertFalse(model.canUndoItineraryChange)
+        XCTAssertTrue(model.canRedoItineraryChange)
+
+        model.redoItineraryChange(refreshRoute: false)
+        XCTAssertEqual(model.currentStops.map(\.name), ["苏州博物馆"])
+        XCTAssertTrue(model.canUndoItineraryChange)
+        XCTAssertFalse(model.canRedoItineraryChange)
+
+        XCTAssertTrue(model.addPlace(added, to: 0, refreshRoute: false))
+        XCTAssertEqual(model.currentStops.map(\.name), ["苏州博物馆", "平江路"])
+        XCTAssertFalse(model.canRedoItineraryChange)
+    }
+
+    @MainActor
     private func makeModel() throws -> PlannerViewModel {
         let suiteName = "AnyTravel.ItineraryEditingTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

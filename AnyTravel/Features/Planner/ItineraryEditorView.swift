@@ -3,6 +3,7 @@ import SwiftUI
 struct ItineraryEditorView: View {
     @Bindable var model: PlannerViewModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedDayIndex = 0
     @State private var searchText = ""
     @State private var searchInterest: TripInterest = .culture
@@ -20,6 +21,17 @@ struct ItineraryEditorView: View {
             VStack(spacing: 0) {
                 dayPicker
 
+                if let notice = model.noticeMessage {
+                    Label(notice, systemImage: "sparkles")
+                        .font(.caption)
+                        .foregroundStyle(AnyTravelPalette.secondaryInk)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 9)
+                        .background(AnyTravelPalette.route.opacity(0.08))
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
                 List {
                     Section {
                         if let selectedDay {
@@ -27,18 +39,22 @@ struct ItineraryEditorView: View {
                                 stopRow(place, index: index, count: selectedDay.stops.count)
                                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                         Button(role: .destructive) {
-                                            model.removePlace(place, from: selectedDayIndex)
+                                            performAnimatedEdit {
+                                                model.removePlace(place, from: selectedDayIndex)
+                                            }
                                         } label: {
                                             Label("移出行程", systemImage: "trash")
                                         }
                                     }
                             }
                             .onMove { offsets, destination in
-                                model.moveStops(
-                                    fromOffsets: offsets,
-                                    toOffset: destination,
-                                    in: selectedDayIndex
-                                )
+                                performAnimatedEdit {
+                                    model.moveStops(
+                                        fromOffsets: offsets,
+                                        toOffset: destination,
+                                        in: selectedDayIndex
+                                    )
+                                }
                             }
                         }
                     } header: {
@@ -81,12 +97,36 @@ struct ItineraryEditorView: View {
                     }
                 }
                 .listStyle(.insetGrouped)
+                .animation(
+                    AnyTravelMotion.snappy(reduceMotion: reduceMotion),
+                    value: model.itineraryDays
+                )
             }
             .navigationTitle("编排行程")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                ToolbarItemGroup(placement: .topBarLeading) {
                     EditButton()
+
+                    Button {
+                        performAnimatedEdit {
+                            model.undoItineraryChange()
+                        }
+                    } label: {
+                        Image(systemName: "arrow.uturn.backward")
+                    }
+                    .disabled(!model.canUndoItineraryChange)
+                    .accessibilityLabel("撤销")
+
+                    Button {
+                        performAnimatedEdit {
+                            model.redoItineraryChange()
+                        }
+                    } label: {
+                        Image(systemName: "arrow.uturn.forward")
+                    }
+                    .disabled(!model.canRedoItineraryChange)
+                    .accessibilityLabel("重做")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成") {
@@ -122,6 +162,7 @@ struct ItineraryEditorView: View {
                                 .font(.caption.weight(.bold))
                             Text("\(day.stops.count)处")
                                 .font(.caption2)
+                                .contentTransition(.numericText())
                         }
                         .foregroundStyle(selected ? .white : AnyTravelPalette.routeDark)
                         .padding(.horizontal, 16)
@@ -129,6 +170,9 @@ struct ItineraryEditorView: View {
                         .background(selected ? AnyTravelPalette.route : AnyTravelPalette.softSurface, in: Capsule())
                     }
                     .buttonStyle(AnyTravelPressStyle())
+                    .accessibilityLabel(day.title)
+                    .accessibilityValue("\(day.stops.count)处")
+                    .accessibilityIdentifier("itinerary-day-\(day.index)")
                     .accessibilityAddTraits(selected ? .isSelected : [])
                 }
             }
@@ -204,23 +248,71 @@ struct ItineraryEditorView: View {
 
             Menu {
                 Button {
-                    model.movePlace(place, by: -1, in: selectedDayIndex)
+                    performAnimatedEdit {
+                        model.movePlace(place, by: -1, in: selectedDayIndex)
+                    }
                 } label: {
                     Label("向前一站", systemImage: "arrow.up")
                 }
                 .disabled(index == 0)
 
                 Button {
-                    model.movePlace(place, by: 1, in: selectedDayIndex)
+                    performAnimatedEdit {
+                        model.movePlace(place, by: 1, in: selectedDayIndex)
+                    }
                 } label: {
                     Label("向后一站", systemImage: "arrow.down")
                 }
                 .disabled(index == count - 1)
 
+                if model.itineraryDays.count > 1 {
+                    Divider()
+
+                    Menu {
+                        ForEach(otherDays) { day in
+                            Button {
+                                performAnimatedEdit {
+                                    model.movePlace(
+                                        place,
+                                        from: selectedDayIndex,
+                                        to: day.index
+                                    )
+                                }
+                            } label: {
+                                Label(day.title, systemImage: "arrow.right")
+                            }
+                            .accessibilityIdentifier("move-stop-to-day-\(day.index)")
+                        }
+                    } label: {
+                        Label("移到另一天", systemImage: "calendar")
+                    }
+
+                    Menu {
+                        ForEach(otherDays) { day in
+                            Button {
+                                performAnimatedEdit {
+                                    model.duplicatePlace(
+                                        place,
+                                        from: selectedDayIndex,
+                                        to: day.index
+                                    )
+                                }
+                            } label: {
+                                Label(day.title, systemImage: "plus.rectangle.on.rectangle")
+                            }
+                            .accessibilityIdentifier("copy-stop-to-day-\(day.index)")
+                        }
+                    } label: {
+                        Label("复制到另一天", systemImage: "square.on.square")
+                    }
+                }
+
                 Divider()
 
                 Button(role: .destructive) {
-                    model.removePlace(place, from: selectedDayIndex)
+                    performAnimatedEdit {
+                        model.removePlace(place, from: selectedDayIndex)
+                    }
                 } label: {
                     Label("移出行程", systemImage: "trash")
                 }
@@ -235,11 +327,13 @@ struct ItineraryEditorView: View {
     }
 
     private func searchResultRow(_ place: TravelPlace) -> some View {
-        let alreadyIncluded = model.itineraryDays.flatMap(\.stops).contains { existing in
-            existing.name.localizedCaseInsensitiveCompare(place.name) == .orderedSame
-        }
+        let alreadyIncluded = model.isPlaceIncluded(place)
         return Button {
-            guard model.addPlace(place, to: selectedDayIndex) else { return }
+            var added = false
+            performAnimatedEdit {
+                added = model.addPlace(place, to: selectedDayIndex)
+            }
+            guard added else { return }
             searchResults.removeAll { $0.id == place.id }
         } label: {
             HStack(spacing: 11) {
@@ -295,6 +389,16 @@ struct ItineraryEditorView: View {
             searchResults = []
             isSearching = false
             searchError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    private var otherDays: [ItineraryDay] {
+        model.itineraryDays.filter { $0.index != selectedDayIndex }
+    }
+
+    private func performAnimatedEdit(_ edit: () -> Void) {
+        withAnimation(AnyTravelMotion.snappy(reduceMotion: reduceMotion)) {
+            edit()
         }
     }
 }

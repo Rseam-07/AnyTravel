@@ -395,7 +395,7 @@ struct PlannerPanel: View {
                 Spacer()
                 Menu {
                     Button {
-                        model.itineraryEditorPresented = true
+                        model.beginItineraryEditing()
                     } label: {
                         Label("增删与调整路线", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
                     }

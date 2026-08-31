@@ -12,9 +12,11 @@ AnyTravel 是一款地图优先的开源 iOS 与 Android 旅行规划应用。�
 
 ![地图上的完整苏州方案](Documentation/Screenshots/complete-plan.png)
 
+![跨天复制、撤销与重做](Documentation/Screenshots/itinerary-editor.png)
+
 动效实录：[首次启动与初始化](Documentation/Demo/onboarding-motion.mp4) · [地图、住宿、交通与费用联动](Documentation/Demo/map-plan-motion.mp4)
 
-下载：[iOS 0.5.0 无签名 IPA](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.5.0) · [Android 0.4.0 APK](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.4.0)
+下载：[iOS 0.5.1 无签名 IPA](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.5.1) · [Android 0.4.0 APK](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.4.0)
 
 <p align="center">
   <img src="Documentation/Screenshots/android-welcome.png" width="30%" alt="Android 欢迎页">
@@ -28,7 +30,7 @@ AnyTravel 是一款地图优先的开源 iOS 与 Android 旅行规划应用。�
 - iOS 可在应用内登录携程、去哪儿、Trip.com 和铁路 12306；Android 0.4 先提供平台页面入口。密码只提交给平台网页，AnyTravel 不读取或保存密码。
 - 日期、预算、兴趣、住宿和交通没有固定填写顺序，每一项都可以暂时留白。
 - `MKLocalSearch` 会寻找真实景点、酒店、民宿和交通枢纽；`MKDirections` 会逐段绘制当前日路线。
-- 方案生成后仍可继续搜索 Apple Maps 地点、添加或删除停靠、拖动顺序，也可修改日期、出发地、人数、预算与交通偏好；地图路线和受影响的住宿、交通会重新计算。
+- 方案生成后仍可继续搜索 Apple Maps 地点、添加或删除停靠、拖动顺序、跨天移动或复制，并可撤销与重做；也能修改日期、出发地、人数、预算与交通偏好。地图路线和受影响的住宿、交通会重新计算。
 - 选定住处后，交通建议会结合抵达时间、车站或机场到住处的距离、总耗时和票价重新排列。
 - 最终方案包含每天的具体时段、地点介绍、路线、住宿候选、交通方式、购买入口和费用明细。
 - 用户拖动地图时，自动镜头立即让出控制；点击卡片、车站或酒店时，地图再把相应位置带回视野。
@@ -106,7 +108,7 @@ xcodebuild \
 cd Backend && npm test
 ```
 
-0.5.0 发布前验证结果：18/18 iOS 单元测试、6/6 XCUITest、8/8 Node 测试通过；iPhone 17 Pro 模拟器走通首次进入、四类方案、保存恢复、生成后删改景点与条件重算，设备 Release 构建产物为 0.5.0（4）。2026-08-31 的联网抽查中，“上海→苏州”返回 8 个可购车次及余票、展示价格与购买入口；RollingGo 对 3 个苏州酒店候选完成逐店实时查询，3 个均返回可展示的每晚价与购买链接。密钥只保存在被 Git 忽略的节点环境文件中。当前铁路实时结果为去程；费用表把返程单列为预算预留，不会把去程价冒充往返实时报价。
+0.5.1 发布前验证结果：20/20 iOS 单元测试、7/7 XCUITest、8/8 Node 测试通过；iPhone 17 Pro 模拟器走通首次进入、四类方案、保存恢复、生成后删改景点、跨天复制、撤销重做与条件重算，设备 Release 构建产物为 0.5.1（5）。2026-08-31 的联网抽查中，“上海→苏州”返回 8 个可购车次及余票、展示价格与购买入口；RollingGo 对 3 个苏州酒店候选完成逐店实时查询，3 个均返回可展示的每晚价与购买链接。密钥只保存在被 Git 忽略的节点环境文件中。当前铁路实时结果为去程；费用表把返程单列为预算预留，不会把去程价冒充往返实时报价。
 
 0.4.0 Android 发布前验证结果：4/4 规划逻辑单元测试、1/1 Android 12 Compose 端到端流程和 lint 通过。APK 在 API 31 arm64 模拟器完成安装与视觉检查，并实际连接同一报价节点，显示 RollingGo 酒店实时价和铁路 12306 班次、票价、余票、接驳距离与抓取时间。APK 为调试签名预览包，尚未替代生产签名和真机矩阵。
 
