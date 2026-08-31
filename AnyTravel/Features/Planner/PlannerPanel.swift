@@ -5,27 +5,35 @@ struct PlannerPanel: View {
     @State private var readyExpanded = false
     @FocusState private var destinationFocused: Bool
     @FocusState private var adjustmentFocused: Bool
+    @Namespace private var sectionMotion
+    @Namespace private var dayMotion
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Group {
             switch model.phase {
             case .destination:
                 destinationPanel
+                    .transition(AnyTravelMotion.panelTransition(reduceMotion: reduceMotion))
             case .preferences:
                 preferencesPanel
+                    .transition(AnyTravelMotion.panelTransition(reduceMotion: reduceMotion))
             case .discovering:
                 discoveringPanel
+                    .transition(AnyTravelMotion.panelTransition(reduceMotion: reduceMotion))
             case .ready:
                 readyPanel
+                    .transition(AnyTravelMotion.panelTransition(reduceMotion: reduceMotion))
             case .failure:
                 failurePanel
+                    .transition(AnyTravelMotion.panelTransition(reduceMotion: reduceMotion))
             }
         }
         .padding(.horizontal, 18)
         .padding(.top, 10)
         .padding(.bottom, 16)
         .anyTravelGlassCard(cornerRadius: 31)
-        .animation(.snappy(duration: 0.42), value: model.phase)
+        .animation(AnyTravelMotion.settle(reduceMotion: reduceMotion), value: model.phase)
     }
 
     private var handle: some View {
@@ -43,7 +51,7 @@ struct PlannerPanel: View {
                 Text("从地图出发")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AnyTravelPalette.route)
-                Text("下一段迁徙，想落在哪里？")
+                Text("下一次旅行，你想前往哪里？")
                     .font(.title2.bold())
             }
 
@@ -353,7 +361,7 @@ struct PlannerPanel: View {
     private var readyPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
-                withAnimation(.snappy(duration: 0.35)) {
+                withAnimation(AnyTravelMotion.snappy(reduceMotion: reduceMotion)) {
                     readyExpanded.toggle()
                 }
             } label: {
@@ -361,9 +369,10 @@ struct PlannerPanel: View {
                     Capsule()
                         .fill(.secondary.opacity(0.28))
                         .frame(width: 38, height: 4)
-                    Image(systemName: readyExpanded ? "chevron.down" : "chevron.up")
+                    Image(systemName: "chevron.up")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(readyExpanded ? 180 : 0))
                 }
                 .frame(maxWidth: .infinity, minHeight: 24)
             }
@@ -376,10 +385,12 @@ struct PlannerPanel: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(readySectionTitle)
                         .font(.title3.bold())
+                        .contentTransition(.opacity)
                     Text(readySectionSubtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
+                        .contentTransition(.opacity)
                 }
                 Spacer()
                 Button {
@@ -404,7 +415,8 @@ struct PlannerPanel: View {
                     budgetReadyContent
                 }
             }
-            .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            .id(model.planMapFocus)
+            .transition(AnyTravelMotion.contentTransition(reduceMotion: reduceMotion))
 
             if let notice = model.noticeMessage {
                 HStack(alignment: .firstTextBaseline, spacing: 7) {
@@ -428,12 +440,14 @@ struct PlannerPanel: View {
                     .lineLimit(2)
             }
         }
-        .animation(.snappy(duration: 0.28), value: model.planMapFocus)
+        .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: model.planMapFocus)
+        .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: readyExpanded)
     }
 
     private var planSectionTabs: some View {
         HStack(spacing: 6) {
             ForEach(PlanMapFocus.allCases) { section in
+                let selected = model.planMapFocus == section
                 Button {
                     model.setPlanMapFocus(section)
                     if section != .itinerary { readyExpanded = true }
@@ -442,16 +456,25 @@ struct PlannerPanel: View {
                         .font(.caption2.weight(.semibold))
                         .labelStyle(.titleAndIcon)
                         .frame(maxWidth: .infinity, minHeight: 40)
-                        .foregroundStyle(model.planMapFocus == section ? .white : AnyTravelPalette.routeDark)
-                        .background(
-                            model.planMapFocus == section ? AnyTravelPalette.route : AnyTravelPalette.softSurface,
-                            in: RoundedRectangle(cornerRadius: 13, style: .continuous)
-                        )
+                        .foregroundStyle(selected ? .white : AnyTravelPalette.routeDark)
+                        .contentTransition(.symbolEffect(.replace))
+                        .background {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                    .fill(AnyTravelPalette.softSurface)
+                                if selected {
+                                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                        .fill(AnyTravelPalette.route)
+                                        .matchedGeometryEffect(id: "plan-section", in: sectionMotion)
+                                }
+                            }
+                        }
                 }
                 .buttonStyle(AnyTravelPressStyle())
-                .accessibilityAddTraits(model.planMapFocus == section ? .isSelected : [])
+                .accessibilityAddTraits(selected ? .isSelected : [])
             }
         }
+        .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: model.planMapFocus)
     }
 
     private var readySectionTitle: String {
@@ -486,22 +509,29 @@ struct PlannerPanel: View {
             ScrollView(.horizontal) {
                 HStack(spacing: 7) {
                     ForEach(model.itineraryDays) { day in
+                        let selected = model.selectedDayIndex == day.index
                         Button(day.title) { model.selectDay(day.index) }
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(model.selectedDayIndex == day.index ? .white : AnyTravelPalette.routeDark)
+                            .foregroundStyle(selected ? .white : AnyTravelPalette.routeDark)
                             .padding(.horizontal, 13)
                             .frame(minHeight: 38)
-                            .background(
-                                model.selectedDayIndex == day.index
-                                    ? AnyTravelPalette.routeColor(for: day.index)
-                                    : AnyTravelPalette.softSurface,
-                                in: Capsule()
-                            )
+                            .background {
+                                ZStack {
+                                    Capsule().fill(AnyTravelPalette.softSurface)
+                                    if selected {
+                                        Capsule()
+                                            .fill(AnyTravelPalette.routeColor(for: day.index))
+                                            .matchedGeometryEffect(id: "selected-day", in: dayMotion)
+                                    }
+                                }
+                            }
                             .buttonStyle(.plain)
+                            .accessibilityAddTraits(selected ? .isSelected : [])
                     }
                 }
             }
             .scrollIndicators(.hidden)
+            .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: model.selectedDayIndex)
 
             if let selectedPlace = model.selectedPlace {
                 selectedPlaceCard(selectedPlace)
@@ -593,8 +623,10 @@ struct PlannerPanel: View {
                             accommodationCard(option)
                         }
                     }
+                    .scrollTargetLayout()
                 }
                 .scrollIndicators(.hidden)
+                .scrollTargetBehavior(.viewAligned)
 
                 if let selected = model.selectedAccommodation {
                     quoteStrip(selected.quotes)
@@ -616,8 +648,10 @@ struct PlannerPanel: View {
                             transportCard(option)
                         }
                     }
+                    .scrollTargetLayout()
                 }
                 .scrollIndicators(.hidden)
+                .scrollTargetBehavior(.viewAligned)
                 if let selected = model.selectedTransport {
                     quoteStrip(selected.quotes)
                 }
@@ -804,20 +838,24 @@ struct PlannerPanel: View {
                     }
                     Image(systemName: selected ? "checkmark.circle.fill" : "circle")
                         .foregroundStyle(selected ? AnyTravelPalette.route : .secondary)
+                        .contentTransition(.symbolEffect(.replace))
                 }
             }
             .padding(11)
             .frame(width: 258, alignment: .leading)
             .frame(minHeight: 118)
+            .scaleEffect(selected && !reduceMotion ? 1 : 0.975)
             .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 17, style: .continuous)
                     .strokeBorder(selected ? AnyTravelPalette.route : .clear, lineWidth: 2)
             }
+            .shadow(color: selected ? AnyTravelPalette.route.opacity(0.16) : .clear, radius: 10, y: 5)
         }
         .buttonStyle(AnyTravelPressStyle())
         .accessibilityLabel("\(option.name)，\(pricedQuote?.priceText ?? "等待报价")")
         .accessibilityAddTraits(selected ? .isSelected : [])
+        .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: selected)
     }
 
     private func transportCard(_ option: TransportOption) -> some View {
@@ -857,19 +895,23 @@ struct PlannerPanel: View {
                     Spacer()
                     Image(systemName: selected ? "checkmark.circle.fill" : "circle")
                         .foregroundStyle(selected ? AnyTravelPalette.route : .secondary)
+                        .contentTransition(.symbolEffect(.replace))
                 }
             }
             .padding(11)
             .frame(width: 265, alignment: .leading)
             .frame(minHeight: 118)
+            .scaleEffect(selected && !reduceMotion ? 1 : 0.975)
             .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 17, style: .continuous)
                     .strokeBorder(selected ? AnyTravelPalette.route : .clear, lineWidth: 2)
             }
+            .shadow(color: selected ? AnyTravelPalette.route.opacity(0.16) : .clear, radius: 10, y: 5)
         }
         .buttonStyle(AnyTravelPressStyle())
         .accessibilityAddTraits(selected ? .isSelected : [])
+        .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: selected)
     }
 
     private func quoteStrip(_ quotes: [ProviderQuote]) -> some View {
@@ -910,8 +952,7 @@ struct PlannerPanel: View {
                     model.refreshLogisticsInBackground()
                 } label: {
                     VStack(alignment: .leading, spacing: 3) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.caption.weight(.bold))
+                        RefreshPriceIcon(isLoading: model.isLogisticsLoading)
                         Text("刷新此刻价格")
                             .font(.caption2.weight(.semibold))
                         Text(model.draft.logistics.hasDates ? "按当前日期" : "请先添上日期")
@@ -947,7 +988,7 @@ struct PlannerPanel: View {
 
     private func loadingModule(_ title: String) -> some View {
         HStack(spacing: 11) {
-            ProgressView().tint(AnyTravelPalette.route)
+            TravelLoadingGlyph()
             Text(title).font(.subheadline.weight(.medium))
         }
         .padding(13)
@@ -1061,11 +1102,64 @@ struct PlannerPanel: View {
             Circle()
                 .fill(active ? AnyTravelPalette.route : Color.secondary.opacity(0.25))
                 .frame(width: 7, height: 7)
+                .scaleEffect(active && !reduceMotion ? 1.30 : 1)
             Text(title)
                 .font(.caption2.weight(.medium))
         }
         .foregroundStyle(active ? AnyTravelPalette.routeDark : .secondary)
         .frame(maxWidth: .infinity, minHeight: 34)
         .background(AnyTravelPalette.softSurface, in: Capsule())
+        .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: active)
+    }
+}
+
+private struct RefreshPriceIcon: View {
+    let isLoading: Bool
+
+    @State private var rotation = 0.0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Image(systemName: isLoading ? "arrow.trianglehead.2.clockwise.rotate.90" : "arrow.clockwise")
+            .font(.caption.weight(.bold))
+            .contentTransition(.symbolEffect(.replace))
+            .rotationEffect(.degrees(rotation))
+            .onAppear { updateRotation() }
+            .onChange(of: isLoading) { _, _ in updateRotation() }
+    }
+
+    private func updateRotation() {
+        guard isLoading, !reduceMotion else {
+            withAnimation(.easeOut(duration: 0.16)) { rotation = 0 }
+            return
+        }
+        rotation = 0
+        withAnimation(.linear(duration: 0.84).repeatForever(autoreverses: false)) {
+            rotation = 360
+        }
+    }
+}
+
+private struct TravelLoadingGlyph: View {
+    @State private var rotation = 0.0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(AnyTravelPalette.route.opacity(0.16), lineWidth: 3)
+            Circle()
+                .trim(from: 0.08, to: 0.43)
+                .stroke(AnyTravelPalette.route, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .rotationEffect(.degrees(rotation))
+        }
+        .frame(width: 24, height: 24)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.linear(duration: 0.90).repeatForever(autoreverses: false)) {
+                rotation = 360
+            }
+        }
+        .accessibilityHidden(true)
     }
 }

@@ -7,6 +7,8 @@ struct OnboardingView: View {
 
     @State private var page = 0
     @State private var activeProvider: ProviderAccount?
+    @Namespace private var progressMotion
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -17,20 +19,51 @@ struct OnboardingView: View {
             )
             .ignoresSafeArea()
 
+            GeometryReader { proxy in
+                Circle()
+                    .fill(AnyTravelPalette.route.opacity(0.10))
+                    .frame(width: 290, height: 290)
+                    .blur(radius: 2)
+                    .offset(
+                        x: proxy.size.width * (page.isMultiple(of: 2) ? -0.18 : 0.48),
+                        y: proxy.size.height * (page < 2 ? -0.12 : 0.08)
+                    )
+                    .scaleEffect(page == 0 ? 1.06 : 0.90)
+
+                Circle()
+                    .fill(AnyTravelPalette.warm.opacity(0.09))
+                    .frame(width: 230, height: 230)
+                    .offset(
+                        x: proxy.size.width * (page == 2 ? 0.04 : 0.60),
+                        y: proxy.size.height * (page == 3 ? 0.42 : 0.66)
+                    )
+                    .scaleEffect(page == 2 ? 1.10 : 0.92)
+            }
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+            .animation(AnyTravelMotion.settle(reduceMotion: reduceMotion), value: page)
+
             VStack(spacing: 14) {
                 HStack {
                     Text("AnyTravel")
                         .font(.headline.weight(.bold))
                     Spacer()
                     if page < 3 {
-                        Button("跳过介绍") { page = 3 }
+                        Button("跳过介绍") {
+                            withAnimation(AnyTravelMotion.settle(reduceMotion: reduceMotion)) {
+                                page = 3
+                            }
+                        }
                             .font(.subheadline.weight(.semibold))
+                            .frame(minHeight: 44)
                     }
                 }
                 .padding(.horizontal, 22)
 
                 TabView(selection: $page) {
                     introductionPage(
+                        index: 0,
                         symbol: "bird.fill",
                         brandMark: true,
                         eyebrow: "旅行，是一场诗意的迁徙",
@@ -41,6 +74,7 @@ struct OnboardingView: View {
                     .tag(0)
 
                     introductionPage(
+                        index: 1,
                         symbol: "arrow.triangle.branch",
                         eyebrow: "出发没有固定次序",
                         title: "先买一张车票\n或先挑一扇喜欢的窗",
@@ -50,9 +84,10 @@ struct OnboardingView: View {
                     .tag(1)
 
                     introductionPage(
+                        index: 2,
                         symbol: "text.book.closed.fill",
                         eyebrow: "把远方写成可抵达的日常",
-                        title: "从第一程车，到最后一笔花费\n都替你安放妥帖",
+                        title: "从第一程车，\n到最后一笔花费，\n都替你安放妥帖",
                         detail: "每天默认走得松弛一些。\n住宿、交通、时间与费用，会汇成完整方案。\n每一笔价格，都留下来源与时间。",
                         accent: Color(red: 0.38, green: 0.34, blue: 0.72)
                     )
@@ -65,26 +100,40 @@ struct OnboardingView: View {
 
                 HStack(spacing: 7) {
                     ForEach(0..<4, id: \.self) { index in
-                        Capsule()
-                            .fill(index == page ? AnyTravelPalette.route : Color.secondary.opacity(0.22))
+                        ZStack {
+                            Capsule()
+                                .fill(Color.secondary.opacity(0.18))
+                            if index == page {
+                                Capsule()
+                                    .fill(AnyTravelPalette.route)
+                                    .matchedGeometryEffect(id: "onboarding-progress", in: progressMotion)
+                            }
+                        }
                             .frame(width: index == page ? 26 : 8, height: 8)
                     }
                 }
+                .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: page)
 
                 Button {
                     if page < 3 {
-                        withAnimation(.snappy) { page += 1 }
+                        withAnimation(AnyTravelMotion.settle(reduceMotion: reduceMotion)) { page += 1 }
                     } else {
                         completion()
                     }
                 } label: {
-                    Label(page == 3 ? "开始规划" : "继续", systemImage: page == 3 ? "map" : "arrow.right")
+                    HStack(spacing: 8) {
+                        Text(page == 3 ? "开始规划" : "继续")
+                            .contentTransition(.opacity)
+                        Image(systemName: page == 3 ? "map" : "arrow.right")
+                            .contentTransition(.symbolEffect(.replace))
+                    }
                         .font(.headline)
                         .foregroundStyle(.white)
                         .frame(maxWidth: 520, minHeight: 54)
                         .background(AnyTravelPalette.route, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 }
                 .buttonStyle(AnyTravelPressStyle())
+                .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: page)
                 .padding(.horizontal, 22)
                 .padding(.bottom, 10)
             }
@@ -93,9 +142,24 @@ struct OnboardingView: View {
         .sheet(item: $activeProvider) { provider in
             ProviderLoginView(provider: provider, sessionStore: sessionStore)
         }
+        .sensoryFeedback(.selection, trigger: page)
+        .task {
+            #if DEBUG
+            guard ProcessInfo.processInfo.arguments.contains("--motion-showcase") else { return }
+            try? await Task.sleep(for: .milliseconds(1_800))
+            for nextPage in 1...3 {
+                guard !Task.isCancelled else { return }
+                withAnimation(AnyTravelMotion.settle(reduceMotion: reduceMotion)) {
+                    page = nextPage
+                }
+                try? await Task.sleep(for: .milliseconds(1_650))
+            }
+            #endif
+        }
     }
 
     private func introductionPage(
+        index: Int,
         symbol: String,
         brandMark: Bool = false,
         eyebrow: String,
@@ -103,13 +167,15 @@ struct OnboardingView: View {
         detail: String,
         accent: Color
     ) -> some View {
-        VStack(spacing: 26) {
+        let isActive = page == index
+        return VStack(spacing: 26) {
             Spacer()
             ZStack {
                 RoundedRectangle(cornerRadius: 42, style: .continuous)
                     .fill(.white.opacity(0.72))
                     .frame(width: 250, height: 250)
-                    .rotationEffect(.degrees(-7))
+                    .rotationEffect(.degrees(isActive ? -7 : -12))
+                    .scaleEffect(isActive ? 1 : 0.92)
                     .shadow(color: accent.opacity(0.18), radius: 26, y: 15)
                 if brandMark {
                     Image("BrandMark")
@@ -118,10 +184,13 @@ struct OnboardingView: View {
                         .frame(width: 168, height: 168)
                         .clipShape(RoundedRectangle(cornerRadius: 38, style: .continuous))
                         .shadow(color: accent.opacity(0.16), radius: 14, y: 8)
+                        .scaleEffect(isActive ? 1 : 0.90)
                 } else {
                     Image(systemName: symbol)
                         .font(.system(size: 78, weight: .semibold))
                         .foregroundStyle(accent)
+                        .symbolEffect(.bounce, value: isActive)
+                        .scaleEffect(isActive ? 1 : 0.86)
                 }
             }
             VStack(spacing: 14) {
@@ -147,8 +216,11 @@ struct OnboardingView: View {
                     .frame(maxWidth: 350)
                     .padding(.horizontal, 20)
             }
+            .opacity(isActive ? 1 : 0.68)
+            .offset(y: reduceMotion || isActive ? 0 : 10)
             Spacer()
         }
+        .animation(AnyTravelMotion.settle(reduceMotion: reduceMotion), value: isActive)
     }
 
     private var initialSettingsPage: some View {
@@ -217,6 +289,7 @@ struct OnboardingView: View {
                             .background(.white.opacity(0.74), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
                         }
                         .buttonStyle(AnyTravelPressStyle())
+                        .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: sessionStore.isConnected(provider))
                     }
                 }
             }

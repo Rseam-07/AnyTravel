@@ -4,6 +4,7 @@ import SwiftUI
 struct PlannerMapView: View {
     @Bindable var model: PlannerViewModel
     let mapScope: Namespace.ID
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Map(position: $model.cameraPosition, interactionModes: .all, scope: mapScope) {
@@ -63,6 +64,7 @@ struct PlannerMapView: View {
                 model.userMovedMap()
             }
         }
+        .animation(AnyTravelMotion.route(reduceMotion: reduceMotion), value: model.visibleLegCount)
     }
 }
 
@@ -70,15 +72,20 @@ private struct AccommodationMarker: View {
     let option: AccommodationOption
     let isSelected: Bool
     let action: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                Image(systemName: "bed.double.fill")
-                    .font(.caption.bold())
-                    .foregroundStyle(.white)
-                    .frame(width: 34, height: 34)
-                    .background(isSelected ? AnyTravelPalette.warm : AnyTravelPalette.route, in: Circle())
+                ZStack {
+                    SelectionPulse(color: AnyTravelPalette.warm, isActive: isSelected)
+                    Image(systemName: "bed.double.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(.white)
+                        .frame(width: 34, height: 34)
+                        .background(isSelected ? AnyTravelPalette.warm : AnyTravelPalette.route, in: Circle())
+                        .contentTransition(.symbolEffect(.replace))
+                }
                 if isSelected {
                     Text(option.name)
                         .font(.caption.weight(.semibold))
@@ -87,18 +94,23 @@ private struct AccommodationMarker: View {
                         .padding(.horizontal, 10)
                         .frame(maxWidth: 180, minHeight: 34)
                         .background(.background.opacity(0.96), in: Capsule())
+                        .transition(.scale(scale: 0.86, anchor: .leading).combined(with: .opacity))
                 }
             }
             .padding(5)
+            .scaleEffect(isSelected && !reduceMotion ? 1.06 : 1)
             .shadow(color: .black.opacity(0.16), radius: 7, y: 3)
         }
         .buttonStyle(AnyTravelPressStyle())
         .accessibilityLabel("住宿，\(option.name)")
+        .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: isSelected)
     }
 }
 
 private struct AccessPointMarker: View {
     let point: AccessPoint
+    @State private var appeared = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 4) {
@@ -115,6 +127,13 @@ private struct AccessPointMarker: View {
                 .offset(y: -6)
         }
         .shadow(color: .black.opacity(0.16), radius: 7, y: 3)
+        .scaleEffect(appeared || reduceMotion ? 1 : 0.82, anchor: .bottom)
+        .opacity(appeared || reduceMotion ? 1 : 0)
+        .onAppear {
+            withAnimation(AnyTravelMotion.settle(reduceMotion: reduceMotion)) {
+                appeared = true
+            }
+        }
         .accessibilityElement(children: .combine)
     }
 }
@@ -125,18 +144,23 @@ private struct StopMarker: View {
     let color: Color
     let isSelected: Bool
     let action: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                Text(index.formatted())
-                    .font(.caption.bold())
-                    .foregroundStyle(color)
-                    .frame(width: 32, height: 32)
-                    .background(.background, in: Circle())
-                    .overlay {
-                        Circle().strokeBorder(color, lineWidth: isSelected ? 4 : 3)
-                    }
+                ZStack {
+                    SelectionPulse(color: color, isActive: isSelected)
+                    Text(index.formatted())
+                        .font(.caption.bold())
+                        .foregroundStyle(color)
+                        .contentTransition(.numericText())
+                        .frame(width: 32, height: 32)
+                        .background(.background, in: Circle())
+                        .overlay {
+                            Circle().strokeBorder(color, lineWidth: isSelected ? 4 : 3)
+                        }
+                }
 
                 if isSelected {
                     Text(stop.name)
@@ -151,12 +175,37 @@ private struct StopMarker: View {
                 }
             }
             .padding(6)
-            .scaleEffect(isSelected ? 1.08 : 1)
+            .scaleEffect(isSelected && !reduceMotion ? 1.08 : 1)
             .shadow(color: .black.opacity(0.18), radius: 8, y: 4)
         }
         .buttonStyle(AnyTravelPressStyle())
         .accessibilityLabel("第 \(index) 站，\(stop.name)")
         .accessibilityHint("轻点后地图会聚焦这个地点")
-        .animation(.snappy(duration: 0.24), value: isSelected)
+        .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: isSelected)
+    }
+}
+
+private struct SelectionPulse: View {
+    let color: Color
+    let isActive: Bool
+
+    @State private var expanded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Circle()
+            .stroke(color.opacity(expanded ? 0 : 0.48), lineWidth: 2)
+            .frame(width: 36, height: 36)
+            .scaleEffect(expanded ? 1.58 : 0.92)
+            .opacity(isActive ? 1 : 0)
+            .task(id: isActive) {
+                expanded = false
+                guard isActive, !reduceMotion else { return }
+                try? await Task.sleep(for: .milliseconds(24))
+                withAnimation(.easeOut(duration: 0.68)) {
+                    expanded = true
+                }
+            }
+            .accessibilityHidden(true)
     }
 }

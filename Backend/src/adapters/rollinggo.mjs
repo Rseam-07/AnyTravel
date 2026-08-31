@@ -1,4 +1,10 @@
-import { isoNow, matchRequestedHotel, parseCNY } from "../lib/normalize.mjs";
+import {
+  parseMCPPayload,
+  quoteForRequestedHotel
+} from "../lib/rollinggo-parser.mjs";
+import { isoNow } from "../lib/normalize.mjs";
+
+const MAX_CANDIDATE_QUERIES = 8;
 
 export class RollingGoAdapter {
   name = "rollinggo";
@@ -8,77 +14,85 @@ export class RollingGoAdapter {
     if (!apiKey) return { quotes: [], diagnostics: [{ provider: this.name, status: "disabled" }] };
 
     const stayNights = Math.max(daysBetween(request.checkIn, request.checkOut), 1);
+    const candidates = request.hotels.slice(0, MAX_CANDIDATE_QUERIES);
+    const settled = await Promise.allSettled(
+      candidates.map((hotel, index) => this.#searchCandidate({
+        hotel,
+        request,
+        stayNights,
+        apiKey,
+        requestID: Date.now() + index
+      }))
+    );
+
+    const capturedAt = isoNow();
+    const quotes = [];
+    let resultCount = 0;
+    let failedCount = 0;
+
+    for (let index = 0; index < settled.length; index += 1) {
+      const result = settled[index];
+      if (result.status === "rejected") {
+        failedCount += 1;
+        continue;
+      }
+      resultCount += result.value.hotelObjects.length;
+      const quote = quoteForRequestedHotel(
+        result.value.hotelObjects,
+        candidates[index],
+        stayNights,
+        capturedAt
+      );
+      if (quote) quotes.push(quote);
+    }
+
+    const status = failedCount === candidates.length ? "failed" : "ok";
+    return {
+      quotes,
+      diagnostics: [{
+        provider: this.name,
+        status,
+        queryCount: candidates.length,
+        failedCount,
+        resultCount,
+        matchedCount: quotes.length,
+        capturedAt
+      }]
+    };
+  }
+
+  async #searchCandidate({ hotel, request, stayNights, apiKey, requestID }) {
     const body = {
       jsonrpc: "2.0",
       method: "tools/call",
       params: {
         name: "searchHotels",
         arguments: {
-          originQuery: `${request.destination}酒店，${request.adults}人，${stayNights}晚`,
-          place: request.destination,
-          placeType: "城市",
+          originQuery: `查找${hotel.name}，${request.adults}人，${stayNights}晚`,
+          place: hotel.name,
+          placeType: "酒店",
           checkInParam: { checkInDate: request.checkIn, stayNights },
-          size: 20
+          size: 3
         }
       },
-      id: Date.now()
+      id: requestID
     };
 
-    try {
-      const response = await fetch(process.env.ROLLINGGO_ENDPOINT || "https://mcp.rollinggo.cn/mcp", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          accept: "application/json, text/event-stream",
-          authorization: `Bearer ${apiKey}`
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(25_000)
-      });
-      const text = await response.text();
-      if (!response.ok) {
-        return { quotes: [], diagnostics: [{ provider: this.name, status: "failed", detail: `HTTP ${response.status}` }] };
-      }
-      const payload = parseMCPPayload(text);
-      const hotelObjects = collectHotelObjects(payload);
-      const capturedAt = isoNow();
-      const quotes = hotelObjects.flatMap((hotel) => {
-        const name = firstValue(hotel, ["name", "hotelName", "nameCn", "hotel_name"]);
-        const amount = parseCNY(firstValue(hotel, ["displayPrice", "minPrice", "price", "lowestPrice", "totalPrice"]));
-        if (!name || !amount) return [];
-        const requested = matchRequestedHotel(name, request.hotels);
-        if (!requested) return [];
-        const bookingURL = firstValue(hotel, ["bookingUrl", "bookingURL", "url"]);
-        return [{
-          hotelID: requested.id,
-          hotelName: requested.name,
-          provider: "rollinggo",
-          amountCNY: amount,
-          unit: "perNight",
-          kind: "live",
-          capturedAt,
-          bookingURL: validURL(bookingURL),
-          note: "实时展示价；选定房型后仍需再次锁价确认"
-        }];
-      });
-      return { quotes, diagnostics: [{ provider: this.name, status: "ok", resultCount: hotelObjects.length, capturedAt }] };
-    } catch (error) {
-      return { quotes: [], diagnostics: [{ provider: this.name, status: "failed", detail: error.message }] };
-    }
-  }
-}
+    const response = await fetch(process.env.ROLLINGGO_ENDPOINT || "https://mcp.rollinggo.cn/mcp", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(22_000)
+    });
 
-function parseMCPPayload(text) {
-  const dataLines = text.split(/\r?\n/).filter((line) => line.startsWith("data:"));
-  const raw = dataLines.length ? dataLines.at(-1).slice(5).trim() : text.trim();
-  const outer = JSON.parse(raw);
-  const content = outer?.result?.content;
-  if (!Array.isArray(content)) return outer;
-  const parsed = content.map((item) => {
-    if (item?.type !== "text" || typeof item.text !== "string") return item;
-    try { return JSON.parse(item.text); } catch { return item.text; }
-  });
-  return parsed;
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = parseMCPPayload(await response.text());
+    return { hotelObjects: collectHotelObjects(payload) };
+  }
 }
 
 function collectHotelObjects(value, output = []) {
@@ -91,15 +105,6 @@ function collectHotelObjects(value, output = []) {
     for (const nested of Object.values(value)) collectHotelObjects(nested, output);
   }
   return output;
-}
-
-function firstValue(object, keys) {
-  for (const key of keys) if (object?.[key] != null) return object[key];
-  return null;
-}
-
-function validURL(value) {
-  try { return new URL(value).href; } catch { return null; }
 }
 
 function daysBetween(start, end) {

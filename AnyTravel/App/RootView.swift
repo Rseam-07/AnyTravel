@@ -57,8 +57,20 @@ struct RootView: View {
             .interactiveDismissDisabled()
         }
         .sensoryFeedback(.success, trigger: model.saveFeedbackTrigger)
+        .sensoryFeedback(.success, trigger: model.planReadyFeedbackTrigger)
+        .sensoryFeedback(.selection, trigger: model.planMapFocus)
+        .sensoryFeedback(.selection, trigger: model.selectedDayIndex)
         .task {
             await model.bootstrapIfNeeded()
+            #if DEBUG
+            guard ProcessInfo.processInfo.arguments.contains("--motion-showcase-ready") else { return }
+            try? await Task.sleep(for: .milliseconds(1_500))
+            for focus in [PlanMapFocus.accommodation, .transport, .budget, .itinerary] {
+                guard !Task.isCancelled else { return }
+                model.setPlanMapFocus(focus)
+                try? await Task.sleep(for: .milliseconds(1_450))
+            }
+            #endif
         }
     }
 }

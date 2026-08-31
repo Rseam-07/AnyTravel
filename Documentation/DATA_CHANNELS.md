@@ -12,7 +12,7 @@ App 直接使用 Apple MapKit：`MKLocalSearch` 搜索目的地、景点、酒�
 
 ### RollingGo
 
-`Backend/src/adapters/rollinggo.mjs` 调用 RollingGo 酒店 MCP 的 `searchHotels` 工具。配置 `ROLLINGGO_API_KEY` 后才启用；返回结果会与 App 先找到的酒店名称匹配，再归一化为每晚或总价。
+`Backend/src/adapters/rollinggo.mjs` 调用 RollingGo 酒店 MCP 的 `searchHotels` 工具。配置 `ROLLINGGO_API_KEY` 后才启用；节点会为 App 先找到的候选逐店查询，最多并行处理 8 家，只接受完整酒店名相等或互相包含的强匹配。RollingGo 返回“多晚总价”时，节点会按住宿晚数换算为每晚价，再附上抓取时间与购买链接。
 
 项目资料：[RollingGo hotel MCP CN](https://github.com/RollingGo-AI/RollingGo-hotel-MCP-CN)。
 
@@ -22,9 +22,11 @@ App 直接使用 Apple MapKit：`MKLocalSearch` 搜索目的地、景点、酒�
 
 酒店卡片结构参考了当前公开的浏览器操作资料：[browser-harness 的携程酒店说明](https://github.com/browser-use/browser-harness/blob/main/agent-workspace/domain-skills/ctrip/hotels.md) 与 [ctrip-hotel-skill](https://github.com/biaowuqiong/ctrip-hotel-skill)。
 
+2026-08-31 的联网验收中，3 个苏州酒店候选均取得实时展示价和购买链接。未匹配结果不会被错误贴到其他酒店卡片上。
+
 ### 去哪儿、Trip.com 与住宿官网
 
-App 已提供应用内登录、Cookie 会话复用和购买页入口。去哪儿当前公开桌面酒店搜索入口会回到综合首页，其开放平台主要面向酒店供应商，因此 0.2.0 没有把它写成已验证的实时价格源。节点接口保留独立适配器位置，后续接入不会改变 iOS 数据模型。
+App 已提供应用内登录、Cookie 会话复用和购买页入口。去哪儿当前公开桌面酒店搜索入口会回到综合首页，其开放平台主要面向酒店供应商，因此 0.3.0 没有把它写成已验证的实时价格源。节点接口保留独立适配器位置，后续接入不会改变 iOS 数据模型。
 
 平台资料：[去哪儿酒店开放平台](https://open.hotel.qunar.com/)、[携程分销合作](https://pages.ctrip.com/public/dlhz.htm)。
 
@@ -36,7 +38,7 @@ App 已提供应用内登录、Cookie 会话复用和购买页入口。去哪儿
 
 ## 航班
 
-iOS 数据模型已支持航班卡、机场到住宿距离、报价和购买链接。0.2.0 只显示明确的渠道查询入口；真正的聚合实时价需要后续配置合作接口。Skyscanner 的 Live Prices 接口采用 create/poll 流程，并要求 API key，接入时应按其[航班实时价格说明](https://developers.skyscanner.net/docs/flights-live-prices/overview)和[认证说明](https://developers.skyscanner.net/docs/getting-started/authentication)实现。
+iOS 数据模型已支持航班卡、机场到住宿距离、报价和购买链接。0.3.0 只显示明确的渠道查询入口；真正的聚合实时价需要后续配置合作接口。Skyscanner 的 Live Prices 接口采用 create/poll 流程，并要求 API key，接入时应按其[航班实时价格说明](https://developers.skyscanner.net/docs/flights-live-prices/overview)和[认证说明](https://developers.skyscanner.net/docs/getting-started/authentication)实现。
 
 ## 返回给 App 的共同字段
 

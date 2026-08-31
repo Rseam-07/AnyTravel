@@ -29,6 +29,7 @@ final class PlannerViewModel {
     var errorMessage: String?
     var adjustmentText = ""
     var saveFeedbackTrigger = 0
+    var planReadyFeedbackTrigger = 0
     var libraryPresented = false
     var settingsPresented = false
     var planMapFocus: PlanMapFocus = .itinerary
@@ -359,6 +360,7 @@ final class PlannerViewModel {
             guard !itineraryDays.isEmpty else { throw PlanningError.placesNotFound }
 
             phase = .ready
+            planReadyFeedbackTrigger += 1
             recoveryAction = nil
             fitCurrentDay(animated: true)
             await loadRoutesForSelectedDay(reveal: true)
@@ -638,11 +640,19 @@ final class PlannerViewModel {
             )
             guard !Task.isCancelled else { return }
             logisticsStatusMessage = draft.logistics.hasDates ? "正在把当天的住宿价格带回来" : "正在沿景点整理合适的落脚处"
-            accommodations = await pricingBackendClient.enrichAccommodationQuotes(
+            let updatedAccommodations = await pricingBackendClient.enrichAccommodationQuotes(
                 discovery.options,
                 destination: draft.destination,
                 logistics: draft.logistics
             )
+            guard !Task.isCancelled else { return }
+            if UIAccessibility.isReduceMotionEnabled {
+                accommodations = updatedAccommodations
+            } else {
+                withAnimation(.spring(response: 0.48, dampingFraction: 0.86)) {
+                    accommodations = updatedAccommodations
+                }
+            }
             accessPoints = discovery.accessPoints
             selectedAccommodationID = accommodations.first(where: { $0.name == previousName })?.id
                 ?? accommodations.first?.id
@@ -770,7 +780,13 @@ final class PlannerViewModel {
             accommodation: selectedAccommodation
         )
         guard !Task.isCancelled else { return }
-        transportOptions = updated
+        if UIAccessibility.isReduceMotionEnabled {
+            transportOptions = updated
+        } else {
+            withAnimation(.spring(response: 0.46, dampingFraction: 0.88)) {
+                transportOptions = updated
+            }
+        }
         if !transportOptions.contains(where: { $0.id == selectedTransportID }) {
             selectedTransportID = transportOptions.first(where: \.isRecommended)?.id
                 ?? transportOptions.first?.id
@@ -895,7 +911,7 @@ final class PlannerViewModel {
                     return
                 }
                 guard !Task.isCancelled else { return }
-                withAnimation(.snappy(duration: 0.42)) {
+                withAnimation(.spring(response: 0.46, dampingFraction: 0.80)) {
                     visibleLegCount = index + 1
                 }
                 setCamera(.rect(padded(legs[index].route.polyline.boundingMapRect)), animated: true)

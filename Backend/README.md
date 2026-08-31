@@ -18,7 +18,7 @@ npm start
 
 ## 数据源
 
-- `ROLLINGGO_API_KEY`：优先实时源。节点调用 RollingGo 的 `searchHotels` MCP 工具，并把返回的酒店名、展示价和预订链接归一化。
+- `ROLLINGGO_API_KEY`：优先实时源。节点会对 App 给出的酒店候选逐店调用 RollingGo `searchHotels`，最多并行查询 8 家；只接收名称强匹配的酒店，把多晚总价换算成每晚口径，并保留预订链接和抓取时间。
 - `CTRIP_SCRAPER_ENABLED=true`：使用持久化 Chromium 会话读取携程搜索结果。先运行 `npm run login:ctrip`，由用户在携程页面自行登录；Cookie 只保存在 `Backend/.data/ctrip-profile`，该目录不会提交到 Git。
 - 携程解析只接受能与 App 候选酒店名称匹配的结果，并保存抓取时间。列表中的“起”价会明确标注，房型、早餐、税费和退改仍以结算页为准。
 - `/v1/quotes/transport` 会通过铁路 12306 的公开查询页面读取可购车次、发到时间、余票和展示票价。它只查询，不提交订单；购买链接始终指向铁路 12306。结果默认缓存 5 分钟。
@@ -38,9 +38,9 @@ curl -sS http://127.0.0.1:8787/v1/quotes/accommodations \
     "rooms":1,
     "hotels":[{
       "id":"0F4A7E55-3F85-4A5F-B314-7788FAEAB627",
-      "name":"苏州园林附近酒店",
-      "latitude":31.32,
-      "longitude":120.62
+      "name":"苏州吴宫泛太平洋酒店",
+      "latitude":31.286,
+      "longitude":120.622
     }]
   }'
 ```
@@ -68,5 +68,6 @@ curl -sS http://127.0.0.1:8787/v1/quotes/transport \
 
 - 2026-08-31 已联网验证“上海→苏州”：节点返回上海站至苏州站车次、发到时间、余票与二等座价格。
 - 携程匿名搜索当日会进入登录页；因此实时采集必须先运行 `npm run login:ctrip`，不能把匿名失败写成实时成功。
+- 2026-08-31 已使用私有环境变量联网验证 RollingGo：3 个苏州酒店候选均返回实时展示价和可购买链接，多晚总价正确换算为每晚；密钥未写入仓库或客户端。
 - RollingGo 未配置密钥时会返回 `disabled` 诊断，不会生成占位价格。
 - 去哪儿与航班实时适配器尚未落地，iOS 端只展示明确的渠道查询入口。

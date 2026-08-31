@@ -4,6 +4,7 @@ import SwiftUI
 struct PlannerChrome: View {
     @Bindable var model: PlannerViewModel
     let mapScope: Namespace.ID
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 10) {
@@ -23,10 +24,12 @@ struct PlannerChrome: View {
                     Text(model.topTitle)
                         .font(.subheadline.weight(.bold))
                         .lineLimit(1)
+                        .contentTransition(.opacity)
                     Text(model.topSubtitle)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                        .contentTransition(.opacity)
                 }
                 .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
                 .padding(.horizontal, 15)
@@ -59,7 +62,11 @@ struct PlannerChrome: View {
 
             HStack(alignment: .top) {
                 if let status = model.routeStatusText {
-                    Label(status, systemImage: model.isRouteLoading ? "arrow.trianglehead.2.clockwise.rotate.90" : "point.topleft.down.to.point.bottomright.curvepath")
+                    HStack(spacing: 7) {
+                        RouteStatusIcon(isLoading: model.isRouteLoading || model.isLogisticsLoading)
+                        Text(status)
+                            .contentTransition(.opacity)
+                    }
                         .font(.caption.weight(.medium))
                         .foregroundStyle(AnyTravelPalette.routeDark)
                         .padding(.horizontal, 13)
@@ -95,6 +102,7 @@ struct PlannerChrome: View {
                     } label: {
                         Image(systemName: model.mapAppearance.symbolName)
                             .font(.system(size: 17, weight: .semibold))
+                            .contentTransition(.symbolEffect(.replace))
                             .frame(width: 48, height: 48)
                     }
                     .buttonStyle(AnyTravelPressStyle())
@@ -111,26 +119,63 @@ struct PlannerChrome: View {
         .padding(.top, 7)
         .frame(maxWidth: 620)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .animation(.snappy(duration: 0.32), value: model.routeStatusText)
+        .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: model.routeStatusText)
+        .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: model.topSubtitle)
+        .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: model.mapAppearance)
         .allowsHitTesting(true)
     }
 }
 
 private struct ProgressDots: View {
     let currentStep: Int
+    @Namespace private var selectionMotion
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 5) {
             ForEach(0..<4, id: \.self) { index in
-                Capsule()
-                    .fill(index == currentStep ? AnyTravelPalette.route : Color.secondary.opacity(0.30))
+                ZStack {
+                    Capsule()
+                        .fill(Color.secondary.opacity(0.24))
+                    if index == currentStep {
+                        Capsule()
+                            .fill(AnyTravelPalette.route)
+                            .matchedGeometryEffect(id: "planner-progress", in: selectionMotion)
+                    }
+                }
                     .frame(width: index == currentStep ? 22 : 7, height: 7)
             }
         }
         .padding(6)
         .anyTravelGlassCapsule(interactive: false)
-        .animation(.snappy(duration: 0.3), value: currentStep)
+        .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: currentStep)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("规划进度，第 \(currentStep + 1) 步，共 4 步")
+    }
+}
+
+private struct RouteStatusIcon: View {
+    let isLoading: Bool
+
+    @State private var rotation = 0.0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Image(systemName: isLoading ? "arrow.trianglehead.2.clockwise.rotate.90" : "point.topleft.down.to.point.bottomright.curvepath")
+            .contentTransition(.symbolEffect(.replace))
+            .rotationEffect(.degrees(rotation))
+            .onAppear { updateRotation() }
+            .onChange(of: isLoading) { _, _ in updateRotation() }
+    }
+
+    private func updateRotation() {
+        guard isLoading, !reduceMotion else {
+            withAnimation(.easeOut(duration: 0.16)) { rotation = 0 }
+            return
+        }
+        rotation = 0
+        withAnimation(.linear(duration: 0.92).repeatForever(autoreverses: false)) {
+            rotation = 360
+        }
     }
 }
