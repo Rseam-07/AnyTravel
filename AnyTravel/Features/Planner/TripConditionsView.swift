@@ -22,6 +22,15 @@ struct TripConditionsView: View {
                         in: 1_000...30_000,
                         step: 500
                     )
+                    Stepper(
+                        "旅行天数：\(model.draft.dayCount)天",
+                        value: Binding(
+                            get: { model.draft.dayCount },
+                            set: { model.adjustDayCount(by: $0 - model.draft.dayCount) }
+                        ),
+                        in: 1...7
+                    )
+                    .accessibilityIdentifier("trip-conditions-day-count")
                 } header: {
                     Text("从哪里出发，和谁同行")
                 }
@@ -39,15 +48,29 @@ struct TripConditionsView: View {
                        let endDate = model.draft.logistics.endDate {
                         DatePicker(
                             "抵达日",
-                            selection: Binding(get: { startDate }, set: updateStartDate),
+                            selection: Binding(get: { startDate }, set: model.updateStartDate),
                             in: Calendar.current.startOfDay(for: .now)...,
                             displayedComponents: .date
                         )
+                        dateAdjustmentRow(
+                            title: "抵达日",
+                            value: startDate.formatted(date: .abbreviated, time: .omitted),
+                            decrementDisabled: Calendar.current.isDate(startDate, inSameDayAs: .now),
+                            decrement: { model.adjustStartDate(by: -1) },
+                            increment: { model.adjustStartDate(by: 1) }
+                        )
                         DatePicker(
                             "返程日",
-                            selection: Binding(get: { endDate }, set: updateEndDate),
-                            in: startDate...,
+                            selection: Binding(get: { endDate }, set: model.updateEndDate),
+                            in: (Calendar.current.date(byAdding: .day, value: 1, to: startDate) ?? startDate)...(Calendar.current.date(byAdding: .day, value: 6, to: startDate) ?? endDate),
                             displayedComponents: .date
+                        )
+                        dateAdjustmentRow(
+                            title: "返程日",
+                            value: endDate.formatted(date: .abbreviated, time: .omitted),
+                            decrementDisabled: Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 1 <= 1,
+                            decrement: { model.adjustEndDate(by: -1) },
+                            increment: { model.adjustEndDate(by: 1) }
                         )
                     }
                 } header: {
@@ -103,19 +126,35 @@ struct TripConditionsView: View {
         }
     }
 
-    private func updateStartDate(_ date: Date) {
-        let start = Calendar.current.startOfDay(for: date)
-        model.draft.logistics.startDate = start
-        if let end = model.draft.logistics.endDate, end > start { return }
-        model.draft.logistics.endDate = Calendar.current.date(byAdding: .day, value: 1, to: start)
-    }
-
-    private func updateEndDate(_ date: Date) {
-        guard let start = model.draft.logistics.startDate else {
-            model.draft.logistics.endDate = date
-            return
+    private func dateAdjustmentRow(
+        title: String,
+        value: String,
+        decrementDisabled: Bool,
+        decrement: @escaping () -> Void,
+        increment: @escaping () -> Void
+    ) -> some View {
+        HStack {
+            Text("用按钮调整\(title)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button(action: decrement) {
+                Image(systemName: "minus")
+                    .frame(width: 44, height: 44)
+            }
+            .disabled(decrementDisabled)
+            .accessibilityLabel("\(title)提前一天")
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .monospacedDigit()
+                .frame(minWidth: 82)
+                .accessibilityIdentifier(title == "抵达日" ? "trip-conditions-arrival-date-value" : "trip-conditions-return-date-value")
+            Button(action: increment) {
+                Image(systemName: "plus")
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityLabel("\(title)推后一天")
         }
-        let minimum = Calendar.current.date(byAdding: .day, value: 1, to: start) ?? start
-        model.draft.logistics.endDate = max(Calendar.current.startOfDay(for: date), minimum)
+        .buttonStyle(AnyTravelPressStyle())
     }
 }

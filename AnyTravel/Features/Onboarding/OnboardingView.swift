@@ -13,7 +13,11 @@ struct OnboardingView: View {
     var body: some View {
         ZStack {
             LinearGradient(
-                colors: [Color(red: 0.90, green: 0.97, blue: 0.95), .white, Color(red: 1.0, green: 0.94, blue: 0.89)],
+                colors: [
+                    AnyTravelPalette.route.opacity(0.14),
+                    Color(uiColor: .systemBackground),
+                    AnyTravelPalette.warm.opacity(0.12)
+                ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -172,7 +176,7 @@ struct OnboardingView: View {
             Spacer()
             ZStack {
                 RoundedRectangle(cornerRadius: 42, style: .continuous)
-                    .fill(.white.opacity(0.72))
+                    .fill(AnyTravelPalette.elevatedSurface)
                     .frame(width: 250, height: 250)
                     .rotationEffect(.degrees(isActive ? -7 : -12))
                     .scaleEffect(isActive ? 1 : 0.92)
@@ -286,7 +290,7 @@ struct OnboardingView: View {
                             }
                             .padding(.horizontal, 12)
                             .frame(minHeight: 56)
-                            .background(.white.opacity(0.74), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+                            .background(AnyTravelPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
                         }
                         .buttonStyle(AnyTravelPressStyle())
                         .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: sessionStore.isConnected(provider))
@@ -317,6 +321,6 @@ struct OnboardingView: View {
         }
         .padding(.horizontal, 13)
         .frame(minHeight: 62)
-        .background(.white.opacity(0.74), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+        .background(AnyTravelPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
     }
 }

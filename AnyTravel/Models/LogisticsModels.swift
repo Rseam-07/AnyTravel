@@ -220,12 +220,45 @@ struct AccessPoint: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
+enum AccommodationSort: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
+    case recommended
+    case lowestPrice
+    case closestToAttractions
+    case closestToTransit
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .recommended: "综合推荐"
+        case .lowestPrice: "价格从低到高"
+        case .closestToAttractions: "离行程景点最近"
+        case .closestToTransit: "离地铁车站最近"
+        }
+    }
+
+    var shortTitle: String {
+        switch self {
+        case .recommended: "推荐"
+        case .lowestPrice: "低价"
+        case .closestToAttractions: "近景点"
+        case .closestToTransit: "近交通"
+        }
+    }
+}
+
 struct AccommodationOption: Codable, Hashable, Identifiable, Sendable {
     let id: UUID
     let name: String
     let address: String
     let coordinate: Coordinate
     var officialWebsiteURL: URL?
+    var brand: String?
+    var starRating: Double?
+    var guestRating: Double?
+    var imageURL: URL?
+    var amenities: [String]?
+    var tags: [String]?
     var attractionDistanceMeters: Double
     var accessDistances: [AccessPointKind: Double]
     var nearestAccessPoints: [AccessPointKind: AccessPoint]
@@ -238,6 +271,12 @@ struct AccommodationOption: Codable, Hashable, Identifiable, Sendable {
         address: String,
         coordinate: Coordinate,
         officialWebsiteURL: URL? = nil,
+        brand: String? = nil,
+        starRating: Double? = nil,
+        guestRating: Double? = nil,
+        imageURL: URL? = nil,
+        amenities: [String]? = nil,
+        tags: [String]? = nil,
         attractionDistanceMeters: Double,
         accessDistances: [AccessPointKind: Double] = [:],
         nearestAccessPoints: [AccessPointKind: AccessPoint] = [:],
@@ -249,6 +288,12 @@ struct AccommodationOption: Codable, Hashable, Identifiable, Sendable {
         self.address = address
         self.coordinate = coordinate
         self.officialWebsiteURL = officialWebsiteURL
+        self.brand = brand
+        self.starRating = starRating
+        self.guestRating = guestRating
+        self.imageURL = imageURL
+        self.amenities = amenities
+        self.tags = tags
         self.attractionDistanceMeters = attractionDistanceMeters
         self.accessDistances = accessDistances
         self.nearestAccessPoints = nearestAccessPoints
@@ -261,6 +306,25 @@ struct AccommodationOption: Codable, Hashable, Identifiable, Sendable {
             .filter { $0.amountCNY != nil && $0.kind != .demo }
             .min { ($0.amountCNY ?? .max) < ($1.amountCNY ?? .max) }
     }
+}
+
+struct AccommodationCatalogEntry: Hashable, Sendable {
+    var providerHotelID: String
+    var name: String
+    var brand: String?
+    var address: String
+    var coordinate: Coordinate
+    var starRating: Double?
+    var guestRating: Double?
+    var description: String?
+    var imageURL: URL?
+    var bookingURL: URL?
+    var amenities: [String]
+    var tags: [String]
+    var amountCNY: Int?
+    var quoteKind: QuoteKind
+    var capturedAt: Date
+    var note: String
 }
 
 struct TransportOption: Codable, Hashable, Identifiable, Sendable {

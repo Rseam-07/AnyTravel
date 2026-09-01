@@ -1,13 +1,79 @@
 import {
+  catalogHotelFromObject,
   parseMCPPayload,
   quoteForRequestedHotel
 } from "../lib/rollinggo-parser.mjs";
 import { isoNow } from "../lib/normalize.mjs";
 
-const MAX_CANDIDATE_QUERIES = 8;
+const MAX_CANDIDATE_QUERIES = 12;
 
 export class RollingGoAdapter {
   name = "rollinggo";
+
+  async discover(request) {
+    const apiKey = process.env.ROLLINGGO_API_KEY;
+    if (!apiKey) return { hotels: [], diagnostics: [{ provider: this.name, status: "disabled" }] };
+    const stayNights = Math.max(daysBetween(request.checkIn, request.checkOut), 1);
+    const capturedAt = isoNow();
+    try {
+      const adultCount = Math.min(Math.max(Number(request.adults || 2), 1), 8);
+      const requestedSize = Math.min(Math.max(Number(request.size || 20), 1), 20);
+      const querySpecs = [{
+        originQuery: `查找${request.destination}适合${adultCount}人入住的酒店、民宿和公寓，比较${stayNights}晚实时价格`,
+        place: request.destination,
+        placeType: "城市",
+        size: requestedSize
+      }];
+      for (const anchor of (request.anchors || []).slice(0, 3)) {
+        querySpecs.push({
+          originQuery: `查找靠近${request.destination}${anchor}、适合${adultCount}人入住的酒店和民宿，比较${stayNights}晚实时价格`,
+          place: anchor,
+          placeType: "景点",
+          size: Math.min(requestedSize, 10)
+        });
+      }
+      const settled = await Promise.allSettled(querySpecs.map((spec, index) => this.#callSearch({
+        apiKey,
+        requestID: Date.now() + index,
+        argumentsValue: {
+          ...spec,
+          checkInParam: {
+            checkInDate: request.checkIn,
+            stayNights,
+            adultCount
+          }
+        }
+      })));
+      const seen = new Set();
+      const payloads = settled
+        .filter((result) => result.status === "fulfilled")
+        .map((result) => result.value);
+      const failedCount = settled.length - payloads.length;
+      const hotels = collectHotelObjects(payloads)
+        .map((hotel) => catalogHotelFromObject(hotel, stayNights, capturedAt))
+        .filter(Boolean)
+        .filter((hotel) => {
+          const key = `${hotel.name}|${hotel.latitude.toFixed(4)}|${hotel.longitude.toFixed(4)}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .slice(0, 40);
+      return {
+        hotels,
+        diagnostics: [{
+          provider: this.name,
+          status: hotels.length ? (failedCount ? "partial" : "ok") : "no_matching_quotes",
+          queryCount: querySpecs.length,
+          failedCount,
+          resultCount: hotels.length,
+          capturedAt
+        }]
+      };
+    } catch (error) {
+      return { hotels: [], diagnostics: [{ provider: this.name, status: "failed", detail: error.message }] };
+    }
+  }
 
   async search(request) {
     const apiKey = process.env.ROLLINGGO_API_KEY;
@@ -62,18 +128,31 @@ export class RollingGoAdapter {
   }
 
   async #searchCandidate({ hotel, request, stayNights, apiKey, requestID }) {
+    const payload = await this.#callSearch({
+      apiKey,
+      requestID,
+      argumentsValue: {
+        originQuery: `查找${hotel.name}，${request.adults}人，${stayNights}晚`,
+        place: hotel.name,
+        placeType: "酒店",
+        checkInParam: {
+          checkInDate: request.checkIn,
+          stayNights,
+          adultCount: Math.min(Math.max(Number(request.adults || 2), 1), 8)
+        },
+        size: 3
+      }
+    });
+    return { hotelObjects: collectHotelObjects(payload) };
+  }
+
+  async #callSearch({ apiKey, requestID, argumentsValue }) {
     const body = {
       jsonrpc: "2.0",
       method: "tools/call",
       params: {
         name: "searchHotels",
-        arguments: {
-          originQuery: `查找${hotel.name}，${request.adults}人，${stayNights}晚`,
-          place: hotel.name,
-          placeType: "酒店",
-          checkInParam: { checkInDate: request.checkIn, stayNights },
-          size: 3
-        }
+        arguments: argumentsValue
       },
       id: requestID
     };
@@ -90,8 +169,7 @@ export class RollingGoAdapter {
     });
 
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const payload = parseMCPPayload(await response.text());
-    return { hotelObjects: collectHotelObjects(payload) };
+    return parseMCPPayload(await response.text());
   }
 }
 
@@ -101,7 +179,10 @@ function collectHotelObjects(value, output = []) {
   } else if (value && typeof value === "object") {
     const hasName = ["name", "hotelName", "nameCn", "hotel_name"].some((key) => value[key]);
     const hasPrice = ["displayPrice", "minPrice", "price", "lowestPrice", "totalPrice"].some((key) => value[key] != null);
-    if (hasName && hasPrice) output.push(value);
+    const hasLocation = ["latitude", "lat", "hotelLat", "hotelLatitude"].some((key) => value[key] != null)
+      && ["longitude", "lng", "lon", "hotelLng", "hotelLongitude"].some((key) => value[key] != null);
+    const hasHotelMetadata = ["address", "hotelAddress", "brand", "starRating", "amenities"].some((key) => value[key] != null);
+    if (hasName && (hasPrice || hasLocation || hasHotelMetadata)) output.push(value);
     for (const nested of Object.values(value)) collectHotelObjects(nested, output);
   }
   return output;

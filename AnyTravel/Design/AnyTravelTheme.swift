@@ -1,26 +1,34 @@
 import SwiftUI
 
 enum AnyTravelPalette {
-    static let route = Color(red: 0.07, green: 0.43, blue: 0.40)
-    static let routeDark = Color(red: 0.035, green: 0.31, blue: 0.29)
-    static let warm = Color(red: 0.96, green: 0.36, blue: 0.20)
-    static let ink = Color(red: 0.07, green: 0.14, blue: 0.13)
-    static let secondaryInk = Color(red: 0.30, green: 0.40, blue: 0.38)
-    static let softSurface = Color(red: 0.95, green: 0.97, blue: 0.96)
+    // Asset-catalog colors are resolved by SwiftUI on its render executor. Avoid
+    // UIColor dynamic-provider closures here: SwiftUI may resolve them off the
+    // main actor while animating and Swift 6 correctly traps that mismatch.
+    static let route = Color("AnyTravelRoute")
+    static let routeDark = Color("AnyTravelRouteDark")
+    static let warm = Color("AnyTravelWarm")
+    static let ink = Color("AnyTravelInk")
+    static let secondaryInk = Color("AnyTravelSecondaryInk")
+    static let softSurface = Color("AnyTravelSoftSurface")
+    static let inputSurface = Color("AnyTravelInputSurface")
+    static let elevatedSurface = Color("AnyTravelElevatedSurface")
+    static let glassStroke = Color("AnyTravelGlassStroke")
+    static let mapRouteHalo = Color("AnyTravelMapRouteHalo")
 
     static let dayRoutes: [Color] = [
         route,
-        Color(red: 0.91, green: 0.46, blue: 0.14),
-        Color(red: 0.38, green: 0.34, blue: 0.72),
-        Color(red: 0.08, green: 0.48, blue: 0.66),
-        Color(red: 0.66, green: 0.28, blue: 0.47),
-        Color(red: 0.37, green: 0.50, blue: 0.18),
-        Color(red: 0.76, green: 0.30, blue: 0.18)
+        Color("AnyTravelDayRoute2"),
+        Color("AnyTravelDayRoute3"),
+        Color("AnyTravelDayRoute4"),
+        Color("AnyTravelDayRoute5"),
+        Color("AnyTravelDayRoute6"),
+        Color("AnyTravelDayRoute7")
     ]
 
     static func routeColor(for dayIndex: Int) -> Color {
         dayRoutes[dayIndex % dayRoutes.count]
     }
+
 }
 
 extension View {
@@ -35,7 +43,7 @@ extension View {
             background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .strokeBorder(.white.opacity(0.22), lineWidth: 0.8)
+                        .strokeBorder(AnyTravelPalette.glassStroke, lineWidth: 0.8)
                 }
         }
     }
@@ -46,7 +54,7 @@ extension View {
             glassEffect(interactive ? .regular.interactive() : .regular, in: Circle())
         } else {
             background(.ultraThinMaterial, in: Circle())
-                .overlay { Circle().strokeBorder(.white.opacity(0.22), lineWidth: 0.8) }
+                .overlay { Circle().strokeBorder(AnyTravelPalette.glassStroke, lineWidth: 0.8) }
         }
     }
 
@@ -56,7 +64,7 @@ extension View {
             glassEffect(interactive ? .regular.interactive() : .regular, in: Capsule())
         } else {
             background(.ultraThinMaterial, in: Capsule())
-                .overlay { Capsule().strokeBorder(.white.opacity(0.22), lineWidth: 0.8) }
+                .overlay { Capsule().strokeBorder(AnyTravelPalette.glassStroke, lineWidth: 0.8) }
         }
     }
 }

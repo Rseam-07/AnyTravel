@@ -12,7 +12,7 @@ struct PlannerMapView: View {
 
             if let transferRoute = model.visibleTransferRoute {
                 MapPolyline(transferRoute)
-                    .stroke(.white.opacity(0.94), lineWidth: 11)
+                    .stroke(AnyTravelPalette.mapRouteHalo, lineWidth: 11)
                 MapPolyline(transferRoute)
                     .stroke(
                         model.focusedTransportDirection == .outbound
@@ -24,7 +24,7 @@ struct PlannerMapView: View {
 
             ForEach(model.visibleLegs) { leg in
                 MapPolyline(leg.route)
-                    .stroke(.white.opacity(0.92), lineWidth: 10)
+                    .stroke(AnyTravelPalette.mapRouteHalo, lineWidth: 10)
                 MapPolyline(leg.route)
                     .stroke(
                         AnyTravelPalette.routeColor(for: leg.dayIndex),

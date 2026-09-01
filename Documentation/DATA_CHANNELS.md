@@ -24,9 +24,11 @@ iOS 0.5.3 会在用户选定大交通和住宿后，用 `MKDirections` 分别查
 
 ### RollingGo
 
-`Backend/src/adapters/rollinggo.mjs` 调用 RollingGo 酒店 MCP 的 `searchHotels` 工具。配置 `ROLLINGGO_API_KEY` 后才启用；节点会为 App 先找到的候选逐店查询，最多并行处理 8 家，只接受完整酒店名相等或互相包含的强匹配。RollingGo 返回“多晚总价”时，节点会按住宿晚数换算为每晚价，再附上抓取时间与购买链接。
+`Backend/src/adapters/rollinggo.mjs` 调用 RollingGo 酒店 MCP 的 `searchHotels` 工具。配置 `ROLLINGGO_API_KEY` 后才启用。目录搜索先查目的地城市，再以每天的代表景点为锚点补查最多三次；每个请求遵守公开工具的 `size <= 20`，合并名称与坐标后最多保留 40 家。逐店报价最多并行处理 12 家，只接受完整酒店名相等或互相包含的强匹配。`lowestPrice` 与 `minPrice` 按每晚最低价处理，只有字段或文案明确写为“总价/合计”时才按住宿晚数换算。
 
-项目资料：[RollingGo hotel MCP CN](https://github.com/RollingGo-AI/RollingGo-hotel-MCP-CN)。
+2026-09-01 联网实查苏州城市及拙政园、金鸡湖、虎丘山三个景点锚点，4 个请求全部成功，合并去重后返回 18 家带价格酒店。这个数字只记录当次覆盖范围，价格与可订状态仍以用户所选日期再次查询为准。
+
+项目资料：[RollingGo 酒店 Skill CN](https://github.com/RollingGo-AI/rollinggo-hotel-skill-cn)。
 
 ### 携程
 
@@ -68,7 +70,7 @@ iOS 数据模型已支持航班卡、机场到住宿距离、报价和购买链�
 
 ## 智能向导
 
-`POST /v1/assistant/interpret` 使用服务端环境变量中的 `ZAI_API_KEY`、`ZAI_BASE_URL` 和 `ZAI_MODEL` 调用智谱 OpenAI 兼容接口，默认模型为 `glm-5.3-flash`。上下文只包含当前行程条件与已有地点；服务端只接受节奏、市内交通、预算、聚焦已有地点和移除已有地点五类动作，iOS 收到后还会再次校验名称、枚举和预算范围。
+`POST /v1/assistant/interpret` 使用服务端环境变量中的 `ZAI_API_KEY`、`ZAI_BASE_URL` 和 `ZAI_MODEL` 调用智谱 OpenAI 兼容接口，默认模型为 `glm-5.3-flash`。上下文只包含当前行程条件与已有地点；服务端只接受目的地、出发地、日期、天数、人数、预算、节奏、市内/长途交通、兴趣、住宿价格/排序、聚焦/移除已有地点和生成方案等白名单动作，iOS 收到后还会再次校验名称、范围和枚举。
 
 iOS 设置也支持用户自己的 OpenAI 兼容服务。Base URL 与模型名保存在本机偏好，自定义 API Key 使用 Keychain 的“仅此设备”保护，页面不会把已保存 Key 读回明文。托管服务不可用时，已经能由本机确定的“轻松一点”“公交优先”等指令仍会继续执行；无法确定的内容会保留为可恢复的提示。
 

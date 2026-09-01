@@ -199,7 +199,7 @@ struct ItineraryEditorView: View {
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(AnyTravelPressStyle())
                     .foregroundStyle(.secondary)
                     .accessibilityLabel("清空地点搜索")
                 }
@@ -216,10 +216,10 @@ struct ItineraryEditorView: View {
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(selected ? .white : AnyTravelPalette.routeDark)
                                 .padding(.horizontal, 10)
-                                .frame(minHeight: 36)
+                                .frame(minHeight: 44)
                                 .background(selected ? AnyTravelPalette.route : AnyTravelPalette.route.opacity(0.09), in: Capsule())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(AnyTravelPressStyle())
                     }
                 }
             }
@@ -357,7 +357,7 @@ struct ItineraryEditorView: View {
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(AnyTravelPressStyle())
         .disabled(alreadyIncluded)
         .accessibilityLabel(alreadyIncluded ? "\(place.name)已在行程" : "添加\(place.name)")
     }

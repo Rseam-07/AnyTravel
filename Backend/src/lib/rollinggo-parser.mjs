@@ -37,6 +37,38 @@ export function quoteForRequestedHotel(hotelObjects, requestedHotel, stayNights,
   };
 }
 
+export function catalogHotelFromObject(hotel, stayNights, capturedAt) {
+  const name = String(firstValue(hotel, ["name", "hotelName", "nameCn", "hotel_name"]) || "").trim();
+  const latitude = numberValue(firstValue(hotel, ["latitude", "lat", "hotelLat", "hotelLatitude"]));
+  const longitude = numberValue(firstValue(hotel, ["longitude", "lng", "lon", "hotelLng", "hotelLongitude"]));
+  if (!name || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  const price = extractPrice(hotel, stayNights);
+  const amenities = arrayStrings(firstValue(hotel, ["amenities", "facilities", "facilityList", "services"]));
+  const tags = arrayStrings(firstValue(hotel, ["tags", "labels", "themes"]));
+  return {
+    providerHotelID: String(firstValue(hotel, ["hotelId", "hotelID", "id", "hotel_id"]) || ""),
+    name,
+    brand: optionalString(firstValue(hotel, ["brand", "brandName", "hotelBrand"])),
+    address: optionalString(firstValue(hotel, ["address", "hotelAddress", "addressCn"])) || "",
+    latitude,
+    longitude,
+    starRating: numberValue(firstValue(hotel, ["starRating", "star", "starLevel"])),
+    guestRating: numberValue(firstValue(hotel, ["rating", "guestRating", "score", "reviewScore"])),
+    description: optionalString(firstValue(hotel, ["description", "summary", "introduction"])),
+    imageURL: validURL(firstValue(hotel, ["imageUrl", "imageURL", "coverImage", "cover"])),
+    bookingURL: validURL(firstValue(hotel, ["bookingUrl", "bookingURL", "url"])),
+    amenities: amenities.slice(0, 12),
+    tags: tags.slice(0, 10),
+    amountCNY: price?.amountCNY ?? null,
+    unit: "perNight",
+    kind: price ? "live" : "checkOnProvider",
+    capturedAt,
+    note: price
+      ? "RollingGo 实时展示价；选定房型后仍需锁价确认"
+      : "RollingGo 已返回住宿资料，房价需选择房型后确认"
+  };
+}
+
 export function extractPrice(hotel, stayNights) {
   const structured = hotel?.price;
   if (structured && typeof structured === "object") {
@@ -45,7 +77,9 @@ export function extractPrice(hotel, stayNights) {
     );
     if (!amount) return null;
     const message = String(structured.message || "");
-    const wasStayTotal = /总价/.test(message) || structured.lowestPrice != null || structured.totalPrice != null;
+    // searchHotels defines lowestPrice/minPrice as the nightly floor. Only a
+    // field or message explicitly labelled as total may be divided by nights.
+    const wasStayTotal = /总价|合计/.test(message) || structured.totalPrice != null;
     return {
       amountCNY: wasStayTotal ? Math.max(Math.round(amount / Math.max(stayNights, 1)), 1) : amount,
       wasStayTotal
@@ -68,6 +102,25 @@ function isStrongHotelMatch(candidateName, requestedName) {
 function firstValue(object, keys) {
   for (const key of keys) if (object?.[key] != null) return object[key];
   return null;
+}
+
+function optionalString(value) {
+  const result = String(value ?? "").trim();
+  return result || null;
+}
+
+function numberValue(value) {
+  if (value == null || String(value).trim() === "") return null;
+  const result = Number(value);
+  return Number.isFinite(result) ? result : null;
+}
+
+function arrayStrings(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => {
+    if (typeof item === "string") return item.trim();
+    return optionalString(item?.name ?? item?.title ?? item?.label);
+  }).filter(Boolean);
 }
 
 function validURL(value) {

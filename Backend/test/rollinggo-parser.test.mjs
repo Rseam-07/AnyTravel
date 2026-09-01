@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { extractPrice, parseMCPPayload, quoteForRequestedHotel } from "../src/lib/rollinggo-parser.mjs";
+import {
+  catalogHotelFromObject,
+  extractPrice,
+  parseMCPPayload,
+  quoteForRequestedHotel
+} from "../src/lib/rollinggo-parser.mjs";
 
 test("parses a streamable HTTP MCP response", () => {
   const payload = parseMCPPayload(`event: message\ndata: {"jsonrpc":"2.0","result":{"content":[{"type":"text","text":"{\\"hotelInformationList\\":[]}"}]},"id":1}\n\n`);
@@ -17,6 +22,18 @@ test("converts RollingGo stay total into a per-night amount", () => {
     }
   }, 2);
   assert.deepEqual(price, { amountCNY: 413, wasStayTotal: true });
+});
+
+test("keeps RollingGo search lowestPrice as a nightly amount", () => {
+  const price = extractPrice({
+    price: {
+      message: "查价成功。最低价格：352，币种：CNY",
+      hasPrice: true,
+      currency: "CNY",
+      lowestPrice: 352
+    }
+  }, 2);
+  assert.deepEqual(price, { amountCNY: 352, wasStayTotal: false });
 });
 
 test("maps only the strongly matching requested hotel", () => {
@@ -41,4 +58,27 @@ test("does not attach a vaguely similar hotel", () => {
     { name: "苏州金鸡湖大酒店", price: { lowestPrice: 600, message: "2晚总价" } }
   ], { id: "other", name: "苏州吴宫泛太平洋酒店" }, 2, "2026-08-31T00:00:00.000Z");
   assert.equal(quote, null);
+});
+
+test("maps a RollingGo discovery result into a rich hotel card", () => {
+  const hotel = catalogHotelFromObject({
+    hotelId: "rg-1",
+    name: "苏州松弛酒店",
+    brand: "AnyTravel",
+    address: "姑苏区示例路1号",
+    latitude: 31.31,
+    longitude: 120.62,
+    starRating: 4,
+    rating: 4.8,
+    imageUrl: "https://example.com/hotel.jpg",
+    bookingUrl: "https://example.com/book",
+    amenities: ["早餐", { name: "停车场" }],
+    price: { lowestPrice: 1_200, message: "2晚总价" }
+  }, 2, "2026-09-01T00:00:00.000Z");
+
+  assert.equal(hotel.name, "苏州松弛酒店");
+  assert.equal(hotel.amountCNY, 600);
+  assert.equal(hotel.starRating, 4);
+  assert.deepEqual(hotel.amenities, ["早餐", "停车场"]);
+  assert.equal(hotel.bookingURL, "https://example.com/book");
 });

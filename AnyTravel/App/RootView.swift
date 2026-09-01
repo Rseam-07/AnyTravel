@@ -10,8 +10,8 @@ struct RootView: View {
     var body: some View {
         @Bindable var bindableModel = model
 
-        ZStack {
-            PlannerMapView(model: model, mapScope: mapScope)
+        PlannerMapView(model: model, mapScope: mapScope)
+        .overlay(alignment: .top) {
             PlannerChrome(model: model, mapScope: mapScope)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {

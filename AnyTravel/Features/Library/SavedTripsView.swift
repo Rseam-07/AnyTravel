@@ -31,7 +31,7 @@ struct SavedTripsView: View {
                                 } label: {
                                     SavedTripRow(trip: trip)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(AnyTravelPressStyle())
                                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                     Button(role: .destructive) {
                                         pendingDeletion = trip

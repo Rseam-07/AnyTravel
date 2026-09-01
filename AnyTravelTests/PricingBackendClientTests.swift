@@ -57,6 +57,70 @@ final class PricingBackendClientTests: XCTestCase {
     }
 
     @MainActor
+    func testRichAccommodationCatalogPreservesPriceLocationAndFiltersMetadata() async throws {
+        let capturedAt = "2026-09-01T12:00:00Z"
+        PricingURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/v1/accommodations/search")
+            var requestBody = request.httpBody ?? Data()
+            if requestBody.isEmpty, let stream = request.httpBodyStream {
+                stream.open()
+                defer { stream.close() }
+                var buffer = [UInt8](repeating: 0, count: 4_096)
+                while true {
+                    let count = stream.read(&buffer, maxLength: buffer.count)
+                    guard count > 0 else { break }
+                    requestBody.append(buffer, count: count)
+                }
+            }
+            let requestJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: requestBody) as? [String: Any])
+            XCTAssertEqual(requestJSON["size"] as? Int, 20)
+            XCTAssertEqual(requestJSON["anchors"] as? [String], ["拙政园", "金鸡湖"])
+            let body = Data("""
+            {
+              "hotels": [{
+                "providerHotelID": "rg-100",
+                "name": "苏州松弛酒店",
+                "brand": "亚朵",
+                "address": "姑苏区示例路1号",
+                "latitude": 31.31,
+                "longitude": 120.62,
+                "starRating": 4,
+                "guestRating": 4.8,
+                "description": "近园林",
+                "imageURL": "https://example.com/hotel.jpg",
+                "bookingURL": "https://example.com/book",
+                "amenities": ["早餐", "停车场"],
+                "tags": ["近地铁"],
+                "amountCNY": 588,
+                "unit": "perNight",
+                "kind": "live",
+                "capturedAt": "\(capturedAt)",
+                "note": "实时展示价"
+              }],
+              "diagnostics": [{"provider":"rollinggo","status":"ok"}],
+              "capturedAt": "\(capturedAt)",
+              "cached": false
+            }
+            """.utf8)
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, body)
+        }
+        let context = try makeClient()
+
+        let result = try await context.client.searchAccommodationCatalog(
+            destination: "苏州",
+            logistics: datedLogistics(),
+            anchors: ["拙政园", "金鸡湖"]
+        )
+
+        XCTAssertEqual(result.receivedCount, 1)
+        XCTAssertEqual(result.value.first?.name, "苏州松弛酒店")
+        XCTAssertEqual(result.value.first?.amountCNY, 588)
+        XCTAssertEqual(result.value.first?.starRating, 4)
+        XCTAssertEqual(result.value.first?.amenities, ["早餐", "停车场"])
+        XCTAssertEqual(result.value.first?.bookingURL?.host, "example.com")
+    }
+
+    @MainActor
     func testOutboundAndReturnRailOptionsStayIndependent() async throws {
         let capturedAt = "2026-08-31T12:00:00Z"
         PricingURLProtocol.requestHandler = { request in

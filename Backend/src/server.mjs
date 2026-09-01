@@ -1,7 +1,12 @@
 import http from "node:http";
 import { AMapError, searchAMapPlaces } from "./amap-service.mjs";
 import { AssistantError, interpretAssistantRequest } from "./assistant-service.mjs";
-import { RequestError, searchAccommodationQuotes, searchTransportOptions } from "./quote-service.mjs";
+import {
+  RequestError,
+  searchAccommodationCatalog,
+  searchAccommodationQuotes,
+  searchTransportOptions
+} from "./quote-service.mjs";
 import { QunarTicketError, searchQunarTicketQuotes } from "./qunar-ticket-service.mjs";
 
 const port = Number(process.env.PORT || 8787);
@@ -41,6 +46,11 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "POST" && request.url === "/v1/quotes/accommodations") {
       const body = await readJSON(request);
       sendJSON(response, 200, await searchAccommodationQuotes(body));
+      return;
+    }
+    if (request.method === "POST" && request.url === "/v1/accommodations/search") {
+      const body = await readJSON(request);
+      sendJSON(response, 200, await searchAccommodationCatalog(body));
       return;
     }
     if (request.method === "POST" && request.url === "/v1/quotes/transport") {

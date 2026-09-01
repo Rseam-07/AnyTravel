@@ -47,6 +47,36 @@ test("allows only typed actions and existing place names", () => {
   ]);
 });
 
+test("accepts a complete free-form trip action set but clamps unsafe values", () => {
+  const result = normalizeAssistantPayload(JSON.stringify({
+    reply: "苏州已在地图上亮起。",
+    actions: [
+      { type: "set_destination", value: "苏州" },
+      { type: "set_origin", value: "上海" },
+      { type: "set_day_count", value: 9 },
+      { type: "set_travelers", value: 2 },
+      { type: "set_start_date", value: "2026-10-02" },
+      { type: "set_end_date", value: "not-a-date" },
+      { type: "set_long_distance_mode", value: "train" },
+      { type: "set_accommodation_max_price", value: 600 },
+      { type: "set_accommodation_sort", value: "lowestPrice" },
+      { type: "generate_plan", value: true }
+    ]
+  }), context.places);
+
+  assert.deepEqual(result.actions, [
+    { type: "set_destination", value: "苏州" },
+    { type: "set_origin", value: "上海" },
+    { type: "set_day_count", value: "7" },
+    { type: "set_travelers", value: "2" },
+    { type: "set_start_date", value: "2026-10-02" },
+    { type: "set_long_distance_mode", value: "train" },
+    { type: "set_accommodation_max_price", value: "600" },
+    { type: "set_accommodation_sort", value: "lowestPrice" },
+    { type: "generate_plan", value: "true" }
+  ]);
+});
+
 test("calls the OpenAI-compatible endpoint without exposing the key in the body", async () => {
   let capturedURL;
   let capturedOptions;

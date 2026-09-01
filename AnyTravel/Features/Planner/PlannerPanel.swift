@@ -56,40 +56,53 @@ struct PlannerPanel: View {
                     .font(.title2.bold())
             }
 
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(AnyTravelPalette.route)
-                TextField(
-                    "输入城市、区域或目的地",
-                    text: Binding(
-                        get: { model.draft.destination },
-                        set: { model.draft.destination = $0 }
-                    )
-                )
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled(false)
-                .submitLabel(.search)
-                .focused($destinationFocused)
-                .onSubmit {
-                    guard model.canContinueDestination else { return }
-                    Task { await model.resolveDestination() }
-                }
-
-                if !model.draft.destination.isEmpty {
-                    Button {
-                        model.draft.destination = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
+            VStack(alignment: .leading, spacing: 7) {
+                Label("把想法随意写下来", systemImage: "sparkles")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AnyTravelPalette.routeDark)
+                ZStack(alignment: .topLeading) {
+                    if model.travelRequestText.isEmpty {
+                        Text("例如：从上海出发，两个人去苏州三天，想慢慢逛园林，住宿每晚不超过 600 元，优先高铁。")
+                            .font(.body)
                             .foregroundStyle(.secondary)
-                            .frame(width: 32, height: 32)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 8)
+                            .allowsHitTesting(false)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("清空目的地")
+                    TextEditor(text: $model.travelRequestText)
+                        .font(.body)
+                        .scrollContentBackground(.hidden)
+                        .frame(minHeight: 82, maxHeight: 116)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled(false)
+                        .focused($destinationFocused)
+                        .accessibilityLabel("自由描述旅行愿望")
+                        .accessibilityIdentifier("travel-request-input")
+                }
+                HStack {
+                    Text("智能向导会提取目的地、日期、预算、人数与交通偏好，并让地图回应。")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    if !model.travelRequestText.isEmpty {
+                        Button {
+                            model.travelRequestText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(AnyTravelPressStyle())
+                        .accessibilityLabel("清空旅行愿望")
+                    }
                 }
             }
-            .padding(.horizontal, 14)
-            .frame(minHeight: 54)
-            .background(AnyTravelPalette.softSurface.opacity(0.92), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+            .padding(.horizontal, 13)
+            .padding(.top, 8)
+            .padding(.bottom, 8)
+            .background(AnyTravelPalette.inputSurface, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 17, style: .continuous)
                     .strokeBorder(AnyTravelPalette.route.opacity(0.26), lineWidth: 1)
@@ -98,24 +111,27 @@ struct PlannerPanel: View {
             HStack(spacing: 8) {
                 ForEach(["苏州", "杭州", "成都"], id: \.self) { city in
                     Button(city) {
-                        model.draft.destination = city
+                        model.travelRequestText = city
                         destinationFocused = false
-                        Task { await model.resolveDestination() }
+                        Task { await model.submitTravelRequest() }
                     }
                     .font(.caption.weight(.semibold))
-                    .buttonStyle(.plain)
+                    .buttonStyle(AnyTravelPressStyle())
                     .padding(.horizontal, 13)
                     .frame(minHeight: 44)
                     .background(AnyTravelPalette.route.opacity(0.10), in: Capsule())
                 }
             }
 
-            primaryButton(title: "在地图上唤醒目的地", systemImage: "location.magnifyingglass") {
+            primaryButton(
+                title: model.isAssistantResponding ? "正在听懂这段旅途" : "让地图读懂这段话",
+                systemImage: model.isAssistantResponding ? "ellipsis.message" : "location.magnifyingglass"
+            ) {
                 destinationFocused = false
-                Task { await model.resolveDestination() }
+                Task { await model.submitTravelRequest() }
             }
-            .disabled(!model.canContinueDestination)
-            .opacity(model.canContinueDestination ? 1 : 0.45)
+            .disabled(!model.canSubmitTravelRequest || model.isAssistantResponding)
+            .opacity(model.canSubmitTravelRequest ? 1 : 0.45)
         }
     }
 
@@ -137,7 +153,7 @@ struct PlannerPanel: View {
                     model.phase = .destination
                 }
                 .font(.caption.weight(.semibold))
-                .buttonStyle(.plain)
+                .buttonStyle(AnyTravelPressStyle())
                 .frame(minHeight: 44)
             }
 
@@ -149,8 +165,8 @@ struct PlannerPanel: View {
                             valueText: "\(model.draft.dayCount)天",
                             decrementDisabled: model.draft.dayCount <= 1,
                             incrementDisabled: model.draft.dayCount >= 7,
-                            decrement: { model.draft.dayCount = max(1, model.draft.dayCount - 1) },
-                            increment: { model.draft.dayCount = min(7, model.draft.dayCount + 1) }
+                            decrement: { model.adjustDayCount(by: -1) },
+                            increment: { model.adjustDayCount(by: 1) }
                         )
 
                         compactStepper(
@@ -183,7 +199,7 @@ struct PlannerPanel: View {
                             Label(model.draft.pace.title, systemImage: "speedometer")
                                 .frame(maxWidth: .infinity, minHeight: 44)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(AnyTravelPressStyle())
                         .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
                         Menu {
@@ -198,7 +214,7 @@ struct PlannerPanel: View {
                             Label(model.draft.travelMode.title, systemImage: model.draft.travelMode.symbolName)
                                 .frame(maxWidth: .infinity, minHeight: 44)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(AnyTravelPressStyle())
                         .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
                     .font(.caption.weight(.semibold))
@@ -242,29 +258,68 @@ struct PlannerPanel: View {
             }
             .padding(.leading, 12)
             .frame(minHeight: 50)
-            .background(.background.opacity(0.72), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(AnyTravelPalette.inputSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
             if model.draft.logistics.hasDates,
                let startDate = model.draft.logistics.startDate,
                let endDate = model.draft.logistics.endDate {
-                HStack(spacing: 8) {
-                    DatePicker(
-                        "出发",
-                        selection: Binding(get: { startDate }, set: model.updateStartDate),
-                        in: Calendar.current.startOfDay(for: .now)...,
-                        displayedComponents: .date
-                    )
-                    DatePicker(
-                        "返程",
-                        selection: Binding(get: { endDate }, set: model.updateEndDate),
-                        in: startDate...,
-                        displayedComponents: .date
-                    )
-                    Button("清除") { model.setDatesEnabled(false) }
-                        .font(.caption.weight(.semibold))
-                        .frame(minHeight: 44)
+                VStack(spacing: 6) {
+                    HStack(spacing: 6) {
+                        Text("出发")
+                            .font(.caption.weight(.semibold))
+                        DatePicker(
+                            "出发",
+                            selection: Binding(get: { startDate }, set: model.updateStartDate),
+                            in: Calendar.current.startOfDay(for: .now)...,
+                            displayedComponents: .date
+                        )
+                        .labelsHidden()
+                        Spacer(minLength: 0)
+                        dateShiftButton(symbol: "minus", label: "出发日提前一天", disabled: Calendar.current.isDate(startDate, inSameDayAs: .now)) {
+                            model.adjustStartDate(by: -1)
+                        }
+                        dateShiftButton(symbol: "plus", label: "出发日推后一天") {
+                            model.adjustStartDate(by: 1)
+                        }
+                    }
+                    HStack(spacing: 6) {
+                        Text("返程")
+                            .font(.caption.weight(.semibold))
+                        DatePicker(
+                            "返程",
+                            selection: Binding(get: { endDate }, set: model.updateEndDate),
+                            in: (Calendar.current.date(byAdding: .day, value: 1, to: startDate) ?? startDate)...(Calendar.current.date(byAdding: .day, value: 6, to: startDate) ?? endDate),
+                            displayedComponents: .date
+                        )
+                        .labelsHidden()
+                        Spacer(minLength: 0)
+                        dateShiftButton(
+                            symbol: "minus",
+                            label: "返程日提前一天",
+                            disabled: (Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 1) <= 1
+                        ) {
+                            model.adjustEndDate(by: -1)
+                        }
+                        dateShiftButton(
+                            symbol: "plus",
+                            label: "返程日推后一天",
+                            disabled: (Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 1) >= 6
+                        ) {
+                            model.adjustEndDate(by: 1)
+                        }
+                    }
+                    HStack {
+                        Text("共 \(model.draft.dayCount) 天，可用两侧按钮增减")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("清除") { model.setDatesEnabled(false) }
+                            .font(.caption.weight(.semibold))
+                            .frame(minHeight: 44)
+                    }
                 }
-                .font(.caption)
+                .padding(.horizontal, 10)
+                .background(AnyTravelPalette.inputSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             } else {
                 Button {
                     model.setDatesEnabled(true)
@@ -273,8 +328,8 @@ struct PlannerPanel: View {
                         .font(.caption.weight(.semibold))
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.plain)
-                .background(.background.opacity(0.72), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .buttonStyle(AnyTravelPressStyle())
+                .background(AnyTravelPalette.inputSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
 
             ScrollView(.horizontal) {
@@ -325,7 +380,7 @@ struct PlannerPanel: View {
             }
             .font(.subheadline.weight(.semibold))
             .frame(maxWidth: .infinity, minHeight: 44)
-            .buttonStyle(.plain)
+            .buttonStyle(AnyTravelPressStyle())
         }
     }
 
@@ -344,7 +399,7 @@ struct PlannerPanel: View {
                     model.returnToEditing()
                 }
                 .frame(maxWidth: .infinity, minHeight: 50)
-                .buttonStyle(.plain)
+                .buttonStyle(AnyTravelPressStyle())
                 .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 
                 Button("重试") {
@@ -352,7 +407,7 @@ struct PlannerPanel: View {
                 }
                 .frame(maxWidth: .infinity, minHeight: 50)
                 .foregroundStyle(.white)
-                .buttonStyle(.plain)
+                .buttonStyle(AnyTravelPressStyle())
                 .background(AnyTravelPalette.route, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
             .fontWeight(.semibold)
@@ -377,7 +432,7 @@ struct PlannerPanel: View {
                 }
                 .frame(maxWidth: .infinity, minHeight: 24)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(AnyTravelPressStyle())
             .accessibilityLabel(readyExpanded ? "收起行程详情" : "展开行程详情")
 
             planSectionTabs
@@ -410,7 +465,7 @@ struct PlannerPanel: View {
                         .font(.caption.weight(.semibold))
                         .frame(minHeight: 44)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(AnyTravelPressStyle())
 
                 Menu {
                     Button {
@@ -441,7 +496,7 @@ struct PlannerPanel: View {
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(AnyTravelPressStyle())
                 .disabled(model.isExportingPlan)
                 .accessibilityLabel(model.isExportingPlan ? "正在导出行程" : "导出与分享")
                 .accessibilityIdentifier("plan-export-menu")
@@ -453,7 +508,7 @@ struct PlannerPanel: View {
                         .font(.caption.weight(.semibold))
                         .frame(minHeight: 44)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(AnyTravelPressStyle())
             }
 
             if let exportStatusMessage = model.exportStatusMessage {
@@ -547,7 +602,7 @@ struct PlannerPanel: View {
         let destination = model.destination?.title ?? model.draft.destination
         return switch model.planMapFocus {
         case .itinerary: "\(destination) · \(model.currentDay?.title ?? "行程")"
-        case .accommodation: "住宿比价 · \(model.accommodations.count)个候选"
+        case .accommodation: "住宿比价 · \(model.filteredAccommodations.count)/\(model.accommodations.count)家"
         case .transport: "\(selectedTransportDirection.title)方式 · \(activeTransportSelection?.mode.shortTitle ?? "待选择")"
         case .budget: "完整费用 · \(model.draft.logistics.travelers)人"
         }
@@ -619,7 +674,7 @@ struct PlannerPanel: View {
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(selected ? .white : AnyTravelPalette.routeDark)
                             .padding(.horizontal, 13)
-                            .frame(minHeight: 38)
+                            .frame(minHeight: 44)
                             .background {
                                 ZStack {
                                     Capsule().fill(AnyTravelPalette.softSurface)
@@ -630,7 +685,7 @@ struct PlannerPanel: View {
                                     }
                                 }
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(AnyTravelPressStyle())
                             .accessibilityAddTraits(selected ? .isSelected : [])
                     }
                 }
@@ -845,7 +900,7 @@ struct PlannerPanel: View {
                         .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(AnyTravelPressStyle())
                 }
             }
         }
@@ -863,16 +918,39 @@ struct PlannerPanel: View {
                 emptyLogisticsModule(title: "暂时没有住宿结果", actionTitle: "重新查找")
                 quoteRefreshBanner
             } else {
-                ScrollView(.horizontal) {
+                accommodationFilterBar
+
+                if model.filteredAccommodations.isEmpty {
                     HStack(spacing: 10) {
-                        ForEach(model.accommodations) { option in
-                            accommodationCard(option)
+                        Image(systemName: "line.3.horizontal.decrease.circle")
+                            .foregroundStyle(AnyTravelPalette.route)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("这些条件下还没有合适住处")
+                                .font(.subheadline.weight(.semibold))
+                            Text("放宽一项筛选，更多窗灯会重新回到地图上。")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
                         }
+                        Spacer()
+                        Button("清除") { resetAccommodationFilters() }
+                            .font(.caption.weight(.semibold))
+                            .frame(minHeight: 44)
+                            .buttonStyle(AnyTravelPressStyle())
                     }
-                    .scrollTargetLayout()
+                    .padding(11)
+                    .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                } else {
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 10) {
+                            ForEach(model.filteredAccommodations) { option in
+                                accommodationCard(option)
+                            }
+                        }
+                        .scrollTargetLayout()
+                    }
+                    .scrollIndicators(.hidden)
+                    .scrollTargetBehavior(.viewAligned)
                 }
-                .scrollIndicators(.hidden)
-                .scrollTargetBehavior(.viewAligned)
 
                 quoteRefreshBanner
 
@@ -881,6 +959,101 @@ struct PlannerPanel: View {
                 }
             }
         }
+    }
+
+    private var accommodationFilterBar: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                Text("显示 \(model.filteredAccommodations.count) / \(model.accommodations.count) 家")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(AnyTravelPalette.secondaryInk)
+                Spacer()
+                if model.activeAccommodationFilterCount > 0 {
+                    Button("清除 \(model.activeAccommodationFilterCount) 项") { resetAccommodationFilters() }
+                        .font(.caption2.weight(.semibold))
+                        .frame(minHeight: 44)
+                        .buttonStyle(AnyTravelPressStyle())
+                }
+            }
+
+            ScrollView(.horizontal) {
+                HStack(spacing: 7) {
+                    Menu {
+                        ForEach(AccommodationSort.allCases) { sort in
+                            Button {
+                                model.accommodationSort = sort
+                            } label: {
+                                if model.accommodationSort == sort {
+                                    Label(sort.title, systemImage: "checkmark")
+                                } else {
+                                    Text(sort.title)
+                                }
+                            }
+                        }
+                    } label: {
+                        filterChipLabel(title: model.accommodationSort.shortTitle, symbol: "arrow.up.arrow.down", selected: model.accommodationSort != .recommended)
+                    }
+
+                    Menu {
+                        Button("不限每晚价格") { model.accommodationMaxNightlyPrice = nil }
+                        ForEach([400, 600, 800, 1_200], id: \.self) { amount in
+                            Button("每晚不超过 ¥\(amount)") { model.accommodationMaxNightlyPrice = amount }
+                        }
+                    } label: {
+                        filterChipLabel(
+                            title: model.accommodationMaxNightlyPrice.map { "≤¥\($0)/晚" } ?? "价格",
+                            symbol: "yensign",
+                            selected: model.accommodationMaxNightlyPrice != nil
+                        )
+                    }
+
+                    Menu {
+                        Button("不限景点距离") { model.accommodationMaxAttractionDistanceMeters = nil }
+                        Button("平均 2 公里内") { model.accommodationMaxAttractionDistanceMeters = 2_000 }
+                        Button("平均 5 公里内") { model.accommodationMaxAttractionDistanceMeters = 5_000 }
+                        Button("平均 10 公里内") { model.accommodationMaxAttractionDistanceMeters = 10_000 }
+                    } label: {
+                        filterChipLabel(
+                            title: model.accommodationMaxAttractionDistanceMeters.map { "景点≤\($0.anyTravelDistanceText)" } ?? "景点距离",
+                            symbol: "scope",
+                            selected: model.accommodationMaxAttractionDistanceMeters != nil
+                        )
+                    }
+
+                    Button {
+                        model.accommodationLivePricesOnly.toggle()
+                    } label: {
+                        filterChipLabel(title: "有实时价", symbol: "bolt.fill", selected: model.accommodationLivePricesOnly)
+                    }
+                    .buttonStyle(AnyTravelPressStyle())
+
+                    Button {
+                        model.accommodationOfficialSiteOnly.toggle()
+                    } label: {
+                        filterChipLabel(title: "有官网", symbol: "building.2.crop.circle", selected: model.accommodationOfficialSiteOnly)
+                    }
+                    .buttonStyle(AnyTravelPressStyle())
+                }
+            }
+            .scrollIndicators(.hidden)
+        }
+    }
+
+    private func filterChipLabel(title: String, symbol: String, selected: Bool) -> some View {
+        Label(title, systemImage: symbol)
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 11)
+            .frame(minHeight: 44)
+            .foregroundStyle(selected ? .white : AnyTravelPalette.routeDark)
+            .background(selected ? AnyTravelPalette.route : AnyTravelPalette.elevatedSurface, in: Capsule())
+    }
+
+    private func resetAccommodationFilters() {
+        model.accommodationSort = .recommended
+        model.accommodationMaxNightlyPrice = nil
+        model.accommodationMaxAttractionDistanceMeters = nil
+        model.accommodationLivePricesOnly = false
+        model.accommodationOfficialSiteOnly = false
     }
 
     private var transportReadyContent: some View {
@@ -980,9 +1153,9 @@ struct PlannerPanel: View {
                         model.refreshLocalTransfersInBackground()
                     } label: {
                         Image(systemName: "arrow.clockwise")
-                            .frame(width: 40, height: 40)
+                            .frame(width: 44, height: 44)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(AnyTravelPressStyle())
                     .accessibilityLabel("重新查询接驳路线")
                 }
             }
@@ -1061,7 +1234,7 @@ struct PlannerPanel: View {
                                 .lineLimit(1)
                         }
                         .padding(.horizontal, 9)
-                        .frame(minHeight: 42)
+                        .frame(minHeight: 44)
                         .background(AnyTravelPalette.softSurface, in: Capsule())
                     }
                     .buttonStyle(AnyTravelPressStyle())
@@ -1101,7 +1274,7 @@ struct PlannerPanel: View {
                         .frame(minHeight: 48)
                         .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(AnyTravelPressStyle())
 
                     if index < model.currentStops.count - 1 {
                         Divider().padding(.leading, 38)
@@ -1130,7 +1303,7 @@ struct PlannerPanel: View {
                     Image(systemName: "xmark")
                         .frame(width: 44, height: 44)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(AnyTravelPressStyle())
                 .accessibilityLabel("关闭地点详情")
             }
 
@@ -1146,7 +1319,7 @@ struct PlannerPanel: View {
                         .font(.caption.weight(.semibold))
                         .frame(minHeight: 44)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(AnyTravelPressStyle())
                 .foregroundStyle(AnyTravelPalette.route)
             }
 
@@ -1188,9 +1361,7 @@ struct PlannerPanel: View {
 
     private func accommodationCard(_ option: AccommodationOption) -> some View {
         let selected = model.selectedAccommodationID == option.id
-        let pricedQuote = option.quotes
-            .filter { $0.amountCNY != nil }
-            .min { ($0.amountCNY ?? .max) < ($1.amountCNY ?? .max) }
+        let pricedQuote = option.bestPricedQuote
         return Button {
             model.selectAccommodation(option)
         } label: {
@@ -1208,9 +1379,27 @@ struct PlannerPanel: View {
                         Text(option.address)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                            .lineLimit(2)
                     }
                 }
+
+                HStack(spacing: 6) {
+                    if let brand = option.brand, !brand.isEmpty {
+                        Label(brand, systemImage: "building.2")
+                    }
+                    if let starRating = option.starRating, starRating > 0 {
+                        Label("\(starRating.formatted(.number.precision(.fractionLength(0...1))))星", systemImage: "star.fill")
+                    }
+                    if let guestRating = option.guestRating, guestRating > 0 {
+                        Label(guestRating.formatted(.number.precision(.fractionLength(1))), systemImage: "hand.thumbsup.fill")
+                    }
+                    if option.officialWebsiteURL != nil {
+                        Label("官网", systemImage: "checkmark.seal.fill")
+                    }
+                }
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(AnyTravelPalette.routeDark)
+                .lineLimit(1)
 
                 Text(option.recommendationReasons.prefix(2).joined(separator: " · "))
                     .font(.caption2)
@@ -1233,8 +1422,8 @@ struct PlannerPanel: View {
                 }
             }
             .padding(11)
-            .frame(width: 258, alignment: .leading)
-            .frame(minHeight: 118)
+            .frame(width: 278, alignment: .leading)
+            .frame(minHeight: 136)
             .scaleEffect(selected && !reduceMotion ? 1 : 0.975)
             .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
             .overlay {
@@ -1572,9 +1761,9 @@ struct PlannerPanel: View {
             Label(title, systemImage: symbol)
                 .font(.caption2.weight(.semibold))
                 .padding(.horizontal, 11)
-                .frame(minHeight: 40)
+                .frame(minHeight: 44)
                 .foregroundStyle(selected ? .white : AnyTravelPalette.routeDark)
-                .background(selected ? AnyTravelPalette.route : Color.white.opacity(0.72), in: Capsule())
+                .background(selected ? AnyTravelPalette.route : AnyTravelPalette.elevatedSurface, in: Capsule())
         }
         .buttonStyle(AnyTravelPressStyle())
         .accessibilityAddTraits(selected ? .isSelected : [])
@@ -1595,9 +1784,11 @@ struct PlannerPanel: View {
             HStack(spacing: 7) {
                 Button(action: decrement) {
                     Image(systemName: "minus")
-                        .frame(width: 32, height: 32)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .disabled(decrementDisabled)
+                .accessibilityLabel("减少\(title)")
                 Text(valueText)
                     .font(.caption.weight(.bold))
                     .frame(maxWidth: .infinity)
@@ -1605,16 +1796,35 @@ struct PlannerPanel: View {
                     .minimumScaleFactor(0.8)
                 Button(action: increment) {
                     Image(systemName: "plus")
-                        .frame(width: 32, height: 32)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .disabled(incrementDisabled)
+                .accessibilityLabel("增加\(title)")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(AnyTravelPressStyle())
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
         .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+    }
+
+    private func dateShiftButton(
+        symbol: String,
+        label: String,
+        disabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.caption.weight(.bold))
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(AnyTravelPressStyle())
+        .disabled(disabled)
+        .accessibilityLabel(label)
     }
 
     private func activityStep(_ title: String, active: Bool) -> some View {

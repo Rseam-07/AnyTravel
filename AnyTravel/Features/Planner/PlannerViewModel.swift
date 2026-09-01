@@ -33,6 +33,7 @@ final class PlannerViewModel {
     var activityDetail = ""
     var noticeMessage: String?
     var errorMessage: String?
+    var travelRequestText = ""
     var adjustmentText = ""
     var saveFeedbackTrigger = 0
     var planReadyFeedbackTrigger = 0
@@ -45,6 +46,11 @@ final class PlannerViewModel {
     var planMapFocus: PlanMapFocus = .itinerary
     var accommodations: [AccommodationOption] = []
     var selectedAccommodationID: AccommodationOption.ID?
+    var accommodationSort: AccommodationSort = .recommended
+    var accommodationMaxNightlyPrice: Int?
+    var accommodationMaxAttractionDistanceMeters: Double?
+    var accommodationLivePricesOnly = false
+    var accommodationOfficialSiteOnly = false
     var accessPoints: [AccessPoint] = []
     var transportOptions: [TransportOption] = []
     var selectedTransportID: TransportOption.ID?
@@ -252,7 +258,56 @@ final class PlannerViewModel {
     }
 
     var visibleAccommodations: [AccommodationOption] {
-        planMapFocus == .accommodation ? Array(accommodations.prefix(8)) : []
+        planMapFocus == .accommodation ? Array(filteredAccommodations.prefix(16)) : []
+    }
+
+    var filteredAccommodations: [AccommodationOption] {
+        accommodations
+            .filter { option in
+                if let maximum = accommodationMaxNightlyPrice {
+                    guard let amount = option.bestPricedQuote?.amountCNY, amount <= maximum else { return false }
+                }
+                if let maximumDistance = accommodationMaxAttractionDistanceMeters,
+                   option.attractionDistanceMeters > maximumDistance {
+                    return false
+                }
+                if accommodationLivePricesOnly,
+                   !option.quotes.contains(where: { $0.amountCNY != nil && ($0.kind == .live || $0.kind == .indicative) }) {
+                    return false
+                }
+                if accommodationOfficialSiteOnly, option.officialWebsiteURL == nil { return false }
+                return true
+            }
+            .sorted(by: accommodationComparator)
+    }
+
+    var activeAccommodationFilterCount: Int {
+        [
+            accommodationMaxNightlyPrice != nil,
+            accommodationMaxAttractionDistanceMeters != nil,
+            accommodationLivePricesOnly,
+            accommodationOfficialSiteOnly
+        ].filter(\.self).count
+    }
+
+    private func accommodationComparator(_ lhs: AccommodationOption, _ rhs: AccommodationOption) -> Bool {
+        switch accommodationSort {
+        case .recommended:
+            let lhsPrice = Double(lhs.bestPricedQuote?.amountCNY ?? 2_500)
+            let rhsPrice = Double(rhs.bestPricedQuote?.amountCNY ?? 2_500)
+            let lhsTransit = lhs.accessDistances[.metro] ?? lhs.accessDistances[.rail] ?? 8_000
+            let rhsTransit = rhs.accessDistances[.metro] ?? rhs.accessDistances[.rail] ?? 8_000
+            return lhs.attractionDistanceMeters + lhsTransit * 0.22 + lhsPrice * 0.55
+                < rhs.attractionDistanceMeters + rhsTransit * 0.22 + rhsPrice * 0.55
+        case .lowestPrice:
+            return (lhs.bestPricedQuote?.amountCNY ?? .max) < (rhs.bestPricedQuote?.amountCNY ?? .max)
+        case .closestToAttractions:
+            return lhs.attractionDistanceMeters < rhs.attractionDistanceMeters
+        case .closestToTransit:
+            let lhsDistance = lhs.accessDistances[.metro] ?? lhs.accessDistances[.rail] ?? .greatestFiniteMagnitude
+            let rhsDistance = rhs.accessDistances[.metro] ?? rhs.accessDistances[.rail] ?? .greatestFiniteMagnitude
+            return lhsDistance < rhsDistance
+        }
     }
 
     var visibleAccessPoints: [AccessPoint] {
@@ -322,6 +377,10 @@ final class PlannerViewModel {
 
     var canContinueDestination: Bool {
         !draft.destination.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var canSubmitTravelRequest: Bool {
+        !travelRequestText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     func bootstrapIfNeeded() async {
@@ -885,6 +944,131 @@ final class PlannerViewModel {
         }
     }
 
+    func submitTravelRequest() async {
+        let requestText = travelRequestText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !requestText.isEmpty else { return }
+        assistantReply = nil
+
+        if assistantSettings.isConfigured {
+            isAssistantResponding = true
+            defer { isAssistantResponding = false }
+            do {
+                let interpretation = try await assistantClient.interpret(
+                    input: requestText,
+                    context: assistantContext,
+                    settings: assistantSettings
+                )
+                assistantReply = interpretation.reply
+                assistantFeedbackTrigger += 1
+                travelRequestText = ""
+                let localIntent = intentParser.parse(requestText)
+                let actions = supplementedAssistantActions(
+                    interpretation.actions,
+                    with: localIntent,
+                    rawText: requestText
+                )
+                if actions.isEmpty {
+                    await applyInitialIntent(localIntent, rawText: requestText)
+                } else {
+                    await applyAssistantActions(actions)
+                }
+                return
+            } catch {
+                let localIntent = intentParser.parse(requestText)
+                assistantReply = localIntent.isRecognized
+                    ? "云端的回声暂时没有抵达，这句话已由本机继续读懂。"
+                    : nil
+                if localIntent.isRecognized || Self.looksLikeDestination(requestText) {
+                    travelRequestText = ""
+                    await applyInitialIntent(localIntent, rawText: requestText)
+                    return
+                }
+                noticeMessage = error.localizedDescription
+                return
+            }
+        }
+
+        await applyInitialIntent(intentParser.parse(requestText), rawText: requestText)
+    }
+
+    private func supplementedAssistantActions(
+        _ assistantActions: [TravelAssistantAction],
+        with intent: AdjustmentIntent,
+        rawText: String
+    ) -> [TravelAssistantAction] {
+        var result = assistantActions
+        var existingTypes = Set(result.map { $0.type.rawValue })
+        func append(_ type: TravelAssistantActionType, _ value: String?) {
+            guard !existingTypes.contains(type.rawValue), let value, !value.isEmpty else { return }
+            result.append(TravelAssistantAction(type: type, value: value))
+            existingTypes.insert(type.rawValue)
+        }
+
+        let fallbackDestination = intent.destination
+            ?? (Self.looksLikeDestination(rawText) ? rawText.trimmingCharacters(in: .whitespacesAndNewlines) : nil)
+        append(.setDestination, fallbackDestination)
+        append(.setOrigin, intent.origin)
+        append(.setPace, intent.pace?.rawValue)
+        append(.setTravelMode, intent.travelMode?.rawValue)
+        append(.setLongDistanceMode, intent.longDistanceMode?.rawValue)
+        append(.setDayCount, intent.dayCount.map(String.init))
+        append(.setTravelers, intent.travelers.map(String.init))
+        append(.setBudget, intent.budgetPerPerson.map(String.init))
+        append(.setStartDate, intent.startDate.map { Self.assistantDayFormatter.string(from: $0) })
+        append(.setEndDate, intent.endDate.map { Self.assistantDayFormatter.string(from: $0) })
+        append(.setAccommodationMaxPrice, intent.accommodationMaxPrice.map(String.init))
+        append(.setAccommodationSort, intent.accommodationSort?.rawValue)
+        for interest in intent.addedInterests where !existingTypes.contains(TravelAssistantActionType.addInterest.rawValue) {
+            result.append(.init(type: .addInterest, value: interest.rawValue))
+        }
+        for interest in intent.removedInterests where !existingTypes.contains(TravelAssistantActionType.removeInterest.rawValue) {
+            result.append(.init(type: .removeInterest, value: interest.rawValue))
+        }
+        if intent.shouldGeneratePlan { append(.generatePlan, "true") }
+        return Array(result.prefix(20))
+    }
+
+    private func applyInitialIntent(_ intent: AdjustmentIntent, rawText: String) async {
+        if let destination = intent.destination {
+            draft.destination = destination
+        } else if Self.looksLikeDestination(rawText) {
+            draft.destination = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let origin = intent.origin { draft.logistics.origin = origin }
+        if let pace = intent.pace { draft.pace = pace }
+        if let travelMode = intent.travelMode { draft.travelMode = travelMode }
+        if let longDistanceMode = intent.longDistanceMode {
+            draft.logistics.preferredLongDistanceMode = longDistanceMode
+        }
+        if let dayCount = intent.dayCount { draft.dayCount = dayCount }
+        if let travelers = intent.travelers { draft.logistics.travelers = travelers }
+        if let budget = intent.budgetPerPerson { draft.budgetPerPerson = min(max(budget, 1_000), 30_000) }
+        if let maximum = intent.accommodationMaxPrice { accommodationMaxNightlyPrice = maximum }
+        if let sort = intent.accommodationSort { accommodationSort = sort }
+        draft.interests.formUnion(intent.addedInterests)
+        draft.interests.subtract(intent.removedInterests)
+        if draft.interests.isEmpty { draft.interests = [.gardens] }
+
+        if let startDate = intent.startDate {
+            draft.logistics.startDate = startDate
+            draft.logistics.endDate = intent.endDate
+                ?? Calendar.current.date(byAdding: .day, value: max(draft.dayCount - 1, 1), to: startDate)
+            if let endDate = draft.logistics.endDate { updateEndDate(endDate) }
+        }
+
+        guard canContinueDestination else {
+            noticeMessage = "我听见了旅途偏好，还需要一个能在地图上落下的目的地。"
+            return
+        }
+        travelRequestText = ""
+        await resolveDestination()
+        if intent.shouldGeneratePlan, phase == .preferences {
+            await generatePlan()
+        } else if let assistantReply {
+            noticeMessage = assistantReply
+        }
+    }
+
     func applyAdjustment() async {
         let requestText = adjustmentText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !requestText.isEmpty else { return }
@@ -936,9 +1120,18 @@ final class PlannerViewModel {
         }
 
         let onlyRequestsRelaxedPace = intent.pace == .relaxed
+            && intent.destination == nil
+            && intent.origin == nil
             && intent.travelMode == nil
+            && intent.longDistanceMode == nil
             && intent.dayCount == nil
+            && intent.travelers == nil
             && intent.budgetPerPerson == nil
+            && intent.startDate == nil
+            && intent.endDate == nil
+            && intent.accommodationMaxPrice == nil
+            && intent.accommodationSort == nil
+            && !intent.shouldGeneratePlan
             && intent.addedInterests.isEmpty
             && intent.removedInterests.isEmpty
             && intent.excludedPlaceTerm == nil
@@ -948,13 +1141,65 @@ final class PlannerViewModel {
             return
         }
 
-        if let pace = intent.pace { draft.pace = pace }
-        if let travelMode = intent.travelMode { draft.travelMode = travelMode }
-        if let dayCount = intent.dayCount { draft.dayCount = dayCount }
+        let wasReady = phase == .ready
+        var planNeedsRegeneration = false
+        var logisticsNeedRefresh = false
+        var filtersChanged = false
+
+        if let destination = intent.destination, destination != draft.destination {
+            draft.destination = destination
+            self.destination = nil
+            adjustmentText = ""
+            await resolveDestination()
+            if (wasReady || intent.shouldGeneratePlan), phase == .preferences { await generatePlan() }
+            return
+        }
+        if let origin = intent.origin {
+            draft.logistics.origin = origin
+            logisticsNeedRefresh = true
+        }
+        if let pace = intent.pace {
+            draft.pace = pace
+            planNeedsRegeneration = true
+        }
+        if let travelMode = intent.travelMode {
+            draft.travelMode = travelMode
+            planNeedsRegeneration = true
+        }
+        if let longDistanceMode = intent.longDistanceMode {
+            draft.logistics.preferredLongDistanceMode = longDistanceMode
+            logisticsNeedRefresh = true
+        }
+        if let dayCount = intent.dayCount {
+            adjustDayCount(by: dayCount - draft.dayCount)
+            planNeedsRegeneration = true
+        }
+        if let travelers = intent.travelers {
+            draft.logistics.travelers = travelers
+            logisticsNeedRefresh = true
+        }
         if let budget = intent.budgetPerPerson { draft.budgetPerPerson = budget }
+        if let maximum = intent.accommodationMaxPrice {
+            accommodationMaxNightlyPrice = maximum
+            filtersChanged = true
+        }
+        if let sort = intent.accommodationSort {
+            accommodationSort = sort
+            filtersChanged = true
+        }
+        if let startDate = intent.startDate {
+            draft.logistics.startDate = startDate
+            draft.logistics.endDate = intent.endDate
+                ?? Calendar.current.date(byAdding: .day, value: max(draft.dayCount - 1, 1), to: startDate)
+            if let endDate = draft.logistics.endDate { updateEndDate(endDate) }
+            logisticsNeedRefresh = true
+        }
         draft.interests.formUnion(intent.addedInterests)
         draft.interests.subtract(intent.removedInterests)
         if draft.interests.isEmpty { draft.interests = [.gardens] }
+        if !intent.addedInterests.isEmpty || !intent.removedInterests.isEmpty {
+            planNeedsRegeneration = true
+        }
 
         if let excludedTerm = intent.excludedPlaceTerm {
             let originalCount = itineraryDays.reduce(0) { $0 + $1.stops.count }
@@ -988,17 +1233,39 @@ final class PlannerViewModel {
         }
 
         adjustmentText = ""
-        await generatePlan()
+        if intent.shouldGeneratePlan || (planNeedsRegeneration && phase == .ready) {
+            await generatePlan()
+        } else {
+            if logisticsNeedRefresh, phase == .ready { refreshLogisticsInBackground() }
+            if filtersChanged, phase == .ready {
+                planMapFocus = .accommodation
+                fitCoordinates(filteredAccommodations.prefix(12).map(\.coordinate), animated: true)
+            }
+            noticeMessage = "已经照这句话调整，地图会沿新的条件重新展开。"
+        }
     }
 
     private func applyAssistantActions(_ actions: [TravelAssistantAction]) async {
         var routesNeedRefresh = false
         var logisticsNeedRefresh = false
+        var planNeedsRegeneration = false
+        var destinationChanged = false
+        var shouldGeneratePlan = false
+        var accommodationFilterChanged = false
         var requestedRelaxation = false
         var placeToFocus: TravelPlace?
 
         for action in actions {
             switch action.type {
+            case .setDestination:
+                let value = action.value.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !value.isEmpty else { continue }
+                destinationChanged = destinationChanged || value != draft.destination
+                draft.destination = value
+                if destinationChanged { destination = nil }
+            case .setOrigin:
+                draft.logistics.origin = action.value
+                logisticsNeedRefresh = phase == .ready
             case .setPace:
                 guard let pace = TripPace(rawValue: action.value) else { continue }
                 if pace == .relaxed, phase == .ready {
@@ -1006,14 +1273,61 @@ final class PlannerViewModel {
                 } else {
                     draft.pace = pace
                     paceStatusMessage = nil
+                    planNeedsRegeneration = phase == .ready
                 }
             case .setTravelMode:
                 guard let mode = TravelMode(rawValue: action.value), mode != draft.travelMode else { continue }
                 draft.travelMode = mode
                 routesNeedRefresh = phase == .ready
+            case .setLongDistanceMode:
+                draft.logistics.preferredLongDistanceMode = action.value == "auto"
+                    ? nil
+                    : LongDistanceMode(rawValue: action.value)
+                logisticsNeedRefresh = phase == .ready
+            case .setDayCount:
+                guard let value = Int(action.value) else { continue }
+                let next = min(max(value, 1), 7)
+                adjustDayCount(by: next - draft.dayCount)
+                planNeedsRegeneration = phase == .ready
+            case .setTravelers:
+                guard let value = Int(action.value) else { continue }
+                draft.logistics.travelers = min(max(value, 1), 8)
+                logisticsNeedRefresh = phase == .ready
             case .setBudget:
                 guard let budget = Int(action.value) else { continue }
                 draft.budgetPerPerson = min(max(budget, 1_000), 30_000)
+            case .setStartDate:
+                guard let date = Self.assistantDayFormatter.date(from: action.value) else { continue }
+                if draft.logistics.endDate == nil { setDatesEnabled(true) }
+                updateStartDate(date)
+                logisticsNeedRefresh = phase == .ready
+            case .setEndDate:
+                guard let date = Self.assistantDayFormatter.date(from: action.value) else { continue }
+                if draft.logistics.startDate == nil {
+                    draft.logistics.startDate = Calendar.current.startOfDay(for: .now)
+                }
+                updateEndDate(date)
+                logisticsNeedRefresh = phase == .ready
+            case .setAccommodationMaxPrice:
+                guard let value = Int(action.value) else { continue }
+                accommodationMaxNightlyPrice = min(max(value, 100), 10_000)
+                planMapFocus = phase == .ready ? .accommodation : planMapFocus
+                accommodationFilterChanged = phase == .ready
+            case .setAccommodationSort:
+                guard let sort = AccommodationSort(rawValue: action.value) else { continue }
+                accommodationSort = sort
+                planMapFocus = phase == .ready ? .accommodation : planMapFocus
+                accommodationFilterChanged = phase == .ready
+            case .addInterest:
+                guard let interest = TripInterest(rawValue: action.value) else { continue }
+                draft.interests.insert(interest)
+                planNeedsRegeneration = phase == .ready
+            case .removeInterest:
+                guard let interest = TripInterest(rawValue: action.value), draft.interests.count > 1 else { continue }
+                draft.interests.remove(interest)
+                planNeedsRegeneration = phase == .ready
+            case .generatePlan:
+                shouldGeneratePlan = action.value.lowercased() == "true"
             case .focusPlace:
                 placeToFocus = itineraryDays.flatMap(\.stops).first { $0.name == action.value }
             case .removePlace:
@@ -1025,6 +1339,25 @@ final class PlannerViewModel {
                     logisticsNeedRefresh = true
                 }
             }
+        }
+
+        if destinationChanged {
+            await resolveDestination()
+            if shouldGeneratePlan, phase == .preferences { await generatePlan() }
+            if let assistantReply { noticeMessage = assistantReply }
+            return
+        }
+
+        if shouldGeneratePlan {
+            await generatePlan()
+            if let assistantReply { noticeMessage = assistantReply }
+            return
+        }
+
+        if planNeedsRegeneration, phase == .ready, !requestedRelaxation {
+            await generatePlan()
+            if let assistantReply { noticeMessage = assistantReply }
+            return
         }
 
         if requestedRelaxation {
@@ -1043,6 +1376,9 @@ final class PlannerViewModel {
         }
         if logisticsNeedRefresh, !requestedRelaxation {
             refreshLogisticsInBackground()
+        }
+        if accommodationFilterChanged {
+            fitCoordinates(filteredAccommodations.prefix(12).map(\.coordinate), animated: true)
         }
 
         if let placeToFocus,
@@ -1089,7 +1425,14 @@ final class PlannerViewModel {
                         interest: $0.interest.rawValue
                     )
                 }
-            }
+            },
+            origin: draft.logistics.origin,
+            travelers: draft.logistics.travelers,
+            startDate: draft.logistics.startDate.map { Self.assistantDayFormatter.string(from: $0) },
+            endDate: draft.logistics.endDate.map { Self.assistantDayFormatter.string(from: $0) },
+            longDistanceMode: draft.logistics.preferredLongDistanceMode?.rawValue,
+            accommodationMaxNightlyPrice: accommodationMaxNightlyPrice,
+            accommodationSort: accommodationSort.rawValue
         )
     }
 
@@ -1391,15 +1734,49 @@ final class PlannerViewModel {
         }
     }
 
-    func updateStartDate(_ date: Date) {
-        let start = Calendar.current.startOfDay(for: date)
-        draft.logistics.startDate = start
-        if let end = draft.logistics.endDate, end > start { return }
+    func adjustDayCount(by delta: Int) {
+        let nextValue = min(max(draft.dayCount + delta, 1), 7)
+        guard nextValue != draft.dayCount else { return }
+        draft.dayCount = nextValue
+        guard let start = draft.logistics.startDate else { return }
         draft.logistics.endDate = Calendar.current.date(
             byAdding: .day,
-            value: max(draft.dayCount - 1, 1),
+            value: max(nextValue - 1, 1),
             to: start
         )
+    }
+
+    func adjustStartDate(by dayOffset: Int) {
+        guard let currentStart = draft.logistics.startDate else { return }
+        let calendar = Calendar.current
+        let earliest = calendar.startOfDay(for: .now)
+        let proposed = calendar.date(byAdding: .day, value: dayOffset, to: currentStart) ?? currentStart
+        let nextStart = max(calendar.startOfDay(for: proposed), earliest)
+        let currentEnd = draft.logistics.endDate ?? currentStart
+        let span = max(calendar.dateComponents([.day], from: currentStart, to: currentEnd).day ?? 1, 1)
+        draft.logistics.startDate = nextStart
+        draft.logistics.endDate = calendar.date(byAdding: .day, value: span, to: nextStart)
+    }
+
+    func adjustEndDate(by dayOffset: Int) {
+        guard let currentEnd = draft.logistics.endDate,
+              let proposed = Calendar.current.date(byAdding: .day, value: dayOffset, to: currentEnd)
+        else { return }
+        updateEndDate(proposed)
+    }
+
+    func updateStartDate(_ date: Date) {
+        let calendar = Calendar.current
+        let oldStart = draft.logistics.startDate
+        let oldEnd = draft.logistics.endDate
+        let start = max(calendar.startOfDay(for: date), calendar.startOfDay(for: .now))
+        let preservedSpan = if let oldStart, let oldEnd {
+            max(calendar.dateComponents([.day], from: oldStart, to: oldEnd).day ?? 1, 1)
+        } else {
+            max(draft.dayCount - 1, 1)
+        }
+        draft.logistics.startDate = start
+        draft.logistics.endDate = calendar.date(byAdding: .day, value: preservedSpan, to: start)
     }
 
     func updateEndDate(_ date: Date) {
@@ -1407,10 +1784,12 @@ final class PlannerViewModel {
             draft.logistics.endDate = date
             return
         }
-        let minimumEnd = Calendar.current.date(byAdding: .day, value: 1, to: start) ?? start
-        let end = max(date, minimumEnd)
+        let calendar = Calendar.current
+        let minimumEnd = calendar.date(byAdding: .day, value: 1, to: start) ?? start
+        let maximumEnd = calendar.date(byAdding: .day, value: 6, to: start) ?? date
+        let end = min(max(calendar.startOfDay(for: date), minimumEnd), maximumEnd)
         draft.logistics.endDate = end
-        let nights = Calendar.current.dateComponents([.day], from: start, to: end).day ?? 1
+        let nights = calendar.dateComponents([.day], from: start, to: end).day ?? 1
         draft.dayCount = min(max(nights + 1, 1), 7)
     }
 
@@ -1479,18 +1858,40 @@ final class PlannerViewModel {
             )
         } else {
             let previousName = selectedAccommodation?.name
-            let discovery = await logisticsSearchService.discoverAccommodations(
+            var discovery = await logisticsSearchService.discoverAccommodations(
                 around: destination,
                 itineraryDays: itineraryDays,
                 draft: draft
             )
             guard !Task.isCancelled else { return }
             logisticsStatusMessage = draft.logistics.hasDates ? "正在把当天的住宿价格带回来" : "正在沿景点整理合适的落脚处"
+            if canRequestLiveQuotes {
+                do {
+                    let catalog = try await pricingBackendClient.searchAccommodationCatalog(
+                        destination: draft.destination,
+                        logistics: draft.logistics,
+                        anchors: itineraryDays.compactMap { $0.stops.first?.name }
+                    )
+                    discovery = logisticsSearchService.mergingCatalog(
+                        catalog.value,
+                        into: discovery,
+                        around: destination,
+                        itineraryDays: itineraryDays,
+                        draft: draft
+                    )
+                    receivedQuoteCount += catalog.receivedCount
+                    latestCapture = max(latestCapture ?? catalog.capturedAt, catalog.capturedAt)
+                    allResultsCached = allResultsCached && catalog.isCached
+                    pricingIssues.append(contentsOf: catalog.issues.map(\.message))
+                } catch {
+                    pricingFailures.append(Self.pricingFailureText(error))
+                }
+            }
             var updatedAccommodations = discovery.options
             if canRequestLiveQuotes {
                 do {
                     let result = try await pricingBackendClient.enrichAccommodationQuotes(
-                        discovery.options,
+                        updatedAccommodations,
                         destination: draft.destination,
                         logistics: draft.logistics
                     )
@@ -1918,6 +2319,7 @@ final class PlannerViewModel {
         isRouteLoading = false
         noticeMessage = nil
         errorMessage = nil
+        travelRequestText = ""
         adjustmentText = ""
         planMapFocus = .itinerary
         accommodations = []
@@ -2271,6 +2673,23 @@ final class PlannerViewModel {
         errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         phase = .failure
     }
+
+    private static func looksLikeDestination(_ value: String) -> Bool {
+        let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, text.count <= 24, !text.contains(where: { $0.isNewline }) else { return false }
+        let blockedWords = ["预算", "酒店", "住宿", "轻松", "紧凑", "公交", "步行", "自驾", "几天", "价格"]
+        return !blockedWords.contains(where: text.contains)
+            && text.rangeOfCharacter(from: .punctuationCharacters) == nil
+    }
+
+    private static let assistantDayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
 
     private static let initialRegion = MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 34.35, longitude: 108.94),

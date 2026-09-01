@@ -7,9 +7,9 @@ final class AnyTravelUITests: XCTestCase {
         app.launchArguments = ["--skip-onboarding"]
         app.launch()
 
-        XCTAssertTrue(app.textFields["输入城市、区域或目的地"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textViews["travel-request-input"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["苏州"].isHittable)
-        XCTAssertTrue(app.buttons["在地图上唤醒目的地"].exists)
+        XCTAssertTrue(app.buttons["让地图读懂这段话"].exists)
     }
 
     func testFirstLaunchExplainsTheFlowAndReachesInitialSettings() {
@@ -32,7 +32,7 @@ final class AnyTravelUITests: XCTestCase {
         let startButton = app.buttons["开始规划"]
         XCTAssertTrue(startButton.isHittable)
         startButton.tap()
-        XCTAssertTrue(app.textFields["输入城市、区域或目的地"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.textViews["travel-request-input"].waitForExistence(timeout: 3))
     }
 
     func testCanSaveTripAndSeeItInLibrary() {
@@ -130,7 +130,7 @@ final class AnyTravelUITests: XCTestCase {
         XCTAssertTrue(app.buttons["导出日历文件"].exists)
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.08)).tap()
         accommodationTab.tap()
-        XCTAssertTrue(app.staticTexts["住宿比价 · 1个候选"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["住宿比价 · 1/1家"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["¥468/晚"].exists)
         XCTAssertTrue(app.staticTexts["演示价"].exists)
 
@@ -171,6 +171,26 @@ final class AnyTravelUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["抵达接驳"].exists)
         XCTAssertTrue(app.staticTexts["返程接驳"].exists)
         XCTAssertTrue(app.staticTexts["机动金"].exists)
+    }
+
+    func testAccommodationFilterControlsImmediatelyChangeVisibleResults() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-test-ready"]
+        app.launch()
+
+        XCTAssertTrue(app.buttons["住宿"].waitForExistence(timeout: 5))
+        app.buttons["住宿"].tap()
+        XCTAssertTrue(app.staticTexts["住宿比价 · 1/1家"].waitForExistence(timeout: 3))
+
+        let liveOnly = app.buttons["有实时价"]
+        XCTAssertTrue(liveOnly.waitForExistence(timeout: 3))
+        XCTAssertTrue(liveOnly.isHittable)
+        liveOnly.tap()
+
+        XCTAssertTrue(app.staticTexts["住宿比价 · 0/1家"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["这些条件下还没有合适住处"].exists)
+        liveOnly.tap()
+        XCTAssertTrue(app.staticTexts["住宿比价 · 1/1家"].waitForExistence(timeout: 3))
     }
 
     func testCompletePlanExportsPDFToSystemShareSheet() {
@@ -310,5 +330,33 @@ final class AnyTravelUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["编排行程"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["苏州博物馆"].exists)
         XCTAssertTrue(app.staticTexts["拙政园"].exists)
+    }
+
+    func testArrivalDateCanMoveBackwardAndForward() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--skip-onboarding", "--ui-test-ready"]
+        app.launch()
+
+        XCTAssertTrue(app.buttons["调整"].waitForExistence(timeout: 5))
+        app.buttons["调整"].tap()
+        XCTAssertTrue(app.buttons["修改日期与出发条件"].waitForExistence(timeout: 2))
+        app.buttons["修改日期与出发条件"].tap()
+        XCTAssertTrue(app.navigationBars["调整旅行条件"].waitForExistence(timeout: 3))
+
+        let earlier = app.buttons["抵达日提前一天"]
+        for _ in 0..<2 where !earlier.exists { app.swipeUp() }
+        XCTAssertTrue(earlier.waitForExistence(timeout: 3))
+
+        let arrivalValue = app.descendants(matching: .any)["trip-conditions-arrival-date-value"]
+        XCTAssertTrue(arrivalValue.waitForExistence(timeout: 3))
+        let originalValue = arrivalValue.label
+        XCTAssertTrue(earlier.isHittable)
+        earlier.tap()
+        XCTAssertNotEqual(arrivalValue.label, originalValue)
+
+        let later = app.buttons["抵达日推后一天"]
+        XCTAssertTrue(later.isHittable)
+        later.tap()
+        XCTAssertEqual(arrivalValue.label, originalValue)
     }
 }

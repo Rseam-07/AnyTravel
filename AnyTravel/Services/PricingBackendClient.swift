@@ -88,6 +88,78 @@ struct PricingBackendClient {
 
     var isConfigured: Bool { configuredBaseURL() != nil }
 
+    func searchAccommodationCatalog(
+        destination: String,
+        logistics: TripLogistics,
+        anchors: [String] = []
+    ) async throws -> PricingEnrichmentResult<[AccommodationCatalogEntry]> {
+        guard let baseURL = configuredBaseURL() else { throw PricingBackendError.serviceNotConfigured }
+        guard let startDate = logistics.startDate, let requestedEndDate = logistics.endDate else {
+            throw PricingBackendError.missingDates
+        }
+        let minimumEnd = Calendar.current.date(byAdding: .day, value: 1, to: startDate) ?? requestedEndDate
+        let endDate = max(requestedEndDate, minimumEnd)
+        let endpoint = baseURL.appendingPathComponent("v1/accommodations/search")
+        let requestBody = AccommodationCatalogRequest(
+            destination: destination,
+            checkIn: Self.dayFormatter.string(from: startDate),
+            checkOut: Self.dayFormatter.string(from: endDate),
+            adults: max(logistics.travelers, 1),
+            rooms: max((logistics.travelers + 1) / 2, 1),
+            size: 20,
+            anchors: Array(anchors
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .prefix(3))
+        )
+        do {
+            var request = URLRequest(url: endpoint)
+            request.httpMethod = "POST"
+            request.timeoutInterval = 32
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(requestBody)
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  (200..<300).contains(httpResponse.statusCode) else {
+                throw Self.httpError(response: response, data: data)
+            }
+            let payload = try JSONDecoder.anyTravelPricing.decode(AccommodationCatalogResponse.self, from: data)
+            let entries = payload.hotels.map { hotel in
+                AccommodationCatalogEntry(
+                    providerHotelID: hotel.providerHotelID,
+                    name: hotel.name,
+                    brand: hotel.brand,
+                    address: hotel.address,
+                    coordinate: Coordinate(latitude: hotel.latitude, longitude: hotel.longitude),
+                    starRating: hotel.starRating,
+                    guestRating: hotel.guestRating,
+                    description: hotel.description,
+                    imageURL: hotel.imageURL,
+                    bookingURL: hotel.bookingURL,
+                    amenities: hotel.amenities,
+                    tags: hotel.tags,
+                    amountCNY: hotel.amountCNY,
+                    quoteKind: hotel.kind == "live" ? .live : .checkOnProvider,
+                    capturedAt: hotel.capturedAt,
+                    note: hotel.note
+                )
+            }
+            return PricingEnrichmentResult(
+                value: entries,
+                receivedCount: entries.filter { $0.amountCNY != nil }.count,
+                capturedAt: payload.capturedAt,
+                isCached: payload.cached,
+                issues: payload.diagnostics.compactMap(\.providerIssue)
+            )
+        } catch let error as PricingBackendError {
+            throw error
+        } catch is DecodingError {
+            throw PricingBackendError.invalidResponse
+        } catch {
+            throw PricingBackendError.network(error.localizedDescription)
+        }
+    }
+
     func enrichAccommodationQuotes(
         _ accommodations: [AccommodationOption],
         destination: String,
@@ -534,6 +606,23 @@ private struct AccommodationQuoteRequest: Codable {
     let hotels: [Hotel]
 }
 
+private struct AccommodationCatalogRequest: Codable {
+    var destination: String
+    var checkIn: String
+    var checkOut: String
+    var adults: Int
+    var rooms: Int
+    var size: Int
+    var anchors: [String]
+}
+
+private struct AccommodationCatalogResponse: Codable {
+    var hotels: [BackendAccommodationCatalogHotel]
+    var diagnostics: [BackendDiagnostic]
+    var capturedAt: Date
+    var cached: Bool
+}
+
 private struct AccommodationQuoteResponse: Codable {
     var quotes: [BackendAccommodationQuote]
     var diagnostics: [BackendDiagnostic]
@@ -618,6 +707,27 @@ private struct BackendAccommodationQuote: Codable {
     var kind: String
     var capturedAt: Date
     var bookingURL: URL?
+    var note: String
+}
+
+private struct BackendAccommodationCatalogHotel: Codable {
+    var providerHotelID: String
+    var name: String
+    var brand: String?
+    var address: String
+    var latitude: Double
+    var longitude: Double
+    var starRating: Double?
+    var guestRating: Double?
+    var description: String?
+    var imageURL: URL?
+    var bookingURL: URL?
+    var amenities: [String]
+    var tags: [String]
+    var amountCNY: Int?
+    var unit: String
+    var kind: String
+    var capturedAt: Date
     var note: String
 }
 

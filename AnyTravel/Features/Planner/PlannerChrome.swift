@@ -118,11 +118,10 @@ struct PlannerChrome: View {
         .padding(.horizontal, 12)
         .padding(.top, 7)
         .frame(maxWidth: 620)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, alignment: .top)
         .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: model.routeStatusText)
         .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: model.topSubtitle)
         .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: model.mapAppearance)
-        .allowsHitTesting(true)
     }
 }
 

@@ -4,8 +4,37 @@ import { Railway12306Adapter } from "./adapters/railway12306.mjs";
 import { TongchengAdapter } from "./adapters/tongcheng.mjs";
 
 const cache = new Map();
-const adapters = [new RollingGoAdapter(), new CtripAdapter(), new TongchengAdapter()];
+const rollingGoAdapter = new RollingGoAdapter();
+const adapters = [rollingGoAdapter, new CtripAdapter(), new TongchengAdapter()];
 const transportAdapters = [new Railway12306Adapter()];
+
+export async function searchAccommodationCatalog(request) {
+  validateCatalogRequest(request);
+  const normalizedRequest = {
+    ...request,
+    adults: Math.min(Math.max(Number(request.adults || 1), 1), 8),
+    rooms: Math.min(Math.max(Number(request.rooms || 1), 1), 4),
+    size: Math.min(Math.max(Number(request.size || 20), 1), 20),
+    anchors: [...new Set(
+      (Array.isArray(request.anchors) ? request.anchors : [])
+        .map((value) => String(value || "").trim().slice(0, 120))
+        .filter(Boolean)
+    )].slice(0, 3)
+  };
+  const key = `catalog:${JSON.stringify(normalizedRequest)}`;
+  const cached = cache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return { ...cached.value, cached: true };
+  const result = await rollingGoAdapter.discover(normalizedRequest);
+  const value = {
+    hotels: result.hotels,
+    diagnostics: result.diagnostics,
+    capturedAt: new Date().toISOString(),
+    cached: false
+  };
+  const ttl = Math.max(Number(process.env.CATALOG_CACHE_TTL_SECONDS || 900), 60) * 1000;
+  cache.set(key, { value, expiresAt: Date.now() + ttl });
+  return value;
+}
 
 export async function searchAccommodationQuotes(request) {
   validateRequest(request);
@@ -77,6 +106,20 @@ function validateRequest(request) {
   }
   for (const hotel of request.hotels) {
     if (!hotel.id || !hotel.name) throw new RequestError("Every hotel needs id and name");
+  }
+}
+
+function validateCatalogRequest(request) {
+  if (!request || typeof request !== "object") throw new RequestError("JSON body is required");
+  for (const key of ["destination", "checkIn", "checkOut"]) {
+    if (!request[key] || typeof request[key] !== "string") throw new RequestError(`${key} is required`);
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(request.checkIn) || !/^\d{4}-\d{2}-\d{2}$/.test(request.checkOut)) {
+    throw new RequestError("Dates must use YYYY-MM-DD");
+  }
+  if (Date.parse(request.checkOut) <= Date.parse(request.checkIn)) throw new RequestError("checkOut must be after checkIn");
+  if (request.anchors != null && !Array.isArray(request.anchors)) {
+    throw new RequestError("anchors must be an array when provided");
   }
 }
 

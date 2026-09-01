@@ -15,6 +15,13 @@ struct TravelAssistantContext: Codable, Equatable, Sendable {
     var selectedDayIndex: Int
     var interests: [String]
     var places: [TravelAssistantPlaceContext]
+    var origin = ""
+    var travelers = 1
+    var startDate: String?
+    var endDate: String?
+    var longDistanceMode: String?
+    var accommodationMaxNightlyPrice: Int?
+    var accommodationSort = AccommodationSort.recommended.rawValue
 }
 
 struct TravelAssistantRequest: Codable, Equatable, Sendable {
@@ -23,9 +30,21 @@ struct TravelAssistantRequest: Codable, Equatable, Sendable {
 }
 
 enum TravelAssistantActionType: String, Codable, Sendable {
+    case setDestination = "set_destination"
+    case setOrigin = "set_origin"
     case setPace = "set_pace"
     case setTravelMode = "set_travel_mode"
+    case setLongDistanceMode = "set_long_distance_mode"
+    case setDayCount = "set_day_count"
+    case setTravelers = "set_travelers"
     case setBudget = "set_budget"
+    case setStartDate = "set_start_date"
+    case setEndDate = "set_end_date"
+    case setAccommodationMaxPrice = "set_accommodation_max_price"
+    case setAccommodationSort = "set_accommodation_sort"
+    case addInterest = "add_interest"
+    case removeInterest = "remove_interest"
+    case generatePlan = "generate_plan"
     case focusPlace = "focus_place"
     case removePlace = "remove_place"
 }
@@ -152,13 +171,37 @@ struct TravelAssistantClient {
         let canonicalPlaces = Dictionary(uniqueKeysWithValues: places.map { ($0.name.normalizedAssistantName, $0.name) })
         let actions = interpretation.actions.compactMap { action -> TravelAssistantAction? in
             switch action.type {
+            case .setDestination, .setOrigin:
+                let value = action.value.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !value.isEmpty else { return nil }
+                return TravelAssistantAction(type: action.type, value: String(value.prefix(80)))
             case .setPace:
                 return ["relaxed", "balanced", "full"].contains(action.value) ? action : nil
             case .setTravelMode:
                 return ["walking", "transit", "driving"].contains(action.value) ? action : nil
+            case .setLongDistanceMode:
+                return ["train", "flight", "driving", "coach", "auto"].contains(action.value) ? action : nil
+            case .setDayCount:
+                guard let number = Int(action.value) else { return nil }
+                return TravelAssistantAction(type: .setDayCount, value: String(min(max(number, 1), 7)))
+            case .setTravelers:
+                guard let number = Int(action.value) else { return nil }
+                return TravelAssistantAction(type: .setTravelers, value: String(min(max(number, 1), 8)))
             case .setBudget:
                 guard let number = Int(action.value) else { return nil }
                 return TravelAssistantAction(type: .setBudget, value: String(min(max(number, 1_000), 30_000)))
+            case .setStartDate, .setEndDate:
+                guard Self.dayFormatter.date(from: action.value) != nil else { return nil }
+                return action
+            case .setAccommodationMaxPrice:
+                guard let number = Int(action.value) else { return nil }
+                return TravelAssistantAction(type: action.type, value: String(min(max(number, 100), 10_000)))
+            case .setAccommodationSort:
+                return AccommodationSort(rawValue: action.value) == nil ? nil : action
+            case .addInterest, .removeInterest:
+                return TripInterest(rawValue: action.value) == nil ? nil : action
+            case .generatePlan:
+                return ["true", "false"].contains(action.value.lowercased()) ? action : nil
             case .focusPlace, .removePlace:
                 guard let canonical = canonicalPlaces[action.value.normalizedAssistantName] else { return nil }
                 return TravelAssistantAction(type: action.type, value: canonical)
@@ -166,7 +209,7 @@ struct TravelAssistantClient {
         }
         var result = interpretation
         result.reply = String(interpretation.reply.trimmingCharacters(in: .whitespacesAndNewlines).prefix(600))
-        result.actions = Array(actions.prefix(8))
+        result.actions = Array(actions.prefix(16))
         return result
     }
 
@@ -192,10 +235,21 @@ struct TravelAssistantClient {
     }
 
     private static let systemPrompt = """
-    你是 AnyTravel 的行程控制器。只返回 JSON：
+    你是 AnyTravel 的旅行意图控制器。用户可以从一句完全自由的中文开始，也可以修改现有计划。只返回 JSON：
     {"reply":"简洁、温暖、略有诗意的中文回应","actions":[{"type":"动作","value":"值"}]}
-    允许动作：set_pace(relaxed|balanced|full)、set_travel_mode(walking|transit|driving)、set_budget(1000...30000)、focus_place 与 remove_place（value 必须是 context.places 中完全相同的名称）。不要添加不存在的地点，不要返回链接、代码或额外字段。无法安全操作时 actions 为空。
+    允许动作：
+    set_destination(城市或区域)、set_origin(出发城市)、set_day_count(1...7)、set_travelers(1...8)、set_budget(1000...30000)、set_pace(relaxed|balanced|full)、set_travel_mode(walking|transit|driving)、set_long_distance_mode(auto|train|flight|driving|coach)、set_start_date(yyyy-MM-dd)、set_end_date(yyyy-MM-dd)、set_accommodation_max_price(100...10000)、set_accommodation_sort(recommended|lowestPrice|closestToAttractions|closestToTransit)、add_interest/remove_interest(gardens|culture|food|nature|family|night)、generate_plan(true|false)、focus_place 与 remove_place（value 必须是 context.places 中完全相同的名称）。
+    当用户明确要求规划、安排行程时返回 generate_plan=true；只是在探索目的地时不要擅自生成。地点会由地图服务核验，所以可以提取用户明确说出的目的地，但不要臆造。不要返回链接、代码或额外字段。无法安全操作时 actions 为空。
     """
+
+    private static let dayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
 }
 
 enum TravelAssistantError: LocalizedError, Equatable {
