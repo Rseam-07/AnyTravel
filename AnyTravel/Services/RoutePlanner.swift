@@ -10,9 +10,10 @@ struct RoutePlanner {
         from center: Coordinate,
         draft: TripDraft
     ) -> [ItineraryDay] {
-        guard !places.isEmpty else { return [] }
-        let dayCount = min(max(draft.dayCount, 1), places.count)
-        let groups = spatiallyBalancedGroups(places, dayCount: dayCount, center: center)
+        let uniquePlaces = deduplicatedPlaces(places)
+        guard !uniquePlaces.isEmpty else { return [] }
+        let dayCount = min(max(draft.dayCount, 1), uniquePlaces.count)
+        let groups = spatiallyBalancedGroups(uniquePlaces, dayCount: dayCount, center: center)
             .sorted {
                 distance(from: center, to: centroid(of: $0))
                     < distance(from: center, to: centroid(of: $1))
@@ -24,6 +25,20 @@ struct RoutePlanner {
                 stops: orderWithinDay(group, from: centroid(of: group))
             )
         }
+    }
+
+    func deduplicatedPlaces(_ places: [TravelPlace]) -> [TravelPlace] {
+        var result: [TravelPlace] = []
+        for place in places {
+            if let duplicateIndex = result.firstIndex(where: { equivalentPlace($0, place) }) {
+                if informationScore(for: place) > informationScore(for: result[duplicateIndex]) {
+                    result[duplicateIndex] = place
+                }
+            } else {
+                result.append(place)
+            }
+        }
+        return result
     }
 
     func buildRoutes(
@@ -95,6 +110,40 @@ struct RoutePlanner {
 
     private func distance(from source: Coordinate, to destination: Coordinate) -> CLLocationDistance {
         policy.distanceMeters(from: source, to: destination)
+    }
+
+    private func equivalentPlace(_ lhs: TravelPlace, _ rhs: TravelPlace) -> Bool {
+        let lhsName = canonicalName(lhs.name)
+        let rhsName = canonicalName(rhs.name)
+        guard !lhsName.isEmpty, !rhsName.isEmpty else { return false }
+        let separation = distance(from: lhs.coordinate, to: rhs.coordinate)
+        if lhsName == rhsName {
+            return separation < 600
+        }
+        let shorterCount = min(lhsName.count, rhsName.count)
+        return separation < 120
+            && shorterCount >= 4
+            && (lhsName.contains(rhsName) || rhsName.contains(lhsName))
+    }
+
+    private func canonicalName(_ name: String) -> String {
+        let folded = name.folding(
+            options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+            locale: Locale(identifier: "zh_Hans_CN")
+        )
+        return folded.unicodeScalars
+            .filter { CharacterSet.alphanumerics.contains($0) }
+            .map(String.init)
+            .joined()
+    }
+
+    private func informationScore(for place: TravelPlace) -> Int {
+        var score = min(place.address.count, 30)
+        if place.openingHoursToday != nil { score += 20 }
+        if place.openingHoursWeek != nil { score += 12 }
+        if place.ticketQuote != nil { score += 18 }
+        if place.source != "Apple Maps" { score += 4 }
+        return score
     }
 
     private func spatiallyBalancedGroups(

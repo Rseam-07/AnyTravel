@@ -96,6 +96,25 @@ final class ItineraryEditingTests: XCTestCase {
     }
 
     @MainActor
+    func testGlobalMapActionsAlwaysProduceAnObservableResponse() throws {
+        let model = try makeModel()
+
+        let initialTrigger = model.mapActionFeedbackTrigger
+        model.focusUserLocation()
+        XCTAssertEqual(model.mapActionFeedbackTrigger, initialTrigger + 1)
+        XCTAssertTrue(model.noticeMessage?.contains("回到你的位置") == true)
+
+        let initialAppearance = model.mapAppearance
+        model.cycleMapAppearance()
+        XCTAssertNotEqual(model.mapAppearance, initialAppearance)
+        XCTAssertEqual(model.mapActionFeedbackTrigger, initialTrigger + 2)
+
+        model.orientMapNorth()
+        XCTAssertEqual(model.mapActionFeedbackTrigger, initialTrigger + 3)
+        XCTAssertEqual(model.noticeMessage, "地图已回到北向。")
+    }
+
+    @MainActor
     private func makeModel() throws -> PlannerViewModel {
         let suiteName = "AnyTravel.ItineraryEditingTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

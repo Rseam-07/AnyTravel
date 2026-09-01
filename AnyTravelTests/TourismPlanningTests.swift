@@ -39,6 +39,65 @@ final class TourismPlanningTests: XCTestCase {
         XCTAssertEqual(stops.map(\.interest), [.culture, .food, .night])
     }
 
+    func testRoutePlannerRemovesTheSameVenueReturnedByMultipleSources() {
+        let sparseMuseum = TravelPlace(
+            name: "天津博物馆",
+            address: "天津市河西区",
+            coordinate: Coordinate(latitude: 39.08475, longitude: 117.22492),
+            interest: .culture,
+            source: "Apple Maps"
+        )
+        let detailedMuseum = TravelPlace(
+            name: "天津博物馆（文化中心馆区）",
+            address: "天津市河西区平江道62号",
+            coordinate: Coordinate(latitude: 39.08480, longitude: 117.22498),
+            interest: .culture,
+            source: "高德地图",
+            openingHoursToday: "09:00-16:30"
+        )
+        let nearbyLibrary = place(
+            "天津图书馆",
+            latitude: 39.08310,
+            longitude: 117.22250,
+            interest: .culture
+        )
+
+        let days = RoutePlanner().orderPlaces(
+            [sparseMuseum, nearbyLibrary, detailedMuseum],
+            from: Coordinate(latitude: 39.0842, longitude: 117.2240),
+            draft: TripDraft(destination: "天津市", dayCount: 1)
+        )
+        let stops = days.flatMap(\.stops)
+
+        XCTAssertEqual(stops.count, 2)
+        XCTAssertEqual(stops.filter { $0.name.contains("天津博物馆") }.count, 1)
+        XCTAssertEqual(stops.first(where: { $0.name.contains("天津博物馆") })?.source, "高德地图")
+    }
+
+    func testRoutePlannerKeepsSameNamedBranchesThatAreFarApart() {
+        let downtown = place("城市书房", latitude: 39.084, longitude: 117.225, interest: .culture)
+        let riverside = place("城市书房", latitude: 39.084, longitude: 117.245, interest: .culture)
+
+        let stops = RoutePlanner().orderPlaces(
+            [downtown, riverside],
+            from: Coordinate(latitude: 39.084, longitude: 117.235),
+            draft: TripDraft(destination: "天津市", dayCount: 1)
+        ).flatMap(\.stops)
+
+        XCTAssertEqual(stops.count, 2)
+    }
+
+    func testPlannerPanelMetricsHaveThreeOrderedDetentsAndSnapToTheClosestOne() {
+        let metrics = PlannerPanelLayout.metrics(containerHeight: 844, safeAreaTop: 59)
+
+        XCTAssertLessThan(metrics.compact, metrics.medium)
+        XCTAssertLessThan(metrics.medium, metrics.expanded)
+        XCTAssertEqual(metrics.closestDetent(to: metrics.compact + 4), .compact)
+        XCTAssertEqual(metrics.closestDetent(to: metrics.medium - 3), .medium)
+        XCTAssertEqual(metrics.closestDetent(to: metrics.expanded - 5), .expanded)
+        XCTAssertGreaterThan(metrics.expanded, 700)
+    }
+
     func testFoodStopCarriesLunchWithoutDuplicateGenericMeal() {
         let day = ItineraryDay(index: 0, stops: [
             place("博物馆", latitude: 31.300, longitude: 120.600, interest: .culture),

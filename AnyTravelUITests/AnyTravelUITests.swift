@@ -359,4 +359,124 @@ final class AnyTravelUITests: XCTestCase {
         later.tap()
         XCTAssertEqual(arrivalValue.label, originalValue)
     }
+
+    func testPreferenceCountersKeepTheirValuesBetweenTheMinusAndPlusButtons() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--skip-onboarding", "--ui-test-preferences"]
+        app.launch()
+
+        let travelerValue = app.descendants(matching: .any)["preferences-travelers-value"]
+        XCTAssertTrue(travelerValue.waitForExistence(timeout: 5))
+        XCTAssertEqual(travelerValue.label, "2 人")
+
+        let fewerTravelers = app.buttons["减少人数"]
+        let moreTravelers = app.buttons["增加人数"]
+        XCTAssertTrue(fewerTravelers.isHittable)
+        XCTAssertTrue(moreTravelers.isHittable)
+        XCTAssertLessThan(fewerTravelers.frame.maxX, travelerValue.frame.minX)
+        XCTAssertLessThan(travelerValue.frame.maxX, moreTravelers.frame.minX)
+        XCTAssertLessThan(abs(fewerTravelers.frame.midY - travelerValue.frame.midY), 8)
+        XCTAssertLessThan(abs(moreTravelers.frame.midY - travelerValue.frame.midY), 8)
+
+        moreTravelers.tap()
+        XCTAssertEqual(travelerValue.label, "3 人")
+        fewerTravelers.tap()
+        XCTAssertEqual(travelerValue.label, "2 人")
+
+        let earlier = app.buttons["出发日提前一天"]
+        let later = app.buttons["出发日推后一天"]
+        let startDate = app.descendants(matching: .any)["preferences-start-date"]
+        XCTAssertTrue(startDate.waitForExistence(timeout: 2))
+        XCTAssertTrue(earlier.isHittable)
+        XCTAssertTrue(later.isHittable)
+        XCTAssertLessThan(earlier.frame.maxX, startDate.frame.minX)
+        XCTAssertLessThan(startDate.frame.maxX, later.frame.minX)
+    }
+
+    func testMapPanelCollapsesToTheComposerAndExpandsWithoutCoveringGlobalActions() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--skip-onboarding", "--ui-test-ready"]
+        app.launch()
+
+        var handle = app.descendants(matching: .any)["planner-panel-drag-handle"]
+        XCTAssertTrue(handle.waitForExistence(timeout: 5))
+        handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(
+                forDuration: 0.08,
+                thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.94))
+            )
+
+        XCTAssertTrue(app.textFields["route-adjustment-input"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.buttons["住宿"].exists)
+        handle = app.descendants(matching: .any)["planner-panel-drag-handle"]
+        XCTAssertEqual(handle.value as? String, "仅显示输入框")
+        let compactScreenshot = XCTAttachment(screenshot: app.screenshot())
+        compactScreenshot.name = "地图面板-仅输入框"
+        compactScreenshot.lifetime = .keepAlways
+        add(compactScreenshot)
+
+        handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(
+                forDuration: 0.08,
+                thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12))
+            )
+
+        XCTAssertTrue(app.buttons["住宿"].waitForExistence(timeout: 3))
+        handle = app.descendants(matching: .any)["planner-panel-drag-handle"]
+        XCTAssertEqual(handle.value as? String, "几乎全屏显示")
+        XCTAssertTrue(app.buttons["global-settings"].isHittable)
+        XCTAssertTrue(app.buttons["global-library"].isHittable)
+        XCTAssertFalse(app.buttons["global-location"].exists)
+        XCTAssertFalse(app.buttons["global-map-style"].exists)
+        XCTAssertFalse(app.buttons["global-north"].exists)
+        let expandedScreenshot = XCTAttachment(screenshot: app.screenshot())
+        expandedScreenshot.name = "地图面板-几乎全屏"
+        expandedScreenshot.lifetime = .keepAlways
+        add(expandedScreenshot)
+    }
+
+    func testGlobalMapControlsPerformTheirActionsFromAReadyPlan() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--skip-onboarding", "--ui-test-ready"]
+        app.launch()
+
+        let styleButton = app.buttons["global-map-style"]
+        XCTAssertTrue(styleButton.waitForExistence(timeout: 5))
+        let originalStyle = styleButton.value as? String
+        styleButton.tap()
+        XCTAssertNotEqual(styleButton.value as? String, originalStyle)
+
+        let northButton = app.buttons["global-north"]
+        XCTAssertTrue(northButton.isHittable)
+        northButton.tap()
+
+        let settingsButton = app.buttons["global-settings"]
+        XCTAssertTrue(settingsButton.isHittable)
+        settingsButton.tap()
+        XCTAssertTrue(app.navigationBars["旅途偏好与价格渠道"].waitForExistence(timeout: 3))
+        app.buttons["完成"].tap()
+
+        let libraryButton = app.buttons["global-library"]
+        XCTAssertTrue(libraryButton.waitForExistence(timeout: 3))
+        libraryButton.tap()
+        XCTAssertTrue(app.navigationBars["我的旅册"].waitForExistence(timeout: 3))
+        app.buttons["完成"].tap()
+
+        let resetButton = app.buttons["global-reset"]
+        XCTAssertTrue(resetButton.waitForExistence(timeout: 3))
+        resetButton.tap()
+        XCTAssertTrue(app.textViews["travel-request-input"].waitForExistence(timeout: 3))
+    }
+
+    func testSettingsButtonOpensDirectlyFromAReadyPlan() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--skip-onboarding", "--ui-test-ready"]
+        app.launch()
+
+        let settingsButton = app.buttons["global-settings"]
+        XCTAssertTrue(settingsButton.waitForExistence(timeout: 5))
+        XCTAssertTrue(settingsButton.isHittable)
+        settingsButton.tap()
+        XCTAssertTrue(app.navigationBars["旅途偏好与价格渠道"].waitForExistence(timeout: 3))
+    }
 }

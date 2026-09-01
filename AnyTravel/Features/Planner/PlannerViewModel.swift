@@ -37,6 +37,7 @@ final class PlannerViewModel {
     var adjustmentText = ""
     var saveFeedbackTrigger = 0
     var planReadyFeedbackTrigger = 0
+    var mapActionFeedbackTrigger = 0
     var libraryPresented = false
     var settingsPresented = false
     var itineraryEditorPresented = false
@@ -388,6 +389,11 @@ final class PlannerViewModel {
         didBootstrap = true
 
         #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ui-test-preferences") {
+            seedUITestPreferences()
+            return
+        }
+
         if ProcessInfo.processInfo.arguments.contains("--ui-test-ready") {
             seedUITestTrip()
             return
@@ -404,6 +410,28 @@ final class PlannerViewModel {
     }
 
     #if DEBUG
+    private func seedUITestPreferences() {
+        var logistics = TripLogistics()
+        logistics.origin = "宁波"
+        logistics.startDate = Calendar.current.startOfDay(
+            for: Calendar.current.date(byAdding: .day, value: 8, to: .now) ?? .now
+        )
+        logistics.endDate = Calendar.current.date(byAdding: .day, value: 2, to: logistics.startDate ?? .now)
+        logistics.travelers = 2
+        draft = TripDraft(destination: "天津市", dayCount: 3, logistics: logistics)
+        let center = Coordinate(latitude: 39.0842, longitude: 117.2009)
+        destination = DestinationResolution(
+            title: "天津市",
+            coordinate: center,
+            region: MKCoordinateRegion(
+                center: center.clLocationCoordinate,
+                span: MKCoordinateSpan(latitudeDelta: 0.16, longitudeDelta: 0.16)
+            )
+        )
+        cameraPosition = .region(destination?.region ?? Self.initialRegion)
+        phase = .preferences
+    }
+
     private func seedUITestTrip() {
         var logistics = TripLogistics()
         logistics.origin = "上海"
@@ -2351,6 +2379,30 @@ final class PlannerViewModel {
         let all = MapAppearance.allCases
         guard let index = all.firstIndex(of: mapAppearance) else { return }
         mapAppearance = all[(index + 1) % all.count]
+        mapActionFeedbackTrigger += 1
+    }
+
+    func focusUserLocation() {
+        let fallback: MapCameraPosition = if let destination {
+            .region(destination.region)
+        } else {
+            .region(Self.initialRegion)
+        }
+        setCamera(.userLocation(followsHeading: false, fallback: fallback), animated: true)
+        noticeMessage = "正在回到你的位置；若尚未允许定位，地图会停在当前旅程。"
+        mapActionFeedbackTrigger += 1
+    }
+
+    func orientMapNorth() {
+        if phase == .ready, !currentStops.isEmpty {
+            fitCurrentDay(animated: true)
+        } else if let destination {
+            setCamera(.region(destination.region), animated: true)
+        } else {
+            setCamera(.region(Self.initialRegion), animated: true)
+        }
+        noticeMessage = "地图已回到北向。"
+        mapActionFeedbackTrigger += 1
     }
 
     private func itineraryDidChange(dayIndex: Int, message: String, refreshRoute: Bool) {
@@ -2435,22 +2487,10 @@ final class PlannerViewModel {
     }
 
     private func containsEquivalentPlace(_ place: TravelPlace, in dayIndex: Int? = nil) -> Bool {
-        itineraryDays
+        let existingPlaces = itineraryDays
             .filter { dayIndex == nil || $0.index == dayIndex }
             .flatMap(\.stops)
-            .contains { existing in
-                let sameName = existing.name.localizedCaseInsensitiveCompare(place.name) == .orderedSame
-                let distance = CLLocation(
-                    latitude: existing.coordinate.latitude,
-                    longitude: existing.coordinate.longitude
-                ).distance(
-                    from: CLLocation(
-                        latitude: place.coordinate.latitude,
-                        longitude: place.coordinate.longitude
-                    )
-                )
-                return sameName && distance < 160
-            }
+        return routePlanner.deduplicatedPlaces(existingPlaces + [place]).count == existingPlaces.count
     }
 
     private func loadRoutesForSelectedDay(reveal: Bool) async {

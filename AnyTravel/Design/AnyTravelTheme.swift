@@ -33,10 +33,10 @@ enum AnyTravelPalette {
 
 extension View {
     @ViewBuilder
-    func anyTravelGlassCard(cornerRadius: CGFloat = 30) -> some View {
+    func anyTravelGlassCard(cornerRadius: CGFloat = 30, interactive: Bool = true) -> some View {
         if #available(iOS 26.0, *) {
             glassEffect(
-                .regular.interactive(),
+                interactive ? .regular.interactive() : .regular,
                 in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             )
         } else {

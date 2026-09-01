@@ -2,7 +2,7 @@ import SwiftUI
 
 struct PlannerPanel: View {
     @Bindable var model: PlannerViewModel
-    @State private var readyExpanded = false
+    let panelDetent: PlannerPanelDetent
     @State private var selectedTransportDirection: TransportDirection = .outbound
     @FocusState private var destinationFocused: Bool
     @FocusState private var adjustmentFocused: Bool
@@ -12,37 +12,151 @@ struct PlannerPanel: View {
 
     var body: some View {
         Group {
-            switch model.phase {
-            case .destination:
-                destinationPanel
+            if panelDetent == .compact {
+                compactPanel
                     .transition(AnyTravelMotion.panelTransition(reduceMotion: reduceMotion))
-            case .preferences:
-                preferencesPanel
-                    .transition(AnyTravelMotion.panelTransition(reduceMotion: reduceMotion))
-            case .discovering:
-                discoveringPanel
-                    .transition(AnyTravelMotion.panelTransition(reduceMotion: reduceMotion))
-            case .ready:
-                readyPanel
-                    .transition(AnyTravelMotion.panelTransition(reduceMotion: reduceMotion))
-            case .failure:
-                failurePanel
-                    .transition(AnyTravelMotion.panelTransition(reduceMotion: reduceMotion))
+            } else {
+                switch model.phase {
+                case .destination:
+                    destinationPanel
+                        .transition(AnyTravelMotion.panelTransition(reduceMotion: reduceMotion))
+                case .preferences:
+                    preferencesPanel
+                        .transition(AnyTravelMotion.panelTransition(reduceMotion: reduceMotion))
+                case .discovering:
+                    discoveringPanel
+                        .transition(AnyTravelMotion.panelTransition(reduceMotion: reduceMotion))
+                case .ready:
+                    readyPanel
+                        .transition(AnyTravelMotion.panelTransition(reduceMotion: reduceMotion))
+                case .failure:
+                    failurePanel
+                        .transition(AnyTravelMotion.panelTransition(reduceMotion: reduceMotion))
+                }
             }
         }
         .padding(.horizontal, 18)
         .padding(.top, 10)
         .padding(.bottom, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .anyTravelGlassCard(cornerRadius: 31)
         .animation(AnyTravelMotion.settle(reduceMotion: reduceMotion), value: model.phase)
+        .animation(AnyTravelMotion.settle(reduceMotion: reduceMotion), value: panelDetent)
     }
 
     private var handle: some View {
-        Capsule()
-            .fill(.secondary.opacity(0.28))
-            .frame(width: 38, height: 4)
+        Color.clear
+            .frame(height: 20)
             .frame(maxWidth: .infinity)
             .accessibilityHidden(true)
+    }
+
+    private var readyExpanded: Bool {
+        panelDetent == .expanded
+    }
+
+    private var compactPanel: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            handle
+
+            switch model.phase {
+            case .destination:
+                compactRequestComposer(
+                    text: Binding(get: { model.travelRequestText }, set: { model.travelRequestText = $0 }),
+                    placeholder: "下一次旅行，你想前往哪里？",
+                    isInitialRequest: true
+                )
+            case .preferences:
+                compactRequestComposer(
+                    text: Binding(get: { model.adjustmentText }, set: { model.adjustmentText = $0 }),
+                    placeholder: "补充人数、日期、预算或交通偏好",
+                    isInitialRequest: false
+                )
+            case .discovering:
+                HStack(spacing: 11) {
+                    ProgressView().tint(AnyTravelPalette.route)
+                    Text(model.activityTitle)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, minHeight: 50)
+                .padding(.horizontal, 14)
+                .background(AnyTravelPalette.inputSurface, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+            case .ready:
+                adjustmentComposer
+            case .failure:
+                HStack(spacing: 10) {
+                    Label("这一段路暂时没有接上", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AnyTravelPalette.warm)
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    Button("重试") { Task { await model.retry() } }
+                        .font(.caption.weight(.bold))
+                        .frame(minHeight: 44)
+                        .buttonStyle(AnyTravelPressStyle())
+                }
+                .padding(.horizontal, 13)
+                .background(AnyTravelPalette.inputSurface, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+            }
+        }
+    }
+
+    private func compactRequestComposer(
+        text: Binding<String>,
+        placeholder: String,
+        isInitialRequest: Bool
+    ) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "sparkles")
+                .foregroundStyle(AnyTravelPalette.route)
+            TextField(placeholder, text: text)
+                .focused(isInitialRequest ? $destinationFocused : $adjustmentFocused)
+                .submitLabel(.send)
+                .onSubmit { submitCompactRequest(isInitialRequest: isInitialRequest) }
+                .accessibilityIdentifier(isInitialRequest ? "compact-travel-request-input" : "compact-adjustment-input")
+
+            Button {
+                submitCompactRequest(isInitialRequest: isInitialRequest)
+            } label: {
+                Group {
+                    if model.isAssistantResponding {
+                        ProgressView().tint(.white)
+                    } else {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                }
+                .frame(width: 38, height: 38)
+                .background(AnyTravelPalette.route, in: Circle())
+            }
+            .buttonStyle(AnyTravelPressStyle())
+            .disabled(text.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isAssistantResponding)
+            .opacity(text.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.45 : 1)
+            .accessibilityLabel(isInitialRequest ? "理解旅行愿望" : "应用旅行修改")
+        }
+        .padding(.leading, 13)
+        .padding(.trailing, 7)
+        .frame(maxWidth: .infinity, minHeight: 52)
+        .background(AnyTravelPalette.inputSurface, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 17, style: .continuous)
+                .strokeBorder(AnyTravelPalette.route.opacity(0.24), lineWidth: 1)
+        }
+    }
+
+    private func submitCompactRequest(isInitialRequest: Bool) {
+        destinationFocused = false
+        adjustmentFocused = false
+        Task {
+            if isInitialRequest {
+                await model.submitTravelRequest()
+            } else {
+                await model.applyAdjustment()
+            }
+        }
     }
 
     private var destinationPanel: some View {
@@ -220,7 +334,7 @@ struct PlannerPanel: View {
                     .font(.caption.weight(.semibold))
                 }
             }
-            .frame(maxHeight: 410)
+            .frame(maxHeight: .infinity)
             .scrollIndicators(.hidden)
 
             primaryButton(title: "让旅程在地图上展开", systemImage: "point.topleft.down.to.point.bottomright.curvepath") {
@@ -246,27 +360,37 @@ struct PlannerPanel: View {
                     .foregroundStyle(AnyTravelPalette.route)
                 TextField("常用出发地（可不填）", text: $model.draft.logistics.origin)
                     .textInputAutocapitalization(.never)
-                compactStepper(
-                    title: "人数",
-                    valueText: "\(model.draft.logistics.travelers)人",
-                    decrementDisabled: model.draft.logistics.travelers <= 1,
-                    incrementDisabled: model.draft.logistics.travelers >= 8,
-                    decrement: { model.draft.logistics.travelers = max(1, model.draft.logistics.travelers - 1) },
-                    increment: { model.draft.logistics.travelers = min(8, model.draft.logistics.travelers + 1) }
-                )
-                .frame(width: 116)
             }
-            .padding(.leading, 12)
+            .padding(.horizontal, 12)
             .frame(minHeight: 50)
             .background(AnyTravelPalette.inputSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+            inlineCounter(
+                title: "同行人数",
+                symbol: "person.2.fill",
+                valueText: "\(model.draft.logistics.travelers) 人",
+                decrementLabel: "减少人数",
+                incrementLabel: "增加人数",
+                decrementDisabled: model.draft.logistics.travelers <= 1,
+                incrementDisabled: model.draft.logistics.travelers >= 8,
+                decrement: { model.draft.logistics.travelers = max(1, model.draft.logistics.travelers - 1) },
+                increment: { model.draft.logistics.travelers = min(8, model.draft.logistics.travelers + 1) },
+                valueIdentifier: "preferences-travelers-value"
+            )
 
             if model.draft.logistics.hasDates,
                let startDate = model.draft.logistics.startDate,
                let endDate = model.draft.logistics.endDate {
-                VStack(spacing: 6) {
-                    HStack(spacing: 6) {
-                        Text("出发")
+                VStack(spacing: 8) {
+                    HStack(spacing: 5) {
+                        Label("出发", systemImage: "sunrise.fill")
                             .font(.caption.weight(.semibold))
+                            .foregroundStyle(AnyTravelPalette.routeDark)
+                            .frame(width: 58, alignment: .leading)
+                        Spacer(minLength: 2)
+                        dateShiftButton(symbol: "minus", label: "出发日提前一天", disabled: Calendar.current.isDate(startDate, inSameDayAs: .now)) {
+                            model.adjustStartDate(by: -1)
+                        }
                         DatePicker(
                             "出发",
                             selection: Binding(get: { startDate }, set: model.updateStartDate),
@@ -274,25 +398,22 @@ struct PlannerPanel: View {
                             displayedComponents: .date
                         )
                         .labelsHidden()
-                        Spacer(minLength: 0)
-                        dateShiftButton(symbol: "minus", label: "出发日提前一天", disabled: Calendar.current.isDate(startDate, inSameDayAs: .now)) {
-                            model.adjustStartDate(by: -1)
-                        }
+                        .fixedSize()
+                        .accessibilityIdentifier("preferences-start-date")
                         dateShiftButton(symbol: "plus", label: "出发日推后一天") {
                             model.adjustStartDate(by: 1)
                         }
                     }
-                    HStack(spacing: 6) {
-                        Text("返程")
+                    .padding(.horizontal, 10)
+                    .frame(minHeight: 54)
+                    .background(AnyTravelPalette.inputSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                    HStack(spacing: 5) {
+                        Label("返程", systemImage: "sunset.fill")
                             .font(.caption.weight(.semibold))
-                        DatePicker(
-                            "返程",
-                            selection: Binding(get: { endDate }, set: model.updateEndDate),
-                            in: (Calendar.current.date(byAdding: .day, value: 1, to: startDate) ?? startDate)...(Calendar.current.date(byAdding: .day, value: 6, to: startDate) ?? endDate),
-                            displayedComponents: .date
-                        )
-                        .labelsHidden()
-                        Spacer(minLength: 0)
+                            .foregroundStyle(AnyTravelPalette.routeDark)
+                            .frame(width: 58, alignment: .leading)
+                        Spacer(minLength: 2)
                         dateShiftButton(
                             symbol: "minus",
                             label: "返程日提前一天",
@@ -300,6 +421,15 @@ struct PlannerPanel: View {
                         ) {
                             model.adjustEndDate(by: -1)
                         }
+                        DatePicker(
+                            "返程",
+                            selection: Binding(get: { endDate }, set: model.updateEndDate),
+                            in: (Calendar.current.date(byAdding: .day, value: 1, to: startDate) ?? startDate)...(Calendar.current.date(byAdding: .day, value: 6, to: startDate) ?? endDate),
+                            displayedComponents: .date
+                        )
+                        .labelsHidden()
+                        .fixedSize()
+                        .accessibilityIdentifier("preferences-end-date")
                         dateShiftButton(
                             symbol: "plus",
                             label: "返程日推后一天",
@@ -308,8 +438,12 @@ struct PlannerPanel: View {
                             model.adjustEndDate(by: 1)
                         }
                     }
+                    .padding(.horizontal, 10)
+                    .frame(minHeight: 54)
+                    .background(AnyTravelPalette.inputSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
                     HStack {
-                        Text("共 \(model.draft.dayCount) 天，可用两侧按钮增减")
+                        Text("共 \(model.draft.dayCount) 天；日期左右的 − / + 都可用")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                         Spacer()
@@ -318,8 +452,6 @@ struct PlannerPanel: View {
                             .frame(minHeight: 44)
                     }
                 }
-                .padding(.horizontal, 10)
-                .background(AnyTravelPalette.inputSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             } else {
                 Button {
                     model.setDatesEnabled(true)
@@ -416,24 +548,7 @@ struct PlannerPanel: View {
 
     private var readyPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Button {
-                withAnimation(AnyTravelMotion.snappy(reduceMotion: reduceMotion)) {
-                    readyExpanded.toggle()
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    Capsule()
-                        .fill(.secondary.opacity(0.28))
-                        .frame(width: 38, height: 4)
-                    Image(systemName: "chevron.up")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(readyExpanded ? 180 : 0))
-                }
-                .frame(maxWidth: .infinity, minHeight: 24)
-            }
-            .buttonStyle(AnyTravelPressStyle())
-            .accessibilityLabel(readyExpanded ? "收起行程详情" : "展开行程详情")
+            handle
 
             planSectionTabs
 
@@ -559,7 +674,7 @@ struct PlannerPanel: View {
             }
         }
         .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: model.planMapFocus)
-        .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: readyExpanded)
+        .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: panelDetent)
     }
 
     private var planSectionTabs: some View {
@@ -571,7 +686,6 @@ struct PlannerPanel: View {
                     if section == .transport {
                         model.setTransportDirectionFocus(selectedTransportDirection)
                     }
-                    if section != .itinerary { readyExpanded = true }
                 } label: {
                     Label(section.title, systemImage: section.symbolName)
                         .font(.caption2.weight(.semibold))
@@ -706,47 +820,56 @@ struct PlannerPanel: View {
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
 
-            HStack(spacing: 8) {
-                TextField(
-                    "说出想改变的脚步、预算或地图焦点",
-                    text: Binding(get: { model.adjustmentText }, set: { model.adjustmentText = $0 })
-                )
-                .focused($adjustmentFocused)
-                .submitLabel(.send)
-                .onSubmit {
-                    adjustmentFocused = false
-                    Task { await model.applyAdjustment() }
-                }
-
-                Button {
-                    adjustmentFocused = false
-                    Task { await model.applyAdjustment() }
-                } label: {
-                    Group {
-                        if model.isAssistantResponding {
-                            ProgressView()
-                                .tint(.white)
-                        } else {
-                            Image(systemName: "arrow.up")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundStyle(.white)
-                        }
-                    }
-                    .frame(width: 38, height: 38)
-                    .background(AnyTravelPalette.route, in: Circle())
-                }
-                .buttonStyle(AnyTravelPressStyle())
-                .disabled(model.adjustmentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isAssistantResponding)
-                .opacity(model.adjustmentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.45 : 1)
-                .accessibilityLabel("应用路线修改")
-            }
-            .padding(.leading, 13)
-            .padding(.trailing, 7)
-            .frame(minHeight: 50)
-            .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            adjustmentComposer
         }
         .animation(AnyTravelMotion.settle(reduceMotion: reduceMotion), value: model.planPacingAssessment.level)
         .animation(AnyTravelMotion.settle(reduceMotion: reduceMotion), value: model.assistantReply)
+    }
+
+    private var adjustmentComposer: some View {
+        HStack(spacing: 8) {
+            TextField(
+                "说出想改变的脚步、预算或地图焦点",
+                text: Binding(get: { model.adjustmentText }, set: { model.adjustmentText = $0 })
+            )
+            .focused($adjustmentFocused)
+            .submitLabel(.send)
+            .onSubmit {
+                adjustmentFocused = false
+                Task { await model.applyAdjustment() }
+            }
+            .accessibilityIdentifier("route-adjustment-input")
+
+            Button {
+                adjustmentFocused = false
+                Task { await model.applyAdjustment() }
+            } label: {
+                Group {
+                    if model.isAssistantResponding {
+                        ProgressView()
+                            .tint(.white)
+                    } else {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                }
+                .frame(width: 38, height: 38)
+                .background(AnyTravelPalette.route, in: Circle())
+            }
+            .buttonStyle(AnyTravelPressStyle())
+            .disabled(model.adjustmentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isAssistantResponding)
+            .opacity(model.adjustmentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.45 : 1)
+            .accessibilityLabel("应用路线修改")
+        }
+        .padding(.leading, 13)
+        .padding(.trailing, 7)
+        .frame(maxWidth: .infinity, minHeight: 50)
+        .background(AnyTravelPalette.inputSurface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(AnyTravelPalette.route.opacity(0.18), lineWidth: 1)
+        }
     }
 
     private func assistantReplyCard(_ reply: String) -> some View {
@@ -1810,6 +1933,46 @@ struct PlannerPanel: View {
         .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
     }
 
+    private func inlineCounter(
+        title: String,
+        symbol: String,
+        valueText: String,
+        decrementLabel: String,
+        incrementLabel: String,
+        decrementDisabled: Bool,
+        incrementDisabled: Bool,
+        decrement: @escaping () -> Void,
+        increment: @escaping () -> Void,
+        valueIdentifier: String
+    ) -> some View {
+        HStack(spacing: 6) {
+            Label(title, systemImage: symbol)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AnyTravelPalette.routeDark)
+            Spacer(minLength: 6)
+            dateShiftButton(
+                symbol: "minus",
+                label: decrementLabel,
+                disabled: decrementDisabled,
+                action: decrement
+            )
+            Text(valueText)
+                .font(.body.monospacedDigit().weight(.semibold))
+                .frame(minWidth: 54)
+                .contentTransition(.numericText())
+                .accessibilityIdentifier(valueIdentifier)
+            dateShiftButton(
+                symbol: "plus",
+                label: incrementLabel,
+                disabled: incrementDisabled,
+                action: increment
+            )
+        }
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, minHeight: 54)
+        .background(AnyTravelPalette.inputSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
     private func dateShiftButton(
         symbol: String,
         label: String,
@@ -1824,6 +1987,7 @@ struct PlannerPanel: View {
         }
         .buttonStyle(AnyTravelPressStyle())
         .disabled(disabled)
+        .opacity(disabled ? 0.30 : 1)
         .accessibilityLabel(label)
     }
 

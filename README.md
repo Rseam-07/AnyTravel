@@ -22,7 +22,7 @@ AnyTravel 是一款地图优先的开源 iOS 与 Android 旅行规划应用。�
 
 动效实录：[首次启动与初始化](Documentation/Demo/onboarding-motion.mp4) · [地图、住宿、交通与费用联动](Documentation/Demo/map-plan-motion.mp4)
 
-下载：[iOS 0.6.2 无签名 IPA](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.6.2) · [Android 0.4.0 APK](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.4.0)
+下载：[iOS 0.6.3 无签名 IPA](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.6.3) · [Android 0.4.0 APK](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.4.0)
 
 <p align="center">
   <img src="Documentation/Screenshots/android-welcome.png" width="30%" alt="Android 欢迎页">
@@ -123,7 +123,7 @@ xcodebuild \
 cd Backend && npm test
 ```
 
-0.6.2 发布前验证结果：53/53 iOS 单元测试、12/12 XCUITest、29/29 Node 测试通过。iPhone 17 Pro 模拟器覆盖开放式自然语言输入、酒店筛选、抵达日期前后调整、完整方案标签、跨天复制以及撤销/重做；深色首页和完整方案均完成截图检查。设备 Release 构建产物为 0.6.2（11）。2026-09-01 的苏州联网样本以城市加拙政园、金鸡湖、虎丘山三个景点锚点查询，RollingGo 合并去重后返回 18 家带价格酒店；这是抓取当刻的目录与展示价，不代表未来库存或最终成交价。携程与同程仍分别保留 `login_required`、`verification_required` 等真实诊断。所有服务端密钥只保存在被 Git 忽略的节点环境文件中。
+0.6.3 发布前验证结果：57/57 iOS 单元测试、16/16 XCUITest、29/29 Node 测试通过。iPhone 17 Pro / iOS 26.5 模拟器覆盖 Apple 地图式三档面板拖拽、最小档自然语言输入、最大档内容浏览、人数和往返日期双向调整、自动规划地点去重，以及重置、设置、旅册、定位、地图样式和北向按钮的真实点击闭环；浅色偏好页和浅色/深色完整方案均完成截图检查。设备 Release 构建产物为 0.6.3（12）。所有服务端密钥只保存在被 Git 忽略的节点环境文件中。
 
 0.4.0 Android 发布前验证结果：4/4 规划逻辑单元测试、1/1 Android 12 Compose 端到端流程和 lint 通过。APK 在 API 31 arm64 模拟器完成安装与视觉检查，并实际连接同一报价节点，显示 RollingGo 酒店实时价和铁路 12306 班次、票价、余票、接驳距离与抓取时间。APK 为调试签名预览包，尚未替代生产签名和真机矩阵。
 
