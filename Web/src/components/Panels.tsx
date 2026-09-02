@@ -52,6 +52,11 @@ export function PlanPanel({ compact = false }: { compact?: boolean }) {
       <div className="section-title">
         {state.draft.destination} · {state.draft.dayCount} 天{state.draft.travelers}人 · {totalStops} 处停留
       </div>
+      {state.notice && (
+        <div className="issue-note" style={{ background: "var(--route-soft)", color: "var(--route-dark)", borderColor: "rgba(15,118,110,0.2)" }}>
+          {state.notice}
+        </div>
+      )}
       <WeatherStrip />
       {plan.notes.map((note, index) => (
         <div key={index} className="sub-text" style={{ margin: "4px 0 8px" }}>
@@ -242,11 +247,22 @@ export function AccommodationPanel() {
           {state.accommodationIssues.length > 0 && "（其他渠道见设置）"}
         </div>
       )}
-      {state.accommodationIssues.map((issue, i) => (
-        <div key={i} className="issue-note">
-          {issue.providerTitle}：{issue.detail ?? issue.status}
-        </div>
-      ))}
+      {state.accommodationIssues.length > 0 && (
+        <details style={{ marginBottom: 10 }} open={false}>
+          <summary className="chip-btn" style={{ cursor: "pointer" }}>
+            价格渠道：{liveProviders.size > 0 ? `${liveProviders.size} 个可用` : "尚未接通"}
+            <span style={{ marginLeft: 6, opacity: 0.7 }}>（展开看哪些渠道缺配置）</span>
+          </summary>
+          <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+            {state.accommodationIssues.map((issue, i) => (
+              <div key={i} className="issue-note" style={{ marginBottom: 0 }}>
+                {issue.providerTitle}：{issue.detail ?? issue.status}
+              </div>
+            ))}
+            <div className="sub-text">配置方法见“设置 → 价格渠道健康”；启动本机节点后即可接通。</div>
+          </div>
+        </details>
+      )}
       {items.length === 0 && state.accommodationIssues.length === 0 && (
         <div className="empty-note">正在等待住宿目录…如果一直没有结果，请检查设置的节点地址与渠道配置。</div>
       )}
@@ -329,7 +345,7 @@ function StayCard({
   );
 }
 
-export function TransportPanel() {
+export function TransportPanel({ onGoConditions }: { onGoConditions?: () => void }) {
   const { state, selectTransport } = useApp();
   const [direction, setDirection] = useState<"outbound" | "return">("outbound");
   const outbound = state.transports.filter((t) => t.direction === "outbound");
@@ -340,7 +356,18 @@ export function TransportPanel() {
     <div>
       <div className="section-title">怎么去，怎么回</div>
       {!state.draft.origin && (
-        <div className="issue-note">先在上方“更多条件”里补充出发地，再去程/返程班次与票价。</div>
+        <div className="issue-note">
+          补充出发地后，去程与返程班次、余票和席别价格会立刻出现。
+          {onGoConditions && (
+            <button
+              className="chip-btn route-flavored"
+              style={{ marginLeft: 8 }}
+              onClick={onGoConditions}
+            >
+              去填出发地 →
+            </button>
+          )}
+        </div>
       )}
       {state.transportIssues.map((issue, i) => (
         <div key={i} className="issue-note">
@@ -463,7 +490,7 @@ function buildCosts(state: AppState): { label: string; amountCNY: number | null;
     label: `住宿（${nights} 晚）`,
     amountCNY: stayTotal,
     kind: stayQuote?.amountCNY != null ? "live" : "reserved",
-    note: stayQuote?.amountCNY != null ? `${stays[0].name} · ${stayQuote.providerTitle}` : "选定住处后计费"
+    note: stayQuote?.amountCNY != null ? `${stays[0].name} · ${stayQuote.providerTitle}` : "默认已选最低价住宿，可在住宿页更换"
   });
 
   const ticketTotal = Object.values(state.tickets).reduce((sum, t) => sum + (t.amountCNY ?? 0) * draft.travelers, 0);

@@ -1,25 +1,51 @@
 /* AnyTravel Web — design tokens and layout.
-   Palette mirrors the iOS app (AnyTravelPalette): paper surfaces, teal route colour, warm accents. */
+   Material language mirrors the iOS app: paper-tinted glass panels over the map
+   (system-like blur + saturation), teal route colour, warm accents, soft
+   elevated shadows. Light and dark glass variants are driven by `.dark` on the
+   root element (synced with the dark map style). */
 
 :root {
   --route: #0f766e;
   --route-dark: #115e59;
-  --route-soft: rgba(15, 118, 110, 0.1);
+  --route-soft: rgba(15, 118, 110, 0.12);
   --warm: #d97706;
-  --warm-soft: rgba(217, 119, 6, 0.12);
+  --warm-soft: rgba(217, 119, 6, 0.14);
   --ink: #1c1917;
   --secondary-ink: #57534e;
-  --soft-surface: #f3efe7;
-  --elevated: #fffbf4;
-  --line: rgba(28, 25, 23, 0.12);
+
+  /* glass materials */
+  --glass: rgba(255, 251, 244, 0.55);
+  --glass-strong: rgba(255, 251, 244, 0.66);
+  --glass-card: rgba(255, 253, 249, 0.58);
+  --glass-scrim: rgba(250, 246, 238, 0.5);
+  --glass-border: rgba(255, 255, 255, 0.55);
+  --glass-shadow: 0 24px 60px rgba(28, 25, 23, 0.22), 0 2px 10px rgba(28, 25, 23, 0.1);
+  --blur: blur(30px) saturate(1.8);
+
+  --soft-surface: rgba(243, 239, 231, 0.55);
+  --elevated: rgba(255, 253, 249, 0.8);
+  --line: rgba(28, 25, 23, 0.1);
   --danger: #b91c1c;
   --ok: #15803d;
   --radius-lg: 22px;
   --radius-md: 16px;
   --radius-sm: 12px;
-  --shadow-panel: 0 18px 44px rgba(28, 25, 23, 0.16);
-  --shadow-card: 0 4px 14px rgba(28, 25, 23, 0.08);
+  --shadow-card: 0 4px 18px rgba(28, 25, 23, 0.12);
   --font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+}
+
+.app.dark {
+  --ink: #f5f1ea;
+  --secondary-ink: #c8c0b6;
+  --glass: rgba(26, 24, 22, 0.62);
+  --glass-strong: rgba(30, 28, 26, 0.8);
+  --glass-card: rgba(36, 33, 30, 0.68);
+  --glass-scrim: rgba(20, 19, 17, 0.5);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --glass-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), 0 2px 10px rgba(0, 0, 0, 0.3);
+  --soft-surface: rgba(44, 41, 37, 0.55);
+  --elevated: rgba(48, 44, 39, 0.82);
+  --line: rgba(255, 255, 255, 0.12);
 }
 
 * {
@@ -36,7 +62,7 @@ body,
 body {
   font-family: var(--font);
   color: var(--ink);
-  background: var(--soft-surface);
+  background: #e9e3d8;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
 }
@@ -79,7 +105,7 @@ select {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  border: 3px solid #fff;
+  border: 3px solid rgba(255, 255, 255, 0.9);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   transition: transform 0.22s ease;
 }
@@ -98,7 +124,11 @@ select {
 .pin-label {
   margin-top: 3px;
   padding: 2px 8px;
-  background: rgba(255, 251, 244, 0.92);
+  background: var(--glass-strong);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  color: var(--ink);
   border-radius: 999px;
   font-size: 11px;
   font-weight: 600;
@@ -118,20 +148,27 @@ select {
 }
 
 .map-title .brand-mark {
-  width: 34px;
-  height: 34px;
+  width: 38px;
+  height: 38px;
   border-radius: 12px;
-  background: var(--route);
-  display: grid;
-  place-items: center;
-  color: #fdf6ec;
-  font-weight: 800;
-  font-size: 18px;
+  overflow: hidden;
+  box-shadow: 0 4px 14px rgba(15, 118, 110, 0.35);
+  background: #fff4e8;
+}
+
+.map-title .brand-mark img {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .map-title .brand-text {
-  background: rgba(255, 251, 244, 0.92);
-  padding: 6px 12px;
+  background: var(--glass-strong);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-border);
+  color: var(--ink);
+  padding: 7px 14px;
   border-radius: 999px;
   font-weight: 700;
   font-size: 14px;
@@ -152,11 +189,19 @@ select {
   width: 42px;
   height: 42px;
   border-radius: 13px;
-  background: rgba(255, 251, 244, 0.95);
+  background: var(--glass-strong);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-border);
   box-shadow: var(--shadow-card);
   display: grid;
   place-items: center;
   font-size: 18px;
+  transition: transform 0.16s ease, background 0.16s ease;
+}
+
+.map-control:hover {
+  transform: scale(1.06);
 }
 
 .map-control.active {
@@ -171,11 +216,15 @@ select {
   z-index: 5;
   display: flex;
   gap: 10px;
-  background: rgba(255, 251, 244, 0.92);
+  background: var(--glass-strong);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-border);
   border-radius: 999px;
   padding: 6px 12px;
   font-size: 11px;
   font-weight: 600;
+  color: var(--secondary-ink);
   box-shadow: var(--shadow-card);
 }
 
@@ -210,10 +259,12 @@ select {
 
 /* ---------- composer ---------- */
 .composer {
-  background: rgba(255, 251, 244, 0.96);
+  background: var(--glass);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-border);
   border-radius: 18px;
-  box-shadow: var(--shadow-panel);
-  backdrop-filter: blur(14px);
+  box-shadow: var(--glass-shadow);
   width: 100%;
   position: relative;
   z-index: 9;
@@ -233,6 +284,12 @@ select {
   background: transparent;
   font-size: 16px;
   min-width: 0;
+  color: var(--ink);
+}
+
+.composer input::placeholder {
+  color: var(--secondary-ink);
+  opacity: 0.75;
 }
 
 .composer .search-icon {
@@ -250,10 +307,13 @@ select {
   padding: 7px 11px;
   border-radius: 999px;
   background: var(--soft-surface);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid transparent;
   font-size: 12px;
   font-weight: 600;
-  border: 1px solid transparent;
   white-space: nowrap;
+  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
 }
 
 .chip-btn:hover {
@@ -263,6 +323,7 @@ select {
 .chip-btn.active {
   background: var(--route);
   color: #fff;
+  border-color: transparent;
 }
 
 .chip-btn.route-flavored {
@@ -275,9 +336,12 @@ select {
   top: calc(100% + 6px);
   left: 12px;
   right: 12px;
-  background: var(--elevated);
+  background: var(--glass-strong);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-border);
   border-radius: 14px;
-  box-shadow: var(--shadow-panel);
+  box-shadow: var(--glass-shadow);
   max-height: 300px;
   overflow: auto;
   z-index: 20;
@@ -289,6 +353,7 @@ select {
   text-align: left;
   padding: 10px 14px;
   border-bottom: 1px solid var(--line);
+  color: var(--ink);
 }
 
 .suggestion:last-child {
@@ -372,6 +437,7 @@ select {
   padding: 7px 10px;
   font-size: 13px;
   width: 100%;
+  color: var(--ink);
 }
 
 .interest-grid {
@@ -388,12 +454,13 @@ select {
   font-size: 14px;
   padding: 11px 18px;
   box-shadow: 0 8px 18px rgba(15, 118, 110, 0.35);
-  transition: transform 0.16s ease;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
   white-space: nowrap;
 }
 
 .generate-btn:hover {
   transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(15, 118, 110, 0.4);
 }
 
 .generate-btn:disabled {
@@ -407,8 +474,11 @@ select {
   left: 50%;
   transform: translateX(-50%);
   z-index: 7;
-  background: rgba(28, 25, 23, 0.82);
+  background: rgba(28, 25, 23, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 999px;
   padding: 6px 14px;
   font-size: 12px;
@@ -423,13 +493,16 @@ select {
   bottom: 118px;
   width: 400px;
   z-index: 6;
-  background: rgba(255, 251, 244, 0.97);
+  background: var(--glass-strong);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-panel);
+  box-shadow: var(--glass-shadow);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  backdrop-filter: blur(16px);
+  transition: width 0.24s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .side-panel.collapsed {
@@ -443,7 +516,10 @@ select {
   width: 18px;
   height: 44px;
   border-radius: 0 12px 12px 0;
-  background: var(--elevated);
+  background: var(--glass-strong);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--glass-border);
   box-shadow: var(--shadow-card);
   display: grid;
   place-items: center;
@@ -457,6 +533,7 @@ select {
   border-bottom: 1px solid var(--line);
   padding: 6px 8px;
   gap: 4px;
+  background: var(--glass-scrim);
 }
 
 .side-tab {
@@ -466,6 +543,7 @@ select {
   font-size: 12.5px;
   font-weight: 600;
   color: var(--secondary-ink);
+  transition: background 0.16s ease, color 0.16s ease;
 }
 
 .side-tab.active {
@@ -484,6 +562,7 @@ select {
   font-size: 16px;
   font-weight: 800;
   margin: 4px 0 10px;
+  color: var(--ink);
 }
 
 .sub-text {
@@ -494,16 +573,19 @@ select {
 
 /* ---------- plan cards ---------- */
 .day-card {
-  border: 1px solid var(--line);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
-  background: var(--elevated);
+  background: var(--glass-card);
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  box-shadow: var(--shadow-card);
   margin-bottom: 12px;
   overflow: hidden;
 }
 
 .day-card.selected {
   border-color: var(--route);
-  box-shadow: 0 0 0 3px var(--route-soft);
+  box-shadow: 0 0 0 3px var(--route-soft), var(--shadow-card);
 }
 
 .day-head {
@@ -511,7 +593,7 @@ select {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(15, 118, 110, 0.06);
+  background: var(--route-soft);
   cursor: pointer;
 }
 
@@ -534,6 +616,8 @@ select {
   padding: 3px 7px;
   border-radius: 999px;
   background: var(--soft-surface);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   color: var(--secondary-ink);
   white-space: nowrap;
 }
@@ -592,6 +676,7 @@ select {
 .stop-row .stop-name {
   font-weight: 700;
   font-size: 13px;
+  color: var(--ink);
 }
 
 .stop-row .stop-name .prio {
@@ -662,12 +747,16 @@ select {
 
 .weather-card {
   flex: 0 0 auto;
-  background: var(--soft-surface);
+  background: var(--glass-card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
   border-radius: 12px;
   padding: 7px 10px;
   font-size: 11px;
   text-align: center;
   min-width: 76px;
+  color: var(--ink);
 }
 
 .weather-card .w-date {
@@ -687,25 +776,30 @@ select {
 
 /* ---------- accommodation cards ---------- */
 .stay-card {
-  border: 1px solid var(--line);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
-  background: var(--elevated);
+  background: var(--glass-card);
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  box-shadow: var(--shadow-card);
   padding: 12px;
   margin-bottom: 10px;
   display: flex;
   gap: 10px;
   cursor: pointer;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+  color: var(--ink);
 }
 
 .stay-card:hover {
   border-color: var(--route);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--glass-shadow);
+  transform: translateY(-1px);
 }
 
 .stay-card.selected {
   border-color: var(--route);
-  box-shadow: 0 0 0 3px var(--route-soft);
+  box-shadow: 0 0 0 3px var(--route-soft), var(--shadow-card);
 }
 
 .stay-thumb {
@@ -789,6 +883,7 @@ select {
 .issue-note {
   border-radius: 12px;
   background: var(--warm-soft);
+  border: 1px solid rgba(217, 119, 6, 0.2);
   color: #92400e;
   font-size: 12px;
   padding: 10px 12px;
@@ -796,9 +891,16 @@ select {
   margin-bottom: 10px;
 }
 
+.app.dark .issue-note {
+  color: #fbbf24;
+}
+
 .empty-note {
   border-radius: 12px;
-  background: var(--soft-surface);
+  background: var(--glass-card);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: var(--secondary-ink);
   font-size: 12px;
   padding: 12px;
@@ -813,22 +915,27 @@ select {
 }
 
 .train-card {
-  border: 1px solid var(--line);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
-  background: var(--elevated);
+  background: var(--glass-card);
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  box-shadow: var(--shadow-card);
   padding: 11px 12px;
   margin-bottom: 9px;
   cursor: pointer;
-  transition: border-color 0.18s ease;
+  transition: border-color 0.18s ease, transform 0.18s ease;
+  color: var(--ink);
 }
 
 .train-card:hover {
   border-color: var(--route);
+  transform: translateY(-1px);
 }
 
 .train-card.selected {
   border-color: var(--route);
-  box-shadow: 0 0 0 3px var(--route-soft);
+  box-shadow: 0 0 0 3px var(--route-soft), var(--shadow-card);
 }
 
 .train-title {
@@ -857,6 +964,7 @@ select {
   padding: 9px 2px;
   border-bottom: 1px dashed var(--line);
   font-size: 13px;
+  color: var(--ink);
 }
 
 .cost-row .cost-label {
@@ -894,10 +1002,12 @@ select {
   gap: 8px;
   overflow-x: auto;
   padding: 8px;
-  background: rgba(255, 251, 244, 0.9);
+  background: var(--glass);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-panel);
-  backdrop-filter: blur(14px);
+  box-shadow: var(--glass-shadow);
   scrollbar-width: thin;
 }
 
@@ -907,14 +1017,18 @@ select {
   max-width: 240px;
   border-radius: 14px;
   padding: 9px 12px;
-  background: var(--elevated);
-  border: 1px solid var(--line);
+  background: var(--glass-card);
+  backdrop-filter: blur(14px) saturate(1.4);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  border: 1px solid var(--glass-border);
   text-align: left;
-  transition: border-color 0.16s ease, background 0.16s ease;
+  transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;
+  color: var(--ink);
 }
 
 .rail-day:hover {
   border-color: var(--route);
+  transform: translateY(-2px);
 }
 
 .rail-day.selected {
@@ -975,12 +1089,17 @@ select {
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  background: var(--route);
+  background: linear-gradient(135deg, #0f766e, #115e59);
   color: #fff;
   font-size: 21px;
-  box-shadow: 0 10px 24px rgba(15, 118, 110, 0.4);
+  box-shadow: 0 10px 24px rgba(15, 118, 110, 0.45);
   display: grid;
   place-items: center;
+  transition: transform 0.18s ease;
+}
+
+.chat-fab:hover {
+  transform: scale(1.08);
 }
 
 .chat-panel {
@@ -990,13 +1109,15 @@ select {
   width: min(400px, calc(100vw - 36px));
   height: min(560px, calc(100vh - 120px));
   z-index: 11;
-  background: rgba(255, 251, 244, 0.98);
+  background: var(--glass-strong);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-panel);
+  box-shadow: var(--glass-shadow);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  backdrop-filter: blur(16px);
 }
 
 .chat-head {
@@ -1007,6 +1128,8 @@ select {
   border-bottom: 1px solid var(--line);
   font-weight: 800;
   font-size: 14px;
+  color: var(--ink);
+  background: var(--glass-scrim);
 }
 
 .chat-head .chat-close {
@@ -1039,6 +1162,7 @@ select {
   line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-word;
+  color: var(--ink);
 }
 
 .chat-msg.user {
@@ -1050,7 +1174,10 @@ select {
 
 .chat-msg.assistant {
   align-self: flex-start;
-  background: var(--soft-surface);
+  background: var(--glass-card);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--glass-border);
   border-bottom-left-radius: 4px;
 }
 
@@ -1068,6 +1195,7 @@ select {
   gap: 8px;
   padding: 10px 12px;
   border-top: 1px solid var(--line);
+  background: var(--glass-scrim);
 }
 
 .chat-input-row input {
@@ -1075,9 +1203,12 @@ select {
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 10px 12px;
-  background: var(--elevated);
+  background: var(--glass-card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   outline: none;
   font-size: 14px;
+  color: var(--ink);
 }
 
 .chat-input-row input:focus {
@@ -1111,7 +1242,9 @@ select {
   position: absolute;
   inset: 0;
   z-index: 20;
-  background: rgba(28, 25, 23, 0.35);
+  background: rgba(28, 25, 23, 0.4);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   display: grid;
   place-items: center;
 }
@@ -1120,10 +1253,14 @@ select {
   width: min(560px, calc(100vw - 32px));
   max-height: calc(100vh - 80px);
   overflow: auto;
-  background: var(--elevated);
+  background: var(--glass-strong);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-panel);
+  box-shadow: var(--glass-shadow);
   padding: 18px;
+  color: var(--ink);
 }
 
 .modal-card h2 {
@@ -1148,8 +1285,9 @@ select {
   border: 1px solid var(--line);
   border-radius: 11px;
   padding: 9px 11px;
-  background: var(--elevated);
+  background: var(--glass-card);
   font-size: 13px;
+  color: var(--ink);
 }
 
 .channel-list {
@@ -1165,7 +1303,9 @@ select {
   font-size: 12.5px;
   padding: 7px 10px;
   border-radius: 10px;
-  background: var(--soft-surface);
+  background: var(--glass-card);
+  border: 1px solid var(--glass-border);
+  color: var(--ink);
 }
 
 .channel-dot {
@@ -1184,9 +1324,11 @@ select {
   gap: 8px;
   padding: 8px 10px;
   border-radius: 10px;
-  background: var(--soft-surface);
+  background: var(--glass-card);
+  border: 1px solid var(--glass-border);
   margin-bottom: 6px;
   font-size: 12.5px;
+  color: var(--ink);
 }
 
 .trip-row .t-title {
@@ -1202,35 +1344,50 @@ select {
   position: absolute;
   inset: 0;
   z-index: 30;
-  background: linear-gradient(160deg, #fdf6ec 0%, #f3efe7 55%, #e6f2ef 100%);
+  background: linear-gradient(160deg, #fdf6ec 0%, #f3efe7 45%, #e2efec 100%);
   display: grid;
   place-items: center;
   overflow: auto;
 }
 
+.welcome::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(600px 400px at 18% 12%, rgba(245, 92, 51, 0.12), transparent 60%),
+    radial-gradient(700px 500px at 85% 88%, rgba(18, 110, 102, 0.14), transparent 65%);
+}
+
 .welcome-card {
+  position: relative;
+  z-index: 1;
   max-width: 560px;
   text-align: center;
   padding: 40px 28px;
 }
 
 .welcome-logo {
-  width: 74px;
-  height: 74px;
+  width: 88px;
+  height: 88px;
   margin: 0 auto 18px;
-  border-radius: 22px;
-  background: var(--route);
-  color: #fdf6ec;
-  display: grid;
-  place-items: center;
-  font-size: 34px;
-  font-weight: 800;
-  box-shadow: 0 16px 34px rgba(15, 118, 110, 0.35);
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 18px 40px rgba(15, 118, 110, 0.35);
+  background: #fff4e8;
+}
+
+.welcome-logo img {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .welcome h1 {
   font-size: 26px;
   margin: 0 0 10px;
+  color: var(--ink);
 }
 
 .welcome p {
@@ -1250,16 +1407,22 @@ select {
 
 .example-chip {
   border-radius: 999px;
-  background: var(--elevated);
-  border: 1px solid var(--line);
+  background: rgba(255, 253, 249, 0.8);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
   padding: 8px 14px;
   font-size: 13px;
   font-weight: 600;
+  color: var(--ink);
+  box-shadow: var(--shadow-card);
+  transition: transform 0.16s ease, border-color 0.16s ease;
 }
 
 .example-chip:hover {
   border-color: var(--route);
   color: var(--route-dark);
+  transform: translateY(-1px);
 }
 
 .primary-cta {
@@ -1270,6 +1433,12 @@ select {
   border-radius: 16px;
   padding: 14px 30px;
   box-shadow: 0 10px 24px rgba(15, 118, 110, 0.4);
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.primary-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px rgba(15, 118, 110, 0.45);
 }
 
 /* ---------- mobile bottom sheet ---------- */
@@ -1279,7 +1448,11 @@ select {
   right: 0;
   bottom: 0;
   z-index: 8;
-  background: rgba(255, 251, 244, 0.98);
+  background: var(--glass-strong);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-border);
+  border-bottom: none;
   border-radius: 22px 22px 0 0;
   box-shadow: 0 -10px 40px rgba(28, 25, 23, 0.18);
   display: flex;
@@ -1301,11 +1474,16 @@ select {
   background: rgba(28, 25, 23, 0.25);
 }
 
+.app.dark .sheet-handle .bar {
+  background: rgba(255, 255, 255, 0.35);
+}
+
 .mobile-sheet .sheet-tabs {
   display: flex;
   border-bottom: 1px solid var(--line);
   padding: 0 8px 6px;
   gap: 4px;
+  background: var(--glass-scrim);
 }
 
 .mobile-sheet .sheet-content {
@@ -1338,7 +1516,8 @@ select {
   .mobile-only { display: block; }
   .desktop-only { display: none; }
   .top-bar { max-width: calc(100% - 90px); }
-  .map-title { top: auto; bottom: 320px; left: 14px; }
+  .map-title { top: 16px; bottom: auto; left: 12px; }
+  .map-title .brand-text { display: none; }
   .map-controls { top: 70px; right: 12px; }
   .map-legend { display: none; }
   .chat-panel {

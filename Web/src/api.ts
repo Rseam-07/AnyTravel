@@ -411,7 +411,7 @@ export async function osrmRoute(waypoints: Coord[], mode: "driving" | "walking")
   const path = waypoints.map((p) => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`).join(";");
   const url = `https://router.project-osrm.org/route/v1/${mode}/${path}?overview=full&geometries=geojson`;
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: AbortSignal.timeout(4000) });
     if (!response.ok) return null;
     const payload = await response.json();
     const route = payload.routes?.[0];

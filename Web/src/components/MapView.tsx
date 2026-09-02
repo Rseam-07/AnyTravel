@@ -21,12 +21,11 @@ function pinElement(kind: string, label: string, selected: boolean): HTMLElement
   return el;
 }
 
-export default function MapView() {
+export default function MapView({ dark, onDarkChange }: { dark: boolean; onDarkChange: (v: boolean) => void }) {
   const { state, setFocus } = useApp();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
-  const [dark, setDark] = useState(() => localStorage.getItem("anytravel-web:mapstyle") === "dark");
   const [northUp, setNorthUp] = useState(false);
   const [mapReady, setMapReady] = useState(false);
 
@@ -205,7 +204,7 @@ export default function MapView() {
         <button
           className={`map-control ${dark ? "active" : ""}`}
           title="切换地图样式"
-          onClick={() => setDark((v) => !v)}
+          onClick={() => onDarkChange(!dark)}
         >
           {dark ? "☀️" : "🌙"}
         </button>

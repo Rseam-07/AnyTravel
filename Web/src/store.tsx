@@ -46,6 +46,7 @@ import {
   type WeatherDay
 } from "./types";
 import { INTERESTS } from "./types";
+import { catalogPlaces } from "./catalog";
 
 export type Phase = "welcome" | "compose" | "planning" | "ready" | "failure";
 
@@ -90,9 +91,14 @@ interface AppState {
   lastPlanCost: number | null;
 }
 
+function defaultStartDate(): string {
+  return new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
+}
+
 const emptyDraft = (): TripDraft => ({
   origin: "",
   destination: "",
+  startDate: defaultStartDate(),
   dayCount: 3,
   travelers: 2,
   budgetPerPerson: 3000,
@@ -377,7 +383,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Fall through to the Nominatim path below.
     }
 
-    // Fallback: keyword search on Nominatim (weaker for Chinese POI names).
+    // Built-in starter pack for popular destinations (never fails, honest source).
+    const builtIn = catalogPlaces(draft.destination);
+    if (builtIn.length >= 2) {
+      dispatch({ type: "setPlaces", places: builtIn });
+      return builtIn;
+    }
+
+    // Last resort: keyword search on Nominatim (weaker for Chinese POI names).
     const queries = ["热门景点 必去", ...INTERESTS.filter((i) => draft.interests.includes(i.id)).map((i) => i.searchTerm)];
     const seen = new Map<string, TravelPlace>();
     let order = 0;
@@ -407,6 +420,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       dispatch({ type: "patch", patch: { phase: "failure", failureDetail: "先告诉我目的地城市。" } });
       return;
     }
+    if (!draft.startDate) {
+      updateDraft({ startDate: defaultStartDate() });
+      draft.startDate = defaultStartDate();
+    }
     dispatch({ type: "patch", patch: { phase: "planning", notice: "正在翻阅这座城市的热门去处…" } });
     try {
       let places = stateRef.current.places;
@@ -426,10 +443,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
       const realRoutes: { from: Coord; to: Coord; minutes: number }[] = [];
-      for (const pair of pairs) {
-        const route = await osrmRoute([pair.from, pair.to], draft.transportMode === "walking" ? "walking" : "driving");
-        if (route) realRoutes.push({ from: pair.from, to: pair.to, minutes: route.durationMinutes });
-      }
+      const mode = draft.transportMode === "walking" ? "walking" : "driving";
+      let cursor2 = 0;
+      const worker = async () => {
+        for (;;) {
+          const index = cursor2++;
+          if (index >= pairs.length) return;
+          const pair = pairs[index];
+          try {
+            const route = await osrmRoute([pair.from, pair.to], mode);
+            if (route) realRoutes.push({ from: pair.from, to: pair.to, minutes: route.durationMinutes });
+          } catch {
+            /* keep estimate for this segment */
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: 6 }, () => worker()));
 
       const plan = planItinerary(places, draft, realRoutes.length > 0 ? realRoutes : undefined);
       dispatch({ type: "setPlan", plan });
@@ -448,6 +477,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const draft = stateRef.current.draft;
     const base = stateRef.current.settings.backendURL;
     const plan = stateRef.current.plan;
+
+    let catalogItems: AccommodationOption[] = [];
+    let transportItems: TransportOption[] = [];
 
     if (!draft.startDate) {
       dispatch({
@@ -492,6 +524,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         nameDistanceMeters: 0,
         nameMeters: 0
       }));
+      catalogItems = items;
       dispatch({ type: "setAccommodations", items, issues: catalog.diagnostics.map((d) => ({ ...d, providerTitle: providerDisplayName(d.provider) })) });
     } catch (error) {
       dispatch({
@@ -513,6 +546,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           modes: ["train", "flight"]
         });
         const items = transport.options.map(toTransportOption);
+        transportItems = items;
         dispatch({
           type: "setTransports",
           items,
@@ -555,8 +589,56 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    dispatch({ type: "patch", patch: { backendReachable: true } });
+    // Help the traveller finish the decisions: auto-select the best quote when
+    // nothing has been picked yet (user choices are never overwritten).
+    const current = stateRef.current;
+    let selectedAccommodationID = current.selectedAccommodationID;
+    let selectedOutboundID = current.selectedOutboundID;
+    let selectedReturnID = current.selectedReturnID;
+    const picks: string[] = [];
+    if (!selectedAccommodationID || !catalogItems.find((a) => a.id === selectedAccommodationID)) {
+      const priced = catalogItems
+        .flatMap((a) => a.quotes
+          .filter((q) => q.amountCNY != null && q.kind !== "demo")
+          .map((q) => ({ id: a.id, amount: q.amountCNY ?? 0, title: a.name, provider: q.providerTitle })))
+        .sort((a, b) => a.amount - b.amount)[0];
+      selectedAccommodationID = priced?.id ?? null;
+      if (priced) picks.push(`住宿：${priced.title} ¥${priced.amount}/晚（${priced.provider}）`);
+    }
+    if (!selectedOutboundID || !transportItems.find((t) => t.id === selectedOutboundID)) {
+      const outbound = pickBestTransport(transportItems.filter((t) => t.direction === "outbound"));
+      selectedOutboundID = outbound?.id ?? null;
+      if (outbound) picks.push(`去程：${summarizeTransport(outbound)}`);
+    }
+    if (!selectedReturnID || !transportItems.find((t) => t.id === selectedReturnID)) {
+      const retur = pickBestTransport(transportItems.filter((t) => t.direction === "return"));
+      selectedReturnID = retur?.id ?? null;
+      if (retur) picks.push(`返程：${summarizeTransport(retur)}`);
+    }
+    dispatch({
+      type: "patch",
+      patch: {
+        selectedAccommodationID,
+        selectedOutboundID,
+        selectedReturnID,
+        backendReachable: true,
+        notice: picks.length > 0 ? `已帮你预选：${picks.join("；")}。都可以在对应页更换。` : null
+      }
+    });
   }, []);
+
+function pickBestTransport<T extends { mode: string; quotes: { amountCNY?: number | null; kind?: string }[]; durationMinutes?: number }>(list: T[]): T | null {
+  if (list.length === 0) return null;
+  const priced = list
+    .filter((t) => t.mode === "train" && t.quotes.some((q) => q.amountCNY != null))
+    .sort((a, b) => (a.durationMinutes ?? 9999) - (b.durationMinutes ?? 9999))[0];
+  return priced ?? list[0];
+}
+
+function summarizeTransport<T extends { title: string; quotes: { amountCNY?: number | null; providerTitle: string }[] }>(option: T): string {
+  const quote = option.quotes.find((q) => q.amountCNY != null);
+  return quote ? `${option.title}（¥${quote.amountCNY}，${quote.providerTitle}）` : option.title;
+}
 
   const refreshWeather = useCallback(async () => {
     const draft = stateRef.current.draft;

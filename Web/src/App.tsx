@@ -55,14 +55,15 @@ function Shell() {
   const [tab, setTab] = useState<Tab>("plan");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [mapDark, setMapDark] = useState(() => localStorage.getItem("anytravel-web:mapstyle") === "dark");
 
   if (state.phase === "welcome") {
     return <Welcome />;
   }
 
   return (
-    <div className="app" onClick={() => undefined}>
-      <MapView />
+    <div className={`app${mapDark ? " dark" : ""}`} onClick={() => undefined}>
+      <MapView dark={mapDark} onDarkChange={setMapDark} />
       <div className="top-bar desktop-only">
         <Composer />
       </div>
@@ -80,7 +81,7 @@ function Shell() {
           <>
             <PanelTabs tab={tab} setTab={setTab} />
             <div className="side-content">
-              <PanelBody tab={tab} />
+              <PanelBody tab={tab} goConditions={() => setTab("compose")} />
             </div>
           </>
         )}
@@ -114,6 +115,21 @@ function Shell() {
   );
 }
 
+function PanelBody({ tab, goConditions }: { tab: Tab; goConditions?: () => void }) {
+  switch (tab) {
+    case "compose":
+      return <ConditionsCard />;
+    case "plan":
+      return <PlanPanel />;
+    case "stay":
+      return <AccommodationPanel />;
+    case "transport":
+      return <TransportPanel onGoConditions={goConditions} />;
+    case "budget":
+      return <BudgetPanel />;
+  }
+}
+
 function PanelTabs({ tab, setTab }: { tab: Tab; setTab: (tab: Tab) => void }) {
   return (
     <div className="side-tabs">
@@ -126,20 +142,7 @@ function PanelTabs({ tab, setTab }: { tab: Tab; setTab: (tab: Tab) => void }) {
   );
 }
 
-function PanelBody({ tab }: { tab: Tab }) {
-  switch (tab) {
-    case "compose":
-      return <ConditionsCard />;
-    case "plan":
-      return <PlanPanel />;
-    case "stay":
-      return <AccommodationPanel />;
-    case "transport":
-      return <TransportPanel />;
-    case "budget":
-      return <BudgetPanel />;
-  }
-}
+
 
 // ---------- mobile: three-detent sheet ----------
 
@@ -226,7 +229,7 @@ function MobileLayer({ tab, setTab }: { tab: Tab; setTab: (tab: Tab) => void }) 
         ))}
       </div>
       <div className="sheet-content">
-        <PanelBody tab={tab} />
+        <PanelBody tab={tab} goConditions={() => setTab("compose")} />
       </div>
     </div>
   );
@@ -246,7 +249,9 @@ function Welcome() {
   return (
     <div className="welcome">
       <div className="welcome-card">
-        <div className="welcome-logo">远</div>
+        <div className="welcome-logo">
+          <img src="/logo.png" alt="AnyTravel 折叠远方" />
+        </div>
         <h1>旅行是一场诗意的迁徙</h1>
         <p>
           先选车次，还是先挑住处？都可以。把想去的地方、预算和节奏交给 AnyTravel，
