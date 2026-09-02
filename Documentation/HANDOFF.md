@@ -73,6 +73,7 @@
 
 ## 6. 建议 Codex 的下一步（按优先级）
 
+0. **先读 [通往 1.0 的完整方案](PLAN_TO_1_0.md)**：那是用户确认的总目标（1.0、三平台同步、实时价格闭环），本文只负责状态交接，方案文档负责目标与里程碑。若目标有调整，以用户最新指令为准并回写方案文档。
 1. 先 `git pull`/确认 base，然后 `xcodegen generate --spec project.yml` 并跑一次完整 `xcodebuild test`，把结果数字写回 `CHANGELOG.md` 与 `README.md`（连 iOS 单元/UI 与 Node 测试数字）。
 2. 真机/模拟器走查新交互：`--ui-test-ready` 下“先挑想去的地方”→ 生成 → 住宿卡“N家比价”→ 交通卡直连报价 → 面板自适应高度；浅色/深色截图各一张。
 3. 联网验收（需要真实密钥/会话）：RollingGo 内置 key 直连、12306 直连（去程+返程）、去哪儿航班页（先用模拟器，注意 WebKit 会话与登录）；`QunarLiveProbeTests` 单独跑并记录输出。
