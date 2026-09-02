@@ -4,9 +4,9 @@
 
 ## 1. 仓库与工作副本
 
-- 主仓库（本会话工作目录）：`/Users/conrad/Documents/AnyTravel`
-- Codex 侧工作副本：`/Users/conrad/Documents/ChatGPT/AnyTravel`（**两棵树的文件内容在 2026-09-02 21:11 时完全一致**，但 `.git` 是各自独立的仓库）
-- 远端：`origin = https://github.com/Rseam-07/AnyTravel.git`，分支 `main`，HEAD `6ee2004`（Release AnyTravel iOS 0.6.3）
+- 主仓库（本会话工作目录）：`/Users/conrad/Documents/AnyTravel`，本地提交 `518c0ce`
+- Codex 侧工作副本：`/Users/conrad/Documents/ChatGPT/AnyTravel`（**已同步**，本地提交 `34b2b3c`，文件树与主仓库一致；注意两棵树的 `.git` 是各自独立的仓库，提交哈希不同）
+- 远端：`origin = https://github.com/Rseam-07/AnyTravel.git`，分支 `main`，上游 HEAD 仍为 `6ee2004`（Release AnyTravel iOS 0.6.3）——**本轮两个本地提交都未 push**
 - **交接时的约定**：以 `/Users/conrad/Documents/AnyTravel` 的提交为准；两个副本的差异必须在双方开工前比对（`diff -rq` 或双方 `git status`），必要时把其中一棵同步成另一棵，避免并行修改互相覆盖。
 - 常规提交流程：`xcodegen generate --spec project.yml` 之后再提交（`project.yml` 是工程源定义）。
 

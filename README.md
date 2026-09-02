@@ -133,8 +133,8 @@ cd Backend && npm test
 
 - 行程、默认偏好和平台会话保存在用户自己的设备；应用不读取平台密码。
 - iOS 只有在对应平台网页留下有效 Cookie 后才会显示“会话已保存”；Cookie 失效后会自动撤销该状态。
-- 自建报价节点的密钥和浏览器 Cookie 保留在运行节点的机器上，`.env` 与 `.data` 均不会提交。
-- 默认智能向导的模型 Key 只在伴随服务端使用；用户自定义 Key 只写入 iOS 钥匙串，设置页不会回显明文。
+- 自建报价节点的密钥和浏览器 Cookie 保留在运行节点的机器上，`.env` 与 `.data` 均不会提交；若通过 `ANYTRAVEL_ROLLINGGO_API_KEY`、`ANYTRAVEL_AMAP_WEB_SERVICE_KEY` 或 `ANYTRAVEL_ZAI_API_KEY` 注入内置密钥，它们只存在于构建/运行环境，不发生 Git 提交，界面也不会回显明文。
+- 默认智能向导的模型 Key 只在伴随服务端使用；应用内置 Key 与用户自定义 Key 一样不会回显明文。
 - 价格会标注渠道、口径和抓取时间；最终房型、税费、退改、余票和订单以平台结算页为准。
 - 本项目只读分析了用户提供的 FocusFlight 与圆周旅迹 IPA，用于理解地图优先交互和功能范围；没有复制或重新分发其代码与资源。详见 [地图交互参考审计](Documentation/REFERENCE_AUDIT.md)与[圆周旅迹功能审计](Documentation/CIRCLE_TRIP_REFERENCE_AUDIT.md)。
 
