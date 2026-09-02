@@ -11,6 +11,9 @@ output/playwright/
 Backend/node_modules/
 Backend/.data/
 Backend/.env
+Web/node_modules/
+Web/.env.local
+Web/dist/
 
 # Generated release artifacts and local design/tool scratch space
 *.apk

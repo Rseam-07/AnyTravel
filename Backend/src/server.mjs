@@ -1,6 +1,8 @@
 import http from "node:http";
 import { AMapError, searchAMapPlaces } from "./amap-service.mjs";
 import { AssistantError, interpretAssistantRequest } from "./assistant-service.mjs";
+import { GeocodeError, geocodeCity } from "./geocode-service.mjs";
+import { OverpassError, searchPlacesAround } from "./overpass-service.mjs";
 import {
   RequestError,
   searchAccommodationCatalog,
@@ -52,6 +54,16 @@ const server = http.createServer(async (request, response) => {
       sendJSON(response, 200, await searchAMapPlaces(body));
       return;
     }
+    if (request.method === "POST" && request.url === "/v1/places/poi") {
+      const body = await readJSON(request);
+      sendJSON(response, 200, await searchPlacesAround(body));
+      return;
+    }
+    if (request.method === "POST" && request.url === "/v1/places/geocode") {
+      const body = await readJSON(request);
+      sendJSON(response, 200, await geocodeCity(body));
+      return;
+    }
     if (request.method === "POST" && request.url === "/v1/quotes/accommodations") {
       const body = await readJSON(request);
       sendJSON(response, 200, await searchAccommodationQuotes(body));
@@ -80,12 +92,14 @@ const server = http.createServer(async (request, response) => {
         ? error.status
         : error instanceof AMapError
           ? error.status
+        : error instanceof OverpassError ? 400
+        : error instanceof GeocodeError ? 400
         : error.code === "RATE_LIMIT" ? 429 : 500;
     sendJSON(response, status, {
-      error: error instanceof AssistantError || error instanceof AMapError
+      error: error instanceof AssistantError || error instanceof AMapError || error instanceof OverpassError || error instanceof GeocodeError
         ? error.code
         : status === 500 ? "internal_error" : error.message,
-      message: error instanceof AssistantError || error instanceof AMapError ? error.message : undefined
+      message: error instanceof AssistantError || error instanceof AMapError || error instanceof OverpassError || error instanceof GeocodeError ? error.message : undefined
     });
   }
 });

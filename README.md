@@ -24,6 +24,8 @@ AnyTravel 是一款地图优先的开源 iOS 与 Android 旅行规划应用。�
 
 下载：[iOS 0.6.3 无签名 IPA](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.6.3) · [Android 0.4.0 APK](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.4.0)
 
+Web 版（开发中）：位于 [Web/](Web/README.md)，React + TypeScript + MapLibre GL，桌面为 Apple Maps 式大屏横排（左面板 + 全屏地图 + 底部轨道），移动端为三档底部面板；`cd Web && npm install && npm run dev` 后访问 `http://127.0.0.1:5182`。已跑通：目的地/条件输入、OSM 景点与营业时间、空间聚类方案、OSRM 耗时、天气、住宿比价（RollingGo 实测真价）、12306 去返程、去哪儿门票、DeepSeek 内置对话（白名单动作）、费用对比、旅册与分享链接。
+
 <p align="center">
   <img src="Documentation/Screenshots/android-welcome.png" width="30%" alt="Android 欢迎页">
   <img src="Documentation/Screenshots/android-plan.png" width="30%" alt="Android 地图方案">

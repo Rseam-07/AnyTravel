@@ -1,6 +1,6 @@
 # AnyTravel 接力交接（DeepSeek → Codex）
 
-> 更新于 2026-09-02 深夜。本文是 DeepSeek 会话结束时的工程状态快照与后续建议，供 Codex 会话直接接管。先读本文，再读 [FEATURE_ROADMAP](FEATURE_ROADMAP.md)、[DATA_CHANNELS](DATA_CHANNELS.md) 与 `CHANGELOG.md` 顶部的新条目。
+> 更新于 2026-09-02 深夜（Web 版 v0.1 完成）。本文是 DeepSeek 会话结束时的工程状态快照与后续建议，供 Codex 会话直接接管。先读本文，再读 [PLAN_TO_1_0](PLAN_TO_1_0.md)（目标与里程碑）、[FEATURE_ROADMAP](FEATURE_ROADMAP.md)、[DATA_CHANNELS](DATA_CHANNELS.md) 与 `CHANGELOG.md` 顶部的新条目。
 
 ## 1. 仓库与工作副本
 
