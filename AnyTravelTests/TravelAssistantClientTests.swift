@@ -27,6 +27,43 @@ final class TravelAssistantClientTests: XCTestCase {
         XCTAssertEqual(result.model, "glm-5.3-flash")
     }
 
+    func testManagedModeFallsBackToEmbeddedGLMWhenCompanionIsAbsent() async throws {
+        AssistantURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.host, "open.bigmodel.cn")
+            XCTAssertEqual(request.url?.path, "/api/paas/v4/chat/completions")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "authorization"), "Bearer embedded-secret")
+            let content = #"{"reply":"把脚步留给园林。","actions":[{"type":"add_interest","value":"gardens"}]}"#
+            let body = try JSONSerialization.data(withJSONObject: [
+                "choices": [["message": ["content": content]]]
+            ])
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, body)
+        }
+        let suiteName = "AnyTravel.TravelAssistantClientTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suiteName) }
+        let settings = AssistantSettingsStore(
+            defaults: defaults,
+            secretStore: MemoryAssistantSecretStore(),
+            managedAPIKey: { "embedded-secret" }
+        )
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [AssistantURLProtocol.self]
+        let client = TravelAssistantClient(
+            session: URLSession(configuration: configuration),
+            managedAPIKey: { "embedded-secret" }
+        )
+
+        XCTAssertTrue(settings.isConfigured)
+        let result = try await client.interpret(
+            input: "想多看看园林",
+            context: travelContext,
+            settings: settings
+        )
+
+        XCTAssertEqual(result.actions, [.init(type: .addInterest, value: "gardens")])
+        XCTAssertEqual(result.model, "glm-5.3-flash")
+    }
+
     func testCustomModeUsesKeychainSecretAndOpenAICompatiblePath() async throws {
         AssistantURLProtocol.requestHandler = { request in
             XCTAssertEqual(request.url?.path, "/api/paas/v4/chat/completions")

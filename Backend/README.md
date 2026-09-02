@@ -13,7 +13,7 @@ set -a; source .env; set +a
 npm start
 ```
 
-健康检查：`curl http://127.0.0.1:8787/health`。在 AnyTravel 的“旅途偏好与价格渠道”中填写这个地址；真机需填写电脑在同一局域网内的 IP，例如 `http://192.168.1.10:8787/`。
+健康检查：`curl http://127.0.0.1:8787/health`。除了服务本身、托管智能向导与高德地点之外，还会逐项报告 `ctripSession`、`ctripFlights`、`tongchengSession`、`elongOpenAPI` 与 `oneBoundCtrip` 的 `configured`/`disabled` 状态，方便确认哪些通道真的接上了。在 AnyTravel 的“旅途偏好与价格渠道”中填写这个地址；真机需填写电脑在同一局域网内的 IP，例如 `http://192.168.1.10:8787/`。
 服务默认只监听本机。需要让同一局域网中的 iPhone 访问时，把 `.env` 中的 `HOST` 改为 `0.0.0.0`，并只在可信网络中运行。
 
 ## 数据源
@@ -21,8 +21,12 @@ npm start
 - `ROLLINGGO_API_KEY`：优先实时源。`/v1/accommodations/search` 会先查目的地城市，再以最多三个行程景点为锚点并行补充目录；每次遵守 `searchHotels` 的 `size <= 20`，去重后最多返回 40 家。随后 `/v1/quotes/accommodations` 可对 App 候选逐店查询最多 12 家，只接收名称强匹配结果。`lowestPrice` 直接按每晚最低价处理，只有字段或文案明确为总价时才按晚数换算。
 - `CTRIP_SCRAPER_ENABLED=true`：使用持久化 Chromium 会话读取携程搜索结果。先运行 `npm run login:ctrip`，由用户在携程页面自行登录；Cookie 只保存在 `Backend/.data/ctrip-profile`，该目录不会提交到 Git。
 - 携程先通过公开酒店联想端点把每个 App 候选解析为酒店 ID，再打开带真实日期的目标酒店列表；只接受名称强匹配的数字价格，并保存抓取时间。列表中的“起”价会明确标注，房型、早餐、税费和退改仍以结算页为准。
+- `CTRIP_FLIGHT_SCRAPER_ENABLED=true`（缺省时回退到 `CTRIP_SCRAPER_ENABLED`）：用同一个持久化会话读取携程航班列表页，把城市映射为机场三字码后分别查询去程与返程的展示航班卡。同样只读查询、只接受数字展示价，购买回到携程页面。当前配置下默认关闭，未启用时健康检查显示 `disabled`。
 - `TONGCHENG_SCRAPER_ENABLED=true`：使用同样的本地会话读取同程/艺龙移动酒店列表。先运行 `npm run login:tongcheng`；节点通过公开城市选择页取得城市编码，再按入住/离店日期打开公开列表。只在酒店名强匹配且页面出现数字价格时返回实时价。
 - 同程页面若显示“登录查看低价”，节点返回 `login_required`；若平台要求安全验证或提示账号异常，则返回 `verification_required`。这些状态不会被改写成空的“实时价”。
+- `ELONG_USER`、`ELONG_APP_KEY` 与 `ELONG_SECRET_KEY`：艺龙开放平台酒店通道。节点依次调用 `hotel.static.city`、`hotel.static.list`、`hotel.static.info` 和 `hotel.detail`，把城市内容 ID、有效酒店、酒店详情与指定入住/离店日期的 `LowRate` 合并成同程旅行报价卡。接口使用官方 `md5(timestamp + md5(data + appkey) + secretKey)` 签名，生产环境还需要把服务端公网 IP 加入艺龙白名单；未配置凭据时健康检查明确显示 `disabled`。
+- 艺龙开放平台动态搜索按中国大陆每次最多 10 个酒店 ID 分批，并只把 `RMB/CNY` 的数字 `LowRate` 标记为实时每晚价。没有可售价格的酒店仍可补充目录，但不会伪装成实时价。
+- `ONEBOUND_API_KEY` 与 `ONEBOUND_API_SECRET`：万邦（OneBound）携程目录通道 `item_search_hotel`，只用于补充携程酒店目录与参考价。该接口不保证按指定入住日期报价，因此只有明确数字且口径一致时才标为参考价，绝不冒充实时价；未配置凭据时健康检查显示 `disabled`。
 - Playwright 自带浏览器不可用时，可用 `PLAYWRIGHT_CHANNEL=chrome` 或 `PLAYWRIGHT_EXECUTABLE_PATH=/绝对路径` 指向本机浏览器；这只是选择浏览器程序，不关闭或规避平台验证。
 - `/v1/quotes/transport` 会通过铁路 12306 的公开查询页面分别读取去程与返程的可购车次、发到时间、余票和展示票价。两边并行查询，单边失败不会遮住另一边；它只查询，不提交订单，购买链接始终指向铁路 12306。结果默认缓存 5 分钟。
 - `/v1/quotes/tickets` 会按 App 已选景点查询去哪儿门票公开列表，只回填名称强匹配的当前展示起价、抓取时间与详情购买页。公开列表不锁定指定日期、票种或库存，因此返回说明会要求在购买页复核。
@@ -115,3 +119,5 @@ curl -sS http://127.0.0.1:8787/v1/quotes/tickets \
 - 当前收到的高德 Key 在官方 Web 服务请求中返回 `USERKEY_PLAT_NOMATCH (10009)`。地点端点会以 422 返回清楚诊断，iOS 随后继续使用 Apple Maps；换成“Web 服务”Key 后无需修改客户端。
 - RollingGo 未配置密钥时会返回 `disabled` 诊断，不会生成占位价格。
 - 去哪儿景点门票适配器已经落地；去哪儿酒店与航班仍只提供明确的渠道查询入口。同程酒店适配器已落地，但是否返回数字价格取决于本地登录会话和平台验证状态。
+- 2026-09-02 新增的艺龙开放平台、万邦携程目录与携程航班适配器已完成解析级单元测试（`npm test` 42/42），但本机未配置 `ELONG_*`、`ONEBOUND_*` 凭据，也未运行携程航班采集，因此还没有联网数字报价验收；健康检查会如实显示 `disabled`。
+- 2026-09-02 iOS 新增应用内直连通道（12306、RollingGo、去哪儿公开航班页），只要 App 侧配置对应密钥或网页会话可用即可独立工作，不依赖本节点；本节点仍是携程、同程、艺龙、万邦与托管智能向导的承载方。

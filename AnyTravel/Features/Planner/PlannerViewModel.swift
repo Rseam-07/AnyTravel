@@ -79,6 +79,11 @@ final class PlannerViewModel {
     var quoteRefreshState: QuoteRefreshState = .idle
     var originResolution: DestinationResolution?
     var activeProviderPage: ProviderBrowserDestination?
+    var attractionPickerPresented = false
+    var attractionCandidates: [TravelPlace] = []
+    var selectedAttractionIDs: Set<TravelPlace.ID> = []
+    var isAttractionDiscoveryLoading = false
+    var attractionSelectionMessage: String?
 
     let tripStore: TripStore
     let assistantSettings: AssistantSettingsStore
@@ -96,6 +101,9 @@ final class PlannerViewModel {
     @ObservationIgnored private let expensePlanner: ExpensePlanner
     @ObservationIgnored private let scheduleBuilder: ScheduleBuilder
     @ObservationIgnored private let pricingBackendClient: PricingBackendClient
+    @ObservationIgnored private let rollingGoDirectClient: RollingGoDirectClient
+    @ObservationIgnored private let railway12306DirectClient: Railway12306DirectClient
+    @ObservationIgnored private let qunarFlightDirectClient: QunarFlightDirectClient
     @ObservationIgnored private let preferencesStore: PlannerPreferencesStore
     @ObservationIgnored private var routeTask: Task<Void, Never>?
     @ObservationIgnored private var revealTask: Task<Void, Never>?
@@ -108,6 +116,8 @@ final class PlannerViewModel {
     @ObservationIgnored private var itineraryUndoStack: [ItineraryEditSnapshot] = []
     @ObservationIgnored private var itineraryRedoStack: [ItineraryEditSnapshot] = []
     @ObservationIgnored private var didBootstrap = false
+    @ObservationIgnored private var plannedAttractionPlaces: [TravelPlace] = []
+    @ObservationIgnored private var pendingPlanNoticeMessage: String?
 
     init(
         searchService: MapSearchService = MapSearchService(),
@@ -123,6 +133,9 @@ final class PlannerViewModel {
         expensePlanner: ExpensePlanner = ExpensePlanner(),
         scheduleBuilder: ScheduleBuilder = ScheduleBuilder(),
         pricingBackendClient: PricingBackendClient = PricingBackendClient(),
+        rollingGoDirectClient: RollingGoDirectClient = RollingGoDirectClient(),
+        railway12306DirectClient: Railway12306DirectClient = Railway12306DirectClient(),
+        qunarFlightDirectClient: QunarFlightDirectClient = QunarFlightDirectClient(),
         preferencesStore: PlannerPreferencesStore = PlannerPreferencesStore(),
         tripStore: TripStore = TripStore()
     ) {
@@ -139,6 +152,9 @@ final class PlannerViewModel {
         self.expensePlanner = expensePlanner
         self.scheduleBuilder = scheduleBuilder
         self.pricingBackendClient = pricingBackendClient
+        self.rollingGoDirectClient = rollingGoDirectClient
+        self.railway12306DirectClient = railway12306DirectClient
+        self.qunarFlightDirectClient = qunarFlightDirectClient
         self.preferencesStore = preferencesStore
         self.tripStore = tripStore
         draft = preferencesStore.applyingSavedPreferences()
@@ -384,6 +400,16 @@ final class PlannerViewModel {
         !travelRequestText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    var suggestedAttractionCount: Int {
+        min(max(draft.dayCount, 1) * draft.pace.stopsPerDay, 20)
+    }
+
+    var attractionSelectionPressureMessage: String? {
+        let selectedCount = selectedAttractionIDs.count
+        guard selectedCount > suggestedAttractionCount else { return nil }
+        return "已选 \(selectedCount) 处，超过当前\(draft.pace.title)节奏约 \(suggestedAttractionCount) 处的舒适容量；会全部保留，但部分日期可能偏赶。"
+    }
+
     func bootstrapIfNeeded() async {
         guard !didBootstrap else { return }
         didBootstrap = true
@@ -621,6 +647,9 @@ final class PlannerViewModel {
             guard phase == .discovering else { return }
             destination = resolution
             draft.destination = resolution.title
+            plannedAttractionPlaces = []
+            attractionCandidates = []
+            selectedAttractionIDs = []
             phase = .preferences
             recoveryAction = nil
             setCamera(.region(resolution.region), animated: true)
@@ -629,6 +658,79 @@ final class PlannerViewModel {
         } catch {
             showFailure(error, recovery: .resolveDestination)
         }
+    }
+
+    func requestPlan() async {
+        if phase == .preferences {
+            await beginAttractionSelection()
+        } else {
+            await generatePlan()
+        }
+    }
+
+    func beginAttractionSelection() async {
+        guard let destination else {
+            await resolveDestination()
+            guard self.destination != nil else { return }
+            await beginAttractionSelection()
+            return
+        }
+        attractionPickerPresented = true
+        isAttractionDiscoveryLoading = true
+        attractionSelectionMessage = nil
+        do {
+            let candidates = try await searchService.discoverAttractionCandidates(
+                around: destination,
+                draft: draft
+            )
+            guard attractionPickerPresented else { return }
+            attractionCandidates = candidates
+            selectedAttractionIDs = selectedAttractionIDs.intersection(Set(candidates.map(\.id)))
+        } catch {
+            attractionSelectionMessage = error.localizedDescription
+        }
+        isAttractionDiscoveryLoading = false
+    }
+
+    func toggleAttractionSelection(_ place: TravelPlace) {
+        if selectedAttractionIDs.contains(place.id) {
+            selectedAttractionIDs.remove(place.id)
+        } else {
+            selectedAttractionIDs.insert(place.id)
+        }
+    }
+
+    func confirmAttractionSelection(automatic: Bool) async {
+        guard !attractionCandidates.isEmpty else {
+            attractionSelectionMessage = "还没有找到能落在地图上的景点，请稍后重试。"
+            return
+        }
+        let explicitIDs = automatic ? Set<TravelPlace.ID>() : selectedAttractionIDs
+        var selected = attractionCandidates.filter { explicitIDs.contains($0.id) }
+        selected = selected.map {
+            var place = $0
+            place.planningPriority = .primary
+            return place
+        }
+        let targetCount = suggestedAttractionCount
+        let supplemental = attractionCandidates.filter { !explicitIDs.contains($0.id) }
+        for original in supplemental where selected.count < targetCount {
+            var place = original
+            place.planningPriority = .supplemental
+            selected.append(place)
+        }
+        plannedAttractionPlaces = selected
+        attractionPickerPresented = false
+        if automatic {
+            pendingPlanNoticeMessage = "已按在线热度、偏好与空间分布替你挑选 \(selected.count) 处停留。"
+        } else if explicitIDs.count < targetCount {
+            pendingPlanNoticeMessage = "你选的 \(explicitIDs.count) 处会作为主游览点；另补入 \(selected.count - explicitIDs.count) 处顺路停留。"
+        } else if explicitIDs.count > targetCount {
+            pendingPlanNoticeMessage = "已保留全部 \(explicitIDs.count) 处选择；行程压力会在每天的卡片里标出。"
+        } else {
+            pendingPlanNoticeMessage = "已按你的选择开始编排行程。"
+        }
+        await generatePlan()
     }
 
     func generatePlan() async {
@@ -646,6 +748,8 @@ final class PlannerViewModel {
         selectedPlaceID = nil
         selectedDayIndex = 0
         paceStatusMessage = nil
+        let selectionNotice = pendingPlanNoticeMessage
+        pendingPlanNoticeMessage = nil
         noticeMessage = nil
         errorMessage = nil
         quoteRefreshState = .idle
@@ -658,7 +762,11 @@ final class PlannerViewModel {
         phase = .discovering
 
         do {
-            let places = try await searchService.discoverPlaces(around: destination, draft: draft)
+            let places = if plannedAttractionPlaces.isEmpty {
+                try await searchService.discoverPlaces(around: destination, draft: draft)
+            } else {
+                plannedAttractionPlaces
+            }
             guard phase == .discovering else { return }
             activityTitle = "正在编排每天的脚步"
             activityDetail = "正在衡量距离、停留、用餐、休息与夜游时段"
@@ -670,6 +778,7 @@ final class PlannerViewModel {
             guard !itineraryDays.isEmpty else { throw PlanningError.placesNotFound }
 
             phase = .ready
+            noticeMessage = selectionNotice
             planReadyFeedbackTrigger += 1
             recoveryAction = nil
             fitCurrentDay(animated: true)
@@ -1835,10 +1944,16 @@ final class PlannerViewModel {
         defer { isLogisticsLoading = false }
 
         let wantsLiveQuotes = draft.logistics.hasDates
-        let canRequestLiveQuotes = wantsLiveQuotes && pricingBackendClient.isConfigured
+        let trimmedOrigin = draft.logistics.origin.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasAccommodationPriceSource = pricingBackendClient.isConfigured || rollingGoDirectClient.isConfigured
+        let hasTransportPriceSource = !draft.logistics.skipTransport && !trimmedOrigin.isEmpty
+        let hasAnyPriceSource = hasAccommodationPriceSource || hasTransportPriceSource
+        let canRequestAccommodationQuotes = wantsLiveQuotes && hasAccommodationPriceSource
+        let canRequestBackendQuotes = wantsLiveQuotes && pricingBackendClient.isConfigured
+        let canRequestTransportQuotes = wantsLiveQuotes && hasTransportPriceSource
         if !wantsLiveQuotes {
             quoteRefreshState = .needsDates
-        } else if !pricingBackendClient.isConfigured {
+        } else if !hasAnyPriceSource {
             quoteRefreshState = .needsService
         } else {
             quoteRefreshState = .refreshing
@@ -1849,6 +1964,9 @@ final class PlannerViewModel {
         var allResultsCached = true
         var pricingIssues: [String] = []
         var pricingFailures: [String] = []
+        if wantsLiveQuotes, !draft.logistics.skipAccommodation, !hasAccommodationPriceSource {
+            pricingIssues.append("住宿实时价源尚未连接；交通仍会继续查询")
+        }
 
         if pricingBackendClient.isConfigured {
             logisticsStatusMessage = "正在复核景点门票与预约"
@@ -1893,14 +2011,23 @@ final class PlannerViewModel {
             )
             guard !Task.isCancelled else { return }
             logisticsStatusMessage = draft.logistics.hasDates ? "正在把当天的住宿价格带回来" : "正在沿景点整理合适的落脚处"
-            if canRequestLiveQuotes {
+            if canRequestAccommodationQuotes {
                 do {
-                    let catalog = try await pricingBackendClient.searchAccommodationCatalog(
-                        destination: draft.destination,
-                        logistics: draft.logistics,
-                        anchors: itineraryDays.compactMap { $0.stops.first?.name }
-                    )
-                    discovery = logisticsSearchService.mergingCatalog(
+                    let anchors = itineraryDays.compactMap { $0.stops.first?.name }
+                    let catalog = if pricingBackendClient.isConfigured {
+                        try await pricingBackendClient.searchAccommodationCatalog(
+                            destination: draft.destination,
+                            logistics: draft.logistics,
+                            anchors: anchors
+                        )
+                    } else {
+                        try await rollingGoDirectClient.searchAccommodationCatalog(
+                            destination: draft.destination,
+                            logistics: draft.logistics,
+                            anchors: anchors
+                        )
+                    }
+                    discovery = await logisticsSearchService.mergingCatalog(
                         catalog.value,
                         into: discovery,
                         around: destination,
@@ -1916,7 +2043,7 @@ final class PlannerViewModel {
                 }
             }
             var updatedAccommodations = discovery.options
-            if canRequestLiveQuotes {
+            if canRequestBackendQuotes {
                 do {
                     let result = try await pricingBackendClient.enrichAccommodationQuotes(
                         updatedAccommodations,
@@ -1947,13 +2074,12 @@ final class PlannerViewModel {
 
         logisticsStatusMessage = "正在把抵达方式与落脚处接在一起"
         originResolution = nil
-        let trimmedOrigin = draft.logistics.origin.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedOrigin.isEmpty {
             originResolution = try? await searchService.resolveDestination(trimmedOrigin)
         }
         guard !Task.isCancelled else { return }
         rebuildTransportOptions()
-        if canRequestLiveQuotes, !draft.logistics.skipTransport, !trimmedOrigin.isEmpty {
+        if canRequestTransportQuotes {
             logisticsStatusMessage = "正在读取班次、余票与这一刻的价格"
             do {
                 let result = try await refreshTransportQuotes()
@@ -1976,7 +2102,7 @@ final class PlannerViewModel {
         guard !Task.isCancelled else { return }
         let issueMessage = Self.firstUniqueMessages(in: pricingIssues).joined(separator: "；")
         let failureMessage = Self.firstUniqueMessages(in: pricingFailures).joined(separator: "；")
-        if wantsLiveQuotes, pricingBackendClient.isConfigured {
+        if wantsLiveQuotes, hasAnyPriceSource {
             if receivedQuoteCount > 0, (!failureMessage.isEmpty || !issueMessage.isEmpty) {
                 quoteRefreshState = .partial(
                     capturedAt: latestCapture,
@@ -2017,7 +2143,7 @@ final class PlannerViewModel {
         rebuildTransportOptions()
         if draft.logistics.hasDates,
            !draft.logistics.origin.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           pricingBackendClient.isConfigured {
+           !draft.logistics.skipTransport {
             logisticsTask?.cancel()
             logisticsTask = Task { [weak self] in
                 guard let self else { return }
@@ -2053,9 +2179,6 @@ final class PlannerViewModel {
                 self.logisticsStatusMessage = nil
             }
         } else {
-            if draft.logistics.hasDates, !pricingBackendClient.isConfigured {
-                quoteRefreshState = .needsService
-            }
             refreshLocalTransfersInBackground()
         }
         let camera = MapCamera(
@@ -2273,14 +2396,87 @@ final class PlannerViewModel {
     private func refreshTransportQuotes() async throws -> PricingEnrichmentResult<[TransportOption]> {
         let previousOutboundTitle = selectedTransport?.title
         let previousReturnTitle = selectedReturnTransport?.title
-        let result = try await pricingBackendClient.enrichTransportOptions(
-            transportOptions + returnTransportOptions,
-            origin: draft.logistics.origin,
-            destination: draft.destination,
-            logistics: draft.logistics,
-            accessPoints: accessPoints,
-            accommodation: selectedAccommodation
+        let currentOptions = transportOptions + returnTransportOptions
+        var result = PricingEnrichmentResult(
+            value: currentOptions,
+            receivedCount: 0,
+            capturedAt: Date.now,
+            isCached: false,
+            issues: []
         )
+        if pricingBackendClient.isConfigured {
+            do {
+                result = try await pricingBackendClient.enrichTransportOptions(
+                    currentOptions,
+                    origin: draft.logistics.origin,
+                    destination: draft.destination,
+                    logistics: draft.logistics,
+                    accessPoints: accessPoints,
+                    accommodation: selectedAccommodation
+                )
+            } catch {
+                result.issues.insert(
+                    PricingProviderIssue(
+                        provider: "报价节点",
+                        status: "failed",
+                        detail: "多渠道节点暂未抵达，已改由应用内实时来源继续：\(Self.pricingFailureText(error))"
+                    ),
+                    at: 0
+                )
+            }
+        }
+
+        do {
+            let railwayResult = try await railway12306DirectClient.enrichTransportOptions(
+                result.value,
+                origin: draft.logistics.origin,
+                destination: draft.destination,
+                logistics: draft.logistics,
+                accessPoints: accessPoints,
+                accommodation: selectedAccommodation
+            )
+            result.value = railwayResult.value
+            result.receivedCount += railwayResult.receivedCount
+            result.capturedAt = max(result.capturedAt, railwayResult.capturedAt)
+            result.isCached = result.isCached && railwayResult.isCached
+            result.issues.append(contentsOf: railwayResult.issues)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            result.issues.append(
+                PricingProviderIssue(
+                    provider: "12306",
+                    status: "failed",
+                    detail: Self.pricingFailureText(error)
+                )
+            )
+        }
+
+        do {
+            let qunarResult = try await qunarFlightDirectClient.enrichTransportOptions(
+                result.value,
+                origin: draft.logistics.origin,
+                destination: draft.destination,
+                logistics: draft.logistics,
+                accessPoints: accessPoints,
+                accommodation: selectedAccommodation
+            )
+            result.value = qunarResult.value
+            result.receivedCount += qunarResult.receivedCount
+            result.capturedAt = max(result.capturedAt, qunarResult.capturedAt)
+            result.isCached = result.isCached && qunarResult.isCached
+            result.issues.append(contentsOf: qunarResult.issues)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            result.issues.append(
+                PricingProviderIssue(
+                    provider: "qunar",
+                    status: "failed",
+                    detail: Self.pricingFailureText(error)
+                )
+            )
+        }
         guard !Task.isCancelled else { throw CancellationError() }
         let outboundOptions = result.value.filter { $0.journeyDirection == .outbound }
         let inboundOptions = result.value.filter { $0.journeyDirection == .returnTrip }

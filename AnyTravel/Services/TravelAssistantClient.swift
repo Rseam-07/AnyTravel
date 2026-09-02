@@ -63,9 +63,20 @@ struct TravelAssistantInterpretation: Codable, Equatable, Sendable {
 
 struct TravelAssistantClient {
     private let session: URLSession
+    private let managedAPIKey: () -> String
+    private let managedBaseURL: URL
+    private let managedModel: String
 
-    init(session: URLSession = .shared) {
+    init(
+        session: URLSession = .shared,
+        managedAPIKey: @escaping () -> String = { EmbeddedServiceConfiguration.zaiAPIKey },
+        managedBaseURL: URL = URL(string: "https://open.bigmodel.cn/api/paas/v4")!,
+        managedModel: String = "glm-5.3-flash"
+    ) {
         self.session = session
+        self.managedAPIKey = managedAPIKey
+        self.managedBaseURL = managedBaseURL
+        self.managedModel = managedModel
     }
 
     func interpret(
@@ -86,20 +97,28 @@ struct TravelAssistantClient {
         _ payload: TravelAssistantRequest,
         settings: AssistantSettingsStore
     ) async throws -> TravelAssistantInterpretation {
-        guard let baseURL = Self.normalizedBaseURL(settings.managedServiceURLText(), allowLocalHTTP: true) else {
-            throw TravelAssistantError.managedServiceNotConfigured
+        if let baseURL = Self.normalizedBaseURL(settings.managedServiceURLText(), allowLocalHTTP: true) {
+            let endpoint = baseURL.appendingPathComponent("v1/assistant/interpret")
+            let (data, response) = try await sendJSON(payload, to: endpoint)
+            try Self.validate(response: response, data: data)
+            do {
+                let decoded = try JSONDecoder.anyTravelAssistant.decode(TravelAssistantInterpretation.self, from: data)
+                return Self.validated(decoded, places: payload.context.places)
+            } catch let error as TravelAssistantError {
+                throw error
+            } catch {
+                throw TravelAssistantError.invalidResponse
+            }
         }
-        let endpoint = baseURL.appendingPathComponent("v1/assistant/interpret")
-        let (data, response) = try await sendJSON(payload, to: endpoint)
-        try Self.validate(response: response, data: data)
-        do {
-            let decoded = try JSONDecoder.anyTravelAssistant.decode(TravelAssistantInterpretation.self, from: data)
-            return Self.validated(decoded, places: payload.context.places)
-        } catch let error as TravelAssistantError {
-            throw error
-        } catch {
-            throw TravelAssistantError.invalidResponse
-        }
+
+        let apiKey = managedAPIKey().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !apiKey.isEmpty else { throw TravelAssistantError.managedServiceNotConfigured }
+        return try await openAIInterpretation(
+            payload,
+            baseURL: managedBaseURL,
+            apiKey: apiKey,
+            model: managedModel
+        )
     }
 
     private func customInterpretation(
@@ -114,6 +133,15 @@ struct TravelAssistantClient {
         }
         let model = settings.customModel.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !model.isEmpty else { throw TravelAssistantError.missingModel }
+        return try await openAIInterpretation(payload, baseURL: baseURL, apiKey: apiKey, model: model)
+    }
+
+    private func openAIInterpretation(
+        _ payload: TravelAssistantRequest,
+        baseURL: URL,
+        apiKey: String,
+        model: String
+    ) async throws -> TravelAssistantInterpretation {
         let endpoint = baseURL.appendingPathComponent("chat/completions")
         let body = OpenAIChatRequest(
             model: model,

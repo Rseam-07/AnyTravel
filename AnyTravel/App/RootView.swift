@@ -42,6 +42,42 @@ enum PlannerPanelLayout {
         let medium = min(max(idealMedium, compact + 180), max(expanded - 116, compact))
         return PlannerPanelMetrics(compact: compact, medium: medium, expanded: expanded)
     }
+
+    static func preferredHeight(
+        phase: PlannerPhase,
+        focus: PlanMapFocus,
+        stopCount: Int,
+        isLoadingLogistics: Bool,
+        hasSelectedPlace: Bool = false,
+        hasPacingMessage: Bool = false,
+        accommodationCount: Int = 0,
+        transportCount: Int = 0,
+        metrics: PlannerPanelMetrics
+    ) -> CGFloat {
+        let proposed: CGFloat = switch phase {
+        case .destination: 405
+        case .preferences: min(max(metrics.medium + 35, 540), 610)
+        case .discovering: 238
+        case .failure: 318
+        case .ready:
+            switch focus {
+            case .itinerary:
+                min(
+                    470
+                        + CGFloat(min(stopCount, 4)) * 17
+                        + (hasSelectedPlace ? 46 : 0)
+                        + (hasPacingMessage ? 32 : 0),
+                    608
+                )
+            case .accommodation:
+                isLoadingLogistics ? 440 : min(520 + CGFloat(min(accommodationCount, 2)) * 24, 568)
+            case .transport:
+                isLoadingLogistics ? 440 : min(530 + CGFloat(min(transportCount, 2)) * 22, 574)
+            case .budget: 535
+            }
+        }
+        return min(max(proposed, metrics.compact), metrics.expanded)
+    }
 }
 
 private enum PlannerRootSheet: String, Identifiable {
@@ -96,6 +132,11 @@ struct RootView: View {
         .sheet(isPresented: $bindableModel.conditionsEditorPresented) {
             TripConditionsView(model: model)
                 .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $bindableModel.attractionPickerPresented) {
+            AttractionSelectionView(model: model)
+                .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
         .sheet(item: $bindableModel.activeProviderPage) { destination in
@@ -173,6 +214,7 @@ private struct PlannerPanelHost: View {
     @Binding var detent: PlannerPanelDetent
     @State private var dragOriginHeight: CGFloat?
     @State private var liveHeight: CGFloat?
+    @State private var restingHeight: CGFloat?
     @GestureState private var isDragging = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -182,7 +224,8 @@ private struct PlannerPanelHost: View {
                 containerHeight: geometry.size.height,
                 safeAreaTop: geometry.safeAreaInsets.top
             )
-            let panelHeight = clamped(liveHeight ?? metrics.height(for: detent), metrics: metrics)
+            let automaticHeight = preferredHeight(metrics: metrics)
+            let panelHeight = clamped(liveHeight ?? restingHeight ?? automaticHeight, metrics: metrics)
             let displayDetent = metrics.closestDetent(to: panelHeight)
 
             PlannerPanel(model: model, panelDetent: displayDetent)
@@ -199,10 +242,13 @@ private struct PlannerPanelHost: View {
                     liveHeight == nil ? AnyTravelMotion.settle(reduceMotion: reduceMotion) : nil,
                     value: panelHeight
                 )
-                .onChange(of: isDragging) { wasDragging, isDragging in
-                    guard wasDragging, !isDragging else { return }
-                    liveHeight = nil
-                    dragOriginHeight = nil
+                .onAppear {
+                    guard restingHeight == nil else { return }
+                    restingHeight = automaticHeight
+                    detent = metrics.closestDetent(to: automaticHeight)
+                }
+                .onChange(of: autoFitToken) { _, _ in
+                    applyAutomaticHeight(metrics: metrics)
                 }
         }
     }
@@ -242,39 +288,139 @@ private struct PlannerPanelHost: View {
                 isDragging = true
             }
             .onChanged { value in
-                let origin = dragOriginHeight ?? metrics.height(for: detent)
+                let origin = dragOriginHeight ?? restingHeight ?? preferredHeight(metrics: metrics)
                 if dragOriginHeight == nil { dragOriginHeight = origin }
                 let proposedHeight = clamped(origin - value.translation.height, metrics: metrics)
                 liveHeight = proposedHeight
                 detent = metrics.closestDetent(to: proposedHeight)
             }
             .onEnded { value in
-                let origin = dragOriginHeight ?? metrics.height(for: detent)
+                let origin = dragOriginHeight ?? restingHeight ?? preferredHeight(metrics: metrics)
                 let predictedHeight = clamped(
                     origin - value.predictedEndTranslation.height,
                     metrics: metrics
                 )
-                settle(at: metrics.closestDetent(to: predictedHeight))
+                withAnimation(AnyTravelMotion.settle(reduceMotion: reduceMotion)) {
+                    restingHeight = predictedHeight
+                    liveHeight = nil
+                    dragOriginHeight = nil
+                    detent = metrics.closestDetent(to: predictedHeight)
+                }
             }
     }
 
     private func movePanel(up: Bool, metrics: PlannerPanelMetrics) {
         let currentIndex = PlannerPanelDetent.allCases.firstIndex(of: detent) ?? 1
         let nextIndex = min(max(currentIndex + (up ? 1 : -1), 0), PlannerPanelDetent.allCases.count - 1)
-        settle(at: PlannerPanelDetent.allCases[nextIndex])
+        settle(at: PlannerPanelDetent.allCases[nextIndex], metrics: metrics)
     }
 
-    private func settle(at nextDetent: PlannerPanelDetent) {
+    private func settle(at nextDetent: PlannerPanelDetent, metrics: PlannerPanelMetrics) {
         withAnimation(AnyTravelMotion.settle(reduceMotion: reduceMotion)) {
             detent = nextDetent
+            restingHeight = metrics.height(for: nextDetent)
             liveHeight = nil
             dragOriginHeight = nil
+        }
+    }
+
+    private var autoFitToken: PlannerPanelAutoFitToken {
+        PlannerPanelAutoFitToken(
+            phase: model.phase,
+            focus: model.planMapFocus,
+            destination: model.draft.destination,
+            dayCount: model.draft.dayCount,
+            budgetPerPerson: model.draft.budgetPerPerson,
+            pace: model.draft.pace,
+            travelMode: model.draft.travelMode,
+            origin: model.draft.logistics.origin,
+            travelers: model.draft.logistics.travelers,
+            startDate: model.draft.logistics.startDate,
+            endDate: model.draft.logistics.endDate,
+            preferredLongDistanceMode: model.draft.logistics.preferredLongDistanceMode,
+            skipAccommodation: model.draft.logistics.skipAccommodation,
+            skipTransport: model.draft.logistics.skipTransport,
+            interestCount: model.draft.interests.count,
+            selectedDayIndex: model.selectedDayIndex,
+            selectedPlaceID: model.selectedPlaceID,
+            selectedAccommodationID: model.selectedAccommodationID,
+            selectedTransportID: model.selectedTransportID,
+            selectedReturnTransportID: model.selectedReturnTransportID,
+            accommodationSort: model.accommodationSort,
+            accommodationFilterCount: model.activeAccommodationFilterCount,
+            accommodationCount: model.filteredAccommodations.count,
+            transportCount: model.focusedTransportDirection == .outbound
+                ? model.transportOptions.count
+                : model.returnTransportOptions.count,
+            isLogisticsLoading: model.isLogisticsLoading,
+            quoteRefreshState: model.quoteRefreshState,
+            paceStatusMessage: model.paceStatusMessage,
+            noticeMessage: model.noticeMessage,
+            itineraryCount: model.itineraryDays.reduce(0) { $0 + $1.stops.count }
+        )
+    }
+
+    private func preferredHeight(metrics: PlannerPanelMetrics) -> CGFloat {
+        PlannerPanelLayout.preferredHeight(
+            phase: model.phase,
+            focus: model.planMapFocus,
+            stopCount: model.currentStops.count,
+            isLoadingLogistics: model.isLogisticsLoading,
+            hasSelectedPlace: model.selectedPlace != nil,
+            hasPacingMessage: model.paceStatusMessage != nil || model.planPacingAssessment.needsAttention,
+            accommodationCount: model.filteredAccommodations.count,
+            transportCount: model.focusedTransportDirection == .outbound
+                ? model.transportOptions.count
+                : model.returnTransportOptions.count,
+            metrics: metrics
+        )
+    }
+
+    private func applyAutomaticHeight(metrics: PlannerPanelMetrics) {
+        let nextHeight = preferredHeight(metrics: metrics)
+        withAnimation(AnyTravelMotion.settle(reduceMotion: reduceMotion)) {
+            restingHeight = nextHeight
+            liveHeight = nil
+            dragOriginHeight = nil
+            detent = metrics.closestDetent(to: nextHeight)
         }
     }
 
     private func clamped(_ height: CGFloat, metrics: PlannerPanelMetrics) -> CGFloat {
         min(max(height, metrics.compact), metrics.expanded)
     }
+}
+
+private struct PlannerPanelAutoFitToken: Equatable {
+    var phase: PlannerPhase
+    var focus: PlanMapFocus
+    var destination: String
+    var dayCount: Int
+    var budgetPerPerson: Int
+    var pace: TripPace
+    var travelMode: TravelMode
+    var origin: String
+    var travelers: Int
+    var startDate: Date?
+    var endDate: Date?
+    var preferredLongDistanceMode: LongDistanceMode?
+    var skipAccommodation: Bool
+    var skipTransport: Bool
+    var interestCount: Int
+    var selectedDayIndex: Int
+    var selectedPlaceID: UUID?
+    var selectedAccommodationID: UUID?
+    var selectedTransportID: UUID?
+    var selectedReturnTransportID: UUID?
+    var accommodationSort: AccommodationSort
+    var accommodationFilterCount: Int
+    var accommodationCount: Int
+    var transportCount: Int
+    var isLogisticsLoading: Bool
+    var quoteRefreshState: QuoteRefreshState
+    var paceStatusMessage: String?
+    var noticeMessage: String?
+    var itineraryCount: Int
 }
 
 #Preview {

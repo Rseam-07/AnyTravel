@@ -41,13 +41,16 @@ final class AssistantSettingsStore {
 
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let secretStore: any AssistantSecretStoring
+    @ObservationIgnored private let managedAPIKey: () -> String
 
     init(
         defaults: UserDefaults = .standard,
-        secretStore: any AssistantSecretStoring = KeychainAssistantSecretStore()
+        secretStore: any AssistantSecretStoring = KeychainAssistantSecretStore(),
+        managedAPIKey: @escaping () -> String = { EmbeddedServiceConfiguration.zaiAPIKey }
     ) {
         self.defaults = defaults
         self.secretStore = secretStore
+        self.managedAPIKey = managedAPIKey
         mode = defaults.string(forKey: Self.providerModeKey)
             .flatMap(AssistantProviderMode.init(rawValue:)) ?? .managed
         customBaseURL = defaults.string(forKey: Self.customBaseURLKey)
@@ -59,8 +62,9 @@ final class AssistantSettingsStore {
     var isConfigured: Bool {
         switch mode {
         case .managed:
-            return !(defaults.string(forKey: PricingBackendClient.serviceURLDefaultsKey) ?? "")
+            let companionConfigured = !(defaults.string(forKey: PricingBackendClient.serviceURLDefaultsKey) ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            return companionConfigured || !managedAPIKey().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .custom:
             return !customBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && !customModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

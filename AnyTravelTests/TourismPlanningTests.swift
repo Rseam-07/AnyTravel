@@ -87,6 +87,29 @@ final class TourismPlanningTests: XCTestCase {
         XCTAssertEqual(stops.count, 2)
     }
 
+    func testPrimarySelectedAttractionGetsLongerVisitThanSupplement() {
+        let primary = TravelPlace(
+            name: "主游览点",
+            address: "测试地址",
+            coordinate: Coordinate(latitude: 31.30, longitude: 120.60),
+            interest: .culture,
+            planningPriority: .primary
+        )
+        let supplemental = TravelPlace(
+            name: "顺路补充点",
+            address: "测试地址",
+            coordinate: Coordinate(latitude: 31.31, longitude: 120.61),
+            interest: .culture,
+            planningPriority: .supplemental
+        )
+        let policy = TourismPlanningPolicy()
+
+        XCTAssertGreaterThan(
+            policy.visitMinutes(for: primary, pace: .relaxed),
+            policy.visitMinutes(for: supplemental, pace: .relaxed)
+        )
+    }
+
     func testPlannerPanelMetricsHaveThreeOrderedDetentsAndSnapToTheClosestOne() {
         let metrics = PlannerPanelLayout.metrics(containerHeight: 844, safeAreaTop: 59)
 

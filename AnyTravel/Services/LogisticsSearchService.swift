@@ -94,7 +94,7 @@ struct LogisticsSearchService {
                 let rhsMetro = Self.nearestDistance(from: rhs.0.coordinate, kind: .metro, in: accessPoints) ?? 8_000
                 return lhs.1 + lhsMetro * 0.22 < rhs.1 + rhsMetro * 0.22
             }
-            .prefix(30)
+            .prefix(45)
             .map { item, attractionDistance in
                 let coordinate = item.coordinate
                 var distances: [AccessPointKind: Double] = [:]
@@ -136,25 +136,18 @@ struct LogisticsSearchService {
         around destination: DestinationResolution,
         itineraryDays: [ItineraryDay],
         draft: TripDraft
-    ) -> AccommodationDiscoveryResult {
+    ) async -> AccommodationDiscoveryResult {
         let itineraryCoordinates = itineraryDays.flatMap(\.stops).map(\.coordinate)
         let referenceCoordinates = itineraryCoordinates.isEmpty ? [destination.coordinate] : itineraryCoordinates
         var options = discovery.options
+        let locatedCatalog = await Self.locatingCatalog(catalog, around: destination)
 
-        for entry in catalog {
-            guard Self.distance(from: destination.coordinate, to: entry.coordinate) <= 60_000 else { continue }
-            let quote = ProviderQuote(
-                provider: .rollingGo,
-                amountCNY: entry.amountCNY,
-                unit: .perNight,
-                kind: entry.quoteKind,
-                capturedAt: entry.capturedAt,
-                bookingURL: entry.bookingURL,
-                note: entry.note
-            )
+        for entry in locatedCatalog {
+            guard let entryCoordinate = entry.coordinate,
+                  Self.distance(from: destination.coordinate, to: entryCoordinate) <= 60_000 else { continue }
             if let index = options.firstIndex(where: {
                 Self.normalizedAccommodationName($0.name) == Self.normalizedAccommodationName(entry.name)
-                    || Self.distance(from: $0.coordinate, to: entry.coordinate) < 90
+                    || Self.distance(from: $0.coordinate, to: entryCoordinate) < 120
             }) {
                 options[index].brand = entry.brand ?? options[index].brand
                 options[index].starRating = entry.starRating ?? options[index].starRating
@@ -177,18 +170,17 @@ struct LogisticsSearchService {
                         )
                     }
                 }
-                options[index].quotes.removeAll { $0.provider == .rollingGo }
-                options[index].quotes.insert(quote, at: 0)
+                options[index].quotes = Self.mergingQuotes(options[index].quotes, with: entry.quotes)
                 continue
             }
 
             let attractionDistance = referenceCoordinates
-                .map { Self.distance(from: $0, to: entry.coordinate) }
+                .map { Self.distance(from: $0, to: entryCoordinate) }
                 .reduce(0, +) / Double(referenceCoordinates.count)
             var distances: [AccessPointKind: Double] = [:]
             var nearest: [AccessPointKind: AccessPoint] = [:]
             for kind in [AccessPointKind.metro, .rail, .airport] {
-                guard let result = Self.nearestAccessPoint(from: entry.coordinate, kind: kind, in: discovery.accessPoints) else {
+                guard let result = Self.nearestAccessPoint(from: entryCoordinate, kind: kind, in: discovery.accessPoints) else {
                     continue
                 }
                 distances[kind] = result.distance
@@ -203,13 +195,12 @@ struct LogisticsSearchService {
             }
             let officialURL = Self.officialWebsite(for: entry.name, brand: entry.brand)
             var quotes = Self.channelPlaceholders(officialURL: officialURL, hasDates: draft.logistics.hasDates)
-            quotes.removeAll { $0.provider == .rollingGo }
-            quotes.insert(quote, at: 0)
+            quotes = Self.mergingQuotes(quotes, with: entry.quotes)
             options.append(
                 AccommodationOption(
                     name: entry.name,
                     address: entry.address,
-                    coordinate: entry.coordinate,
+                    coordinate: entryCoordinate,
                     officialWebsiteURL: officialURL,
                     brand: entry.brand,
                     starRating: entry.starRating,
@@ -232,7 +223,88 @@ struct LogisticsSearchService {
             return lhs.attractionDistanceMeters + lhsMetro * 0.22
                 < rhs.attractionDistanceMeters + rhsMetro * 0.22
         }
-        return AccommodationDiscoveryResult(options: Array(options.prefix(40)), accessPoints: discovery.accessPoints)
+        return AccommodationDiscoveryResult(options: Array(options.prefix(60)), accessPoints: discovery.accessPoints)
+    }
+
+    private static func locatingCatalog(
+        _ catalog: [AccommodationCatalogEntry],
+        around destination: DestinationResolution
+    ) async -> [AccommodationCatalogEntry] {
+        let missing = catalog.indices.filter { catalog[$0].coordinate == nil }.prefix(16)
+        guard !missing.isEmpty else { return catalog }
+        var output = catalog
+        // MapKit search objects are main-actor isolated under Swift 6. Keep this
+        // bounded fallback on the main actor instead of moving them through a
+        // task group; most provider listings already carry coordinates.
+        for index in missing where output.indices.contains(index) {
+            let entry = output[index]
+            let request = MKLocalSearch.Request()
+            request.naturalLanguageQuery = "\(destination.title) \(entry.name)"
+            request.region = destination.region
+            request.resultTypes = .pointOfInterest
+            guard let response = try? await MKLocalSearch(request: request).start() else { continue }
+            let requestedName = Self.normalizedAccommodationName(entry.name)
+            let match = response.mapItems
+                .filter { item in
+                    guard let name = item.name else { return false }
+                    let candidate = Self.normalizedAccommodationName(name)
+                    return candidate == requestedName
+                        || candidate.contains(requestedName)
+                        || requestedName.contains(candidate)
+                }
+                .min { lhs, rhs in
+                    Self.distance(from: destination.coordinate, to: Coordinate(lhs.anyTravelCoordinate))
+                        < Self.distance(from: destination.coordinate, to: Coordinate(rhs.anyTravelCoordinate))
+                }
+            output[index].coordinate = match.map { Coordinate($0.anyTravelCoordinate) }
+        }
+        return output
+    }
+
+    private static func mergingQuotes(
+        _ existing: [ProviderQuote],
+        with incoming: [ProviderQuote]
+    ) -> [ProviderQuote] {
+        var result = existing
+        let concreteProviders = Set(incoming.filter { $0.amountCNY != nil }.map(\.provider))
+        result.removeAll {
+            concreteProviders.contains($0.provider)
+                && $0.amountCNY == nil
+                && ($0.kind == .checkOnProvider || $0.kind == .requiresPartnerAccess)
+        }
+        for quote in incoming {
+            let index = result.firstIndex {
+                $0.provider == quote.provider
+                    && $0.unit == quote.unit
+                    && normalizedQuoteText($0.roomName) == normalizedQuoteText(quote.roomName)
+                    && normalizedQuoteText($0.mealPlan) == normalizedQuoteText(quote.mealPlan)
+                    && normalizedQuoteText($0.cancellationPolicy) == normalizedQuoteText(quote.cancellationPolicy)
+            }
+            guard let index else {
+                result.append(quote)
+                continue
+            }
+            let oldAmount = result[index].amountCNY
+            let newAmount = quote.amountCNY
+            if oldAmount == nil && newAmount != nil
+                || oldAmount != nil && newAmount != nil && newAmount! < oldAmount!
+                || oldAmount == newAmount && (quote.capturedAt ?? .distantPast) > (result[index].capturedAt ?? .distantPast) {
+                result[index] = quote
+            }
+        }
+        return result.sorted {
+            if ($0.amountCNY != nil) != ($1.amountCNY != nil) { return $0.amountCNY != nil }
+            if ($0.amountCNY ?? .max) != ($1.amountCNY ?? .max) {
+                return ($0.amountCNY ?? .max) < ($1.amountCNY ?? .max)
+            }
+            return $0.provider.title < $1.provider.title
+        }
+    }
+
+    private static func normalizedQuoteText(_ value: String?) -> String {
+        (value ?? "").folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .replacingOccurrences(of: " ", with: "")
+            .lowercased()
     }
 
     private static func searchAccommodations(_ spec: AccommodationSearchSpec) async -> [AccommodationSearchHit] {

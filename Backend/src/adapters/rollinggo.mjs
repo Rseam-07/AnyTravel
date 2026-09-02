@@ -52,6 +52,7 @@ export class RollingGoAdapter {
       const hotels = collectHotelObjects(payloads)
         .map((hotel) => catalogHotelFromObject(hotel, stayNights, capturedAt))
         .filter(Boolean)
+        .map((hotel) => ({ ...hotel, provider: this.name, source: this.name }))
         .filter((hotel) => {
           const key = `${hotel.name}|${hotel.latitude.toFixed(4)}|${hotel.longitude.toFixed(4)}`;
           if (seen.has(key)) return false;

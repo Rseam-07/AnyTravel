@@ -186,6 +186,8 @@ struct TravelPlace: Codable, Hashable, Identifiable, Sendable {
     let openingHoursToday: String?
     let openingHoursWeek: String?
     var ticketQuote: ProviderQuote?
+    var popularity: AttractionPopularity?
+    var planningPriority: AttractionPlanningPriority?
 
     init(
         id: UUID = UUID(),
@@ -196,7 +198,9 @@ struct TravelPlace: Codable, Hashable, Identifiable, Sendable {
         source: String = "Apple Maps",
         openingHoursToday: String? = nil,
         openingHoursWeek: String? = nil,
-        ticketQuote: ProviderQuote? = nil
+        ticketQuote: ProviderQuote? = nil,
+        popularity: AttractionPopularity? = nil,
+        planningPriority: AttractionPlanningPriority? = nil
     ) {
         self.id = id
         self.name = name
@@ -207,7 +211,28 @@ struct TravelPlace: Codable, Hashable, Identifiable, Sendable {
         self.openingHoursToday = openingHoursToday
         self.openingHoursWeek = openingHoursWeek
         self.ticketQuote = ticketQuote
+        self.popularity = popularity
+        self.planningPriority = planningPriority
     }
+}
+
+struct AttractionPopularity: Codable, Hashable, Sendable {
+    var score: Double
+    var rank: Int?
+    var rating: Double?
+    var evidence: [String]
+
+    init(score: Double, rank: Int? = nil, rating: Double? = nil, evidence: [String] = []) {
+        self.score = score
+        self.rank = rank
+        self.rating = rating
+        self.evidence = evidence
+    }
+}
+
+enum AttractionPlanningPriority: String, Codable, Hashable, Sendable {
+    case primary
+    case supplemental
 }
 
 struct ItineraryDay: Codable, Hashable, Identifiable, Sendable {

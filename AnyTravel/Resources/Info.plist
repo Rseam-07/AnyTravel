@@ -20,6 +20,12 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>AnyTravelRollingGoAPIKey</key>
+	<string>$(ANYTRAVEL_ROLLINGGO_API_KEY)</string>
+	<key>AnyTravelAMapWebServiceKey</key>
+	<string>$(ANYTRAVEL_AMAP_WEB_SERVICE_KEY)</string>
+	<key>AnyTravelZAIAPIKey</key>
+	<string>$(ANYTRAVEL_ZAI_API_KEY)</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

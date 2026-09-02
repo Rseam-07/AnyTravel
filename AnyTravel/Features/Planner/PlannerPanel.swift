@@ -338,7 +338,7 @@ struct PlannerPanel: View {
             .scrollIndicators(.hidden)
 
             primaryButton(title: "让旅程在地图上展开", systemImage: "point.topleft.down.to.point.bottomright.curvepath") {
-                Task { await model.generatePlan() }
+                Task { await model.requestPlan() }
             }
         }
     }
@@ -1485,6 +1485,7 @@ struct PlannerPanel: View {
     private func accommodationCard(_ option: AccommodationOption) -> some View {
         let selected = model.selectedAccommodationID == option.id
         let pricedQuote = option.bestPricedQuote
+        let channelCount = Set(option.quotes.filter { $0.amountCNY != nil }.map(\.provider)).count
         return Button {
             model.selectAccommodation(option)
         } label: {
@@ -1539,6 +1540,11 @@ struct PlannerPanel: View {
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
+                    if channelCount > 1 {
+                        Text("\(channelCount)家比价")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(AnyTravelPalette.routeDark)
+                    }
                     Image(systemName: selected ? "checkmark.circle.fill" : "circle")
                         .foregroundStyle(selected ? AnyTravelPalette.route : .secondary)
                         .contentTransition(.symbolEffect(.replace))
@@ -1566,6 +1572,9 @@ struct PlannerPanel: View {
             ? model.selectedReturnTransportID == option.id
             : model.selectedTransportID == option.id
         let duration = option.durationMinutes.map(transportDurationText) ?? "耗时待比较"
+        let pricedQuote = option.quotes
+            .filter { $0.amountCNY != nil && $0.kind != .demo }
+            .min { ($0.amountCNY ?? .max) < ($1.amountCNY ?? .max) }
         return Button {
             model.selectTransport(option)
         } label: {
@@ -1594,9 +1603,24 @@ struct PlannerPanel: View {
                     .lineLimit(2)
 
                 HStack {
-                    Text(option.quotes.contains(where: { $0.amountCNY != nil }) ? "已有报价" : "班次与价格待核")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AnyTravelPalette.routeDark)
+                    if let pricedQuote {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(pricedQuote.priceText)
+                                .font(.subheadline.monospacedDigit().weight(.bold))
+                                .foregroundStyle(AnyTravelPalette.warm)
+                            Text(
+                                [pricedQuote.provider.title, pricedQuote.freshnessText]
+                                    .compactMap { $0 }
+                                    .joined(separator: " · ")
+                            )
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(pricedQuote.isStale ? AnyTravelPalette.warm : .secondary)
+                        }
+                    } else {
+                        Text("班次与价格待核")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AnyTravelPalette.routeDark)
+                    }
                     Spacer()
                     Image(systemName: selected ? "checkmark.circle.fill" : "circle")
                         .foregroundStyle(selected ? AnyTravelPalette.route : .secondary)
@@ -1605,7 +1629,7 @@ struct PlannerPanel: View {
             }
             .padding(11)
             .frame(width: 265, alignment: .leading)
-            .frame(minHeight: 118)
+            .frame(minHeight: 132)
             .scaleEffect(selected && !reduceMotion ? 1 : 0.975)
             .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
             .overlay {
@@ -1616,6 +1640,7 @@ struct PlannerPanel: View {
         }
         .buttonStyle(AnyTravelPressStyle())
         .accessibilityIdentifier("transport-option-\(option.journeyDirection.rawValue)-\(option.id.uuidString)")
+        .accessibilityLabel("\(option.title)，\(pricedQuote?.priceText ?? "等待报价")")
         .accessibilityAddTraits(selected ? .isSelected : [])
         .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: selected)
     }
@@ -1697,12 +1722,24 @@ struct PlannerPanel: View {
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(spacing: 5) {
                                 Text(quote.provider.title).font(.caption2.weight(.semibold))
+                                if let sourceLabel = quote.sourceLabel, !sourceLabel.isEmpty {
+                                    Text("· \(sourceLabel)")
+                                        .font(.system(size: 9, weight: .medium))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
                                 Image(systemName: quote.bookingURL == nil ? "clock" : "arrow.up.right")
                                     .font(.system(size: 9, weight: .bold))
                             }
                             Text(quote.priceText)
                                 .font(.caption.monospacedDigit().weight(.bold))
                                 .foregroundStyle(quote.amountCNY == nil ? AnyTravelPalette.routeDark : AnyTravelPalette.warm)
+                            if let roomName = quote.roomName, !roomName.isEmpty {
+                                Text(roomName)
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundStyle(AnyTravelPalette.secondaryInk)
+                                    .lineLimit(1)
+                            }
                             HStack(spacing: 3) {
                                 Text(quote.kind.title)
                                 if let freshnessText = quote.freshnessText {
@@ -1715,7 +1752,7 @@ struct PlannerPanel: View {
                             .foregroundStyle(.secondary)
                         }
                         .padding(.horizontal, 10)
-                        .frame(minWidth: 108, minHeight: 58, alignment: .leading)
+                        .frame(minWidth: 118, minHeight: 58, alignment: .leading)
                         .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
                     }
                     .buttonStyle(AnyTravelPressStyle())
@@ -2034,7 +2071,7 @@ private struct RefreshPriceIcon: View {
     }
 }
 
-private struct TravelLoadingGlyph: View {
+struct TravelLoadingGlyph: View {
     @State private var rotation = 0.0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 

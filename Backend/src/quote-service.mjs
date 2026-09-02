@@ -1,12 +1,29 @@
 import { CtripAdapter } from "./adapters/ctrip.mjs";
+import { CtripFlightAdapter } from "./adapters/ctrip-flight.mjs";
+import { ElongHotelAdapter } from "./adapters/elong.mjs";
+import { OneBoundCtripAdapter } from "./adapters/onebound-ctrip.mjs";
 import { RollingGoAdapter } from "./adapters/rollinggo.mjs";
 import { Railway12306Adapter } from "./adapters/railway12306.mjs";
 import { TongchengAdapter } from "./adapters/tongcheng.mjs";
+import {
+  deduplicateAccommodationQuotes,
+  mergeAccommodationCatalogResults
+} from "./lib/accommodation-merge.mjs";
+import { mergeTransportOptions } from "./lib/transport-merge.mjs";
 
 const cache = new Map();
 const rollingGoAdapter = new RollingGoAdapter();
-const adapters = [rollingGoAdapter, new CtripAdapter(), new TongchengAdapter()];
-const transportAdapters = [new Railway12306Adapter()];
+const ctripAdapter = new CtripAdapter();
+const tongchengAdapter = new TongchengAdapter();
+const adapters = [rollingGoAdapter, ctripAdapter, tongchengAdapter];
+const catalogAdapters = [
+  rollingGoAdapter,
+  ctripAdapter,
+  tongchengAdapter,
+  new OneBoundCtripAdapter(),
+  new ElongHotelAdapter()
+];
+const transportAdapters = [new Railway12306Adapter(), new CtripFlightAdapter()];
 
 export async function searchAccommodationCatalog(request) {
   validateCatalogRequest(request);
@@ -24,10 +41,27 @@ export async function searchAccommodationCatalog(request) {
   const key = `catalog:${JSON.stringify(normalizedRequest)}`;
   const cached = cache.get(key);
   if (cached && cached.expiresAt > Date.now()) return { ...cached.value, cached: true };
-  const result = await rollingGoAdapter.discover(normalizedRequest);
+  const settled = await Promise.allSettled(
+    catalogAdapters.map((adapter) => adapter.discover(normalizedRequest))
+  );
+  const listings = [];
+  const diagnostics = [];
+  for (let index = 0; index < settled.length; index += 1) {
+    const result = settled[index];
+    if (result.status === "fulfilled") {
+      listings.push(...result.value.hotels);
+      diagnostics.push(...result.value.diagnostics);
+    } else {
+      diagnostics.push({
+        provider: catalogAdapters[index]?.name || "unknown",
+        status: "failed",
+        detail: result.reason?.message || String(result.reason)
+      });
+    }
+  }
   const value = {
-    hotels: result.hotels,
-    diagnostics: result.diagnostics,
+    hotels: mergeAccommodationCatalogResults(listings, 60),
+    diagnostics,
     capturedAt: new Date().toISOString(),
     cached: false
   };
@@ -54,7 +88,7 @@ export async function searchAccommodationQuotes(request) {
     }
   }
   const value = {
-    quotes: deduplicateQuotes(quotes),
+    quotes: deduplicateAccommodationQuotes(quotes),
     diagnostics,
     capturedAt: new Date().toISOString(),
     cached: false
@@ -82,7 +116,7 @@ export async function searchTransportOptions(request) {
     }
   }
   const value = {
-    options,
+    options: mergeTransportOptions(options),
     diagnostics,
     capturedAt: new Date().toISOString(),
     cached: false
@@ -141,16 +175,6 @@ function validateTransportRequest(request) {
     throw new RequestError("modes must contain train or flight");
   }
   request.adults = Math.min(Math.max(Number(request.adults || 1), 1), 8);
-}
-
-function deduplicateQuotes(quotes) {
-  const map = new Map();
-  for (const quote of quotes) {
-    const key = `${quote.hotelID}|${quote.provider}|${quote.unit}`;
-    const previous = map.get(key);
-    if (!previous || quote.amountCNY < previous.amountCNY) map.set(key, quote);
-  }
-  return [...map.values()].sort((a, b) => a.amountCNY - b.amountCNY);
 }
 
 export class RequestError extends Error {}

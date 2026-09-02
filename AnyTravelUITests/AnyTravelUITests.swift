@@ -415,6 +415,23 @@ final class AnyTravelUITests: XCTestCase {
         compactScreenshot.lifetime = .keepAlways
         add(compactScreenshot)
 
+        let compactAdjustment = app.textFields["route-adjustment-input"]
+        XCTAssertTrue(compactAdjustment.isHittable)
+        compactAdjustment.tap()
+        compactAdjustment.typeText("5600元")
+        let applyAdjustment = app.buttons["应用路线修改"]
+        XCTAssertTrue(applyAdjustment.isHittable)
+        applyAdjustment.tap()
+
+        XCTAssertTrue(app.buttons["住宿"].waitForExistence(timeout: 4))
+        handle = app.descendants(matching: .any)["planner-panel-drag-handle"]
+        XCTAssertEqual(handle.value as? String, "显示主要内容")
+        XCTAssertTrue(app.staticTexts["已经照这句话调整，地图会沿新的条件重新展开。"].waitForExistence(timeout: 3))
+        let autoFitScreenshot = XCTAttachment(screenshot: app.screenshot())
+        autoFitScreenshot.name = "地图面板-操作后自动适配"
+        autoFitScreenshot.lifetime = .keepAlways
+        add(autoFitScreenshot)
+
         handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             .press(
                 forDuration: 0.08,

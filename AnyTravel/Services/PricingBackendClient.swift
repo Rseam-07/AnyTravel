@@ -37,7 +37,9 @@ struct PricingProviderIssue: Hashable, Sendable {
     private var providerDisplayName: String {
         switch provider.lowercased() {
         case "rollinggo": "道旅 RollingGo"
-        case "ctrip": "携程"
+        case "ctrip", "ctrip-flight": "携程"
+        case "onebound-ctrip": "万邦携程目录"
+        case "elong-open-api": "艺龙开放平台"
         case "qunar": "去哪儿"
         case "tongcheng", "ly": "同程旅行"
         case "trip.com", "tripcom": "Trip.com"
@@ -125,28 +127,50 @@ struct PricingBackendClient {
             }
             let payload = try JSONDecoder.anyTravelPricing.decode(AccommodationCatalogResponse.self, from: data)
             let entries = payload.hotels.map { hotel in
-                AccommodationCatalogEntry(
+                let backendOffers = hotel.offers ?? []
+                var quotes = backendOffers.compactMap {
+                    Self.providerQuote(from: $0, fallbackCapturedAt: payload.capturedAt)
+                }
+                if quotes.isEmpty,
+                   let provider = TravelProvider(backendName: hotel.provider ?? "rollinggo") {
+                    quotes = [
+                        ProviderQuote(
+                            provider: provider,
+                            amountCNY: hotel.amountCNY,
+                            unit: Self.priceUnit(hotel.unit),
+                            kind: Self.quoteKind(hotel.kind, amountCNY: hotel.amountCNY),
+                            capturedAt: hotel.capturedAt ?? payload.capturedAt,
+                            bookingURL: hotel.bookingURL,
+                            note: hotel.note ?? "到渠道查看当前房型和价格",
+                            sourceLabel: Self.sourceLabel(hotel.source)
+                        )
+                    ]
+                }
+                let providers = Array(Set(quotes.map(\.provider))).sorted { $0.title < $1.title }
+                let coordinate = hotel.latitude.flatMap { latitude in
+                    hotel.longitude.map { Coordinate(latitude: latitude, longitude: $0) }
+                }
+                return AccommodationCatalogEntry(
                     providerHotelID: hotel.providerHotelID,
+                    providerHotelIDs: hotel.providerHotelIDs ?? [:],
+                    providers: providers,
+                    sources: hotel.sources ?? hotel.source.map { [$0] } ?? [],
                     name: hotel.name,
                     brand: hotel.brand,
                     address: hotel.address,
-                    coordinate: Coordinate(latitude: hotel.latitude, longitude: hotel.longitude),
+                    coordinate: coordinate,
                     starRating: hotel.starRating,
                     guestRating: hotel.guestRating,
                     description: hotel.description,
                     imageURL: hotel.imageURL,
-                    bookingURL: hotel.bookingURL,
                     amenities: hotel.amenities,
                     tags: hotel.tags,
-                    amountCNY: hotel.amountCNY,
-                    quoteKind: hotel.kind == "live" ? .live : .checkOnProvider,
-                    capturedAt: hotel.capturedAt,
-                    note: hotel.note
+                    quotes: quotes
                 )
             }
             return PricingEnrichmentResult(
                 value: entries,
-                receivedCount: entries.filter { $0.amountCNY != nil }.count,
+                receivedCount: entries.flatMap(\.quotes).filter { $0.amountCNY != nil }.count,
                 capturedAt: payload.capturedAt,
                 isCached: payload.cached,
                 issues: payload.diagnostics.compactMap(\.providerIssue)
@@ -313,7 +337,7 @@ struct PricingBackendClient {
                 }
             return PricingEnrichmentResult(
                 value: merged,
-                receivedCount: liveOptions.count,
+                receivedCount: liveOptions.flatMap(\.quotes).filter { $0.amountCNY != nil }.count,
                 capturedAt: payload.capturedAt,
                 isCached: payload.cached,
                 issues: payload.diagnostics.compactMap(\.providerIssue)
@@ -446,7 +470,15 @@ struct PricingBackendClient {
                     kind: quote.kind == "indicative" ? .indicative : .live,
                     capturedAt: quote.capturedAt,
                     bookingURL: quote.bookingURL,
-                    note: quote.note
+                    note: quote.note,
+                    sourceLabel: Self.sourceLabel(quote.source),
+                    totalAmountCNY: quote.totalAmountCNY,
+                    roomName: quote.roomName,
+                    bedType: quote.bedType,
+                    mealPlan: quote.mealPlan,
+                    cancellationPolicy: quote.cancellationPolicy,
+                    taxesIncluded: quote.taxesIncluded,
+                    availability: quote.availability
                 )
             }
             let liveProviders = Set(liveQuotes.map(\.provider))
@@ -499,8 +531,7 @@ struct PricingBackendClient {
         accommodation: AccommodationOption?,
         fallbackAccessPoint: AccessPoint?
     ) -> TransportOption? {
-        guard let provider = TravelProvider(backendName: option.provider),
-              let mode = LongDistanceMode(rawValue: option.mode) else { return nil }
+        guard let mode = LongDistanceMode(rawValue: option.mode) else { return nil }
         let direction = option.direction.flatMap(TransportDirection.init(rawValue:)) ?? .outbound
         let localStationName = direction == .returnTrip ? option.originName : option.destinationName
         let bestNamedPoint = accessPoints
@@ -521,16 +552,36 @@ struct PricingBackendClient {
                 LogisticsSearchService.distance(from: point.coordinate, to: $0.coordinate)
             }
         }
-        let kind: QuoteKind = option.amountCNY == nil ? .checkOnProvider : .live
-        let quote = ProviderQuote(
-            provider: provider,
-            amountCNY: option.amountCNY,
-            unit: .perPerson,
-            kind: kind,
-            capturedAt: option.capturedAt,
-            bookingURL: option.bookingURL,
-            note: "\(option.fareName) · \(option.note)"
-        )
+        var quotes = (option.offers ?? []).compactMap { offer -> ProviderQuote? in
+            guard let provider = TravelProvider(backendName: offer.provider) else { return nil }
+            return ProviderQuote(
+                provider: provider,
+                amountCNY: offer.amountCNY,
+                unit: .perPerson,
+                kind: Self.quoteKind(offer.kind, amountCNY: offer.amountCNY),
+                capturedAt: offer.capturedAt,
+                bookingURL: offer.bookingURL,
+                note: "\(offer.fareName) · \(offer.note)",
+                sourceLabel: Self.sourceLabel(offer.source),
+                availability: offer.availability
+            )
+        }
+        if quotes.isEmpty, let provider = TravelProvider(backendName: option.provider) {
+            quotes = [
+                ProviderQuote(
+                    provider: provider,
+                    amountCNY: option.amountCNY,
+                    unit: .perPerson,
+                    kind: Self.quoteKind(nil, amountCNY: option.amountCNY),
+                    capturedAt: option.capturedAt,
+                    bookingURL: option.bookingURL,
+                    note: "\(option.fareName) · \(option.note)",
+                    sourceLabel: Self.sourceLabel(option.source),
+                    availability: option.availability
+                )
+            ]
+        }
+        guard !quotes.isEmpty else { return nil }
         var reasons = ["\(Self.clockText(option.departureTime))–\(Self.clockText(option.arrivalTime)) · \(option.availability)"]
         if let transferMeters, let arrivalPoint {
             let transferText = direction == .returnTrip
@@ -549,10 +600,67 @@ struct PricingBackendClient {
             arrivalTime: option.arrivalTime,
             arrivalAccessPoint: arrivalPoint,
             hotelTransferMeters: transferMeters,
-            quotes: [quote],
+            quotes: quotes,
             recommendationReasons: reasons,
             isRecommended: false
         )
+    }
+
+    private static func providerQuote(
+        from offer: BackendAccommodationOffer,
+        fallbackCapturedAt: Date
+    ) -> ProviderQuote? {
+        guard let provider = TravelProvider(backendName: offer.provider) else { return nil }
+        return ProviderQuote(
+            provider: provider,
+            amountCNY: offer.amountCNY,
+            unit: priceUnit(offer.unit),
+            kind: quoteKind(offer.kind, amountCNY: offer.amountCNY),
+            capturedAt: offer.capturedAt ?? fallbackCapturedAt,
+            bookingURL: offer.bookingURL,
+            note: offer.note,
+            sourceLabel: sourceLabel(offer.source),
+            totalAmountCNY: offer.totalAmountCNY,
+            roomName: offer.roomName,
+            bedType: offer.bedType,
+            mealPlan: offer.mealPlan,
+            cancellationPolicy: offer.cancellationPolicy,
+            taxesIncluded: offer.taxesIncluded,
+            availability: offer.availability
+        )
+    }
+
+    private static func priceUnit(_ value: String?) -> PriceUnit {
+        switch value {
+        case "total": .total
+        case "perPerson": .perPerson
+        default: .perNight
+        }
+    }
+
+    private static func quoteKind(_ value: String?, amountCNY: Int?) -> QuoteKind {
+        switch value {
+        case "live": .live
+        case "indicative": .indicative
+        case "budgetEstimate": .budgetEstimate
+        case "demo": .demo
+        case "requiresPartnerAccess": .requiresPartnerAccess
+        case "checkOnProvider": .checkOnProvider
+        default: amountCNY == nil ? .checkOnProvider : .live
+        }
+    }
+
+    private static func sourceLabel(_ value: String?) -> String? {
+        switch value?.lowercased() {
+        case "onebound-ctrip": "万邦携程目录"
+        case "ctrip-session": "登录会话"
+        case "tongcheng-session": "登录会话"
+        case "elong-open-api": "艺龙开放平台"
+        case "qunar-session": "登录会话"
+        case "rollinggo": "RollingGo"
+        case .some(let value) where !value.isEmpty: value
+        default: nil
+        }
     }
 
     private static func normalizedName(_ value: String) -> String {
@@ -682,6 +790,8 @@ private struct BackendErrorResponse: Codable {
 
 private struct BackendTransportOption: Codable {
     var provider: String
+    var source: String?
+    var sources: [String]?
     var mode: String
     var direction: String?
     var serviceNumber: String
@@ -696,6 +806,7 @@ private struct BackendTransportOption: Codable {
     var bookingURL: URL?
     var capturedAt: Date
     var note: String
+    var offers: [BackendTransportOffer]?
 }
 
 private struct BackendAccommodationQuote: Codable {
@@ -708,15 +819,27 @@ private struct BackendAccommodationQuote: Codable {
     var capturedAt: Date
     var bookingURL: URL?
     var note: String
+    var source: String?
+    var totalAmountCNY: Int?
+    var roomName: String?
+    var bedType: String?
+    var mealPlan: String?
+    var cancellationPolicy: String?
+    var taxesIncluded: Bool?
+    var availability: String?
 }
 
 private struct BackendAccommodationCatalogHotel: Codable {
     var providerHotelID: String
+    var providerHotelIDs: [String: String]?
+    var provider: String?
+    var source: String?
+    var sources: [String]?
     var name: String
     var brand: String?
     var address: String
-    var latitude: Double
-    var longitude: Double
+    var latitude: Double?
+    var longitude: Double?
     var starRating: Double?
     var guestRating: Double?
     var description: String?
@@ -725,8 +848,39 @@ private struct BackendAccommodationCatalogHotel: Codable {
     var amenities: [String]
     var tags: [String]
     var amountCNY: Int?
-    var unit: String
-    var kind: String
+    var unit: String?
+    var kind: String?
+    var capturedAt: Date?
+    var note: String?
+    var offers: [BackendAccommodationOffer]?
+}
+
+private struct BackendAccommodationOffer: Codable {
+    var provider: String
+    var source: String?
+    var amountCNY: Int?
+    var totalAmountCNY: Int?
+    var unit: String?
+    var kind: String?
+    var capturedAt: Date?
+    var bookingURL: URL?
+    var note: String
+    var roomName: String?
+    var bedType: String?
+    var mealPlan: String?
+    var cancellationPolicy: String?
+    var taxesIncluded: Bool?
+    var availability: String?
+}
+
+private struct BackendTransportOffer: Codable {
+    var provider: String
+    var source: String?
+    var amountCNY: Int?
+    var kind: String?
+    var fareName: String
+    var availability: String
+    var bookingURL: URL?
     var capturedAt: Date
     var note: String
 }
@@ -755,9 +909,9 @@ private extension JSONDecoder {
 private extension TravelProvider {
     init?(backendName: String) {
         switch backendName.lowercased() {
-        case "ctrip", "携程": self = .ctrip
+        case "ctrip", "ctrip-flight", "携程": self = .ctrip
         case "qunar", "去哪儿": self = .qunar
-        case "tongcheng", "ly", "同程旅行": self = .tongcheng
+        case "tongcheng", "ly", "同程旅行", "elong-open-api": self = .tongcheng
         case "trip.com", "tripcom": self = .tripCom
         case "skyscanner": self = .skyscanner
         case "rollinggo", "dida": self = .rollingGo

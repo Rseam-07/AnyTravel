@@ -34,6 +34,9 @@ targets:
       properties:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        AnyTravelRollingGoAPIKey: "$(ANYTRAVEL_ROLLINGGO_API_KEY)"
+        AnyTravelAMapWebServiceKey: "$(ANYTRAVEL_AMAP_WEB_SERVICE_KEY)"
+        AnyTravelZAIAPIKey: "$(ANYTRAVEL_ZAI_API_KEY)"
         LSRequiresIPhoneOS: true
         NSLocationWhenInUseUsageDescription: 用于把地图移动到你当前的位置，方便规划从身边出发的路线。
         NSLocalNetworkUsageDescription: 用于连接你自行运行的 AnyTravel 开源报价节点，获取住宿与交通比价结果。

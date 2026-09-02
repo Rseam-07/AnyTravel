@@ -73,7 +73,8 @@ struct TourismPlanningPolicy {
         case .balanced: 1
         case .full: 0.86
         }
-        return roundedToFive(Int((Double(base) * multiplier).rounded()))
+        let primaryMultiplier = place.planningPriority == .primary ? 1.28 : 1
+        return roundedToFive(Int((Double(base) * multiplier * primaryMultiplier).rounded()))
     }
 
     func estimatedTravelMinutes(

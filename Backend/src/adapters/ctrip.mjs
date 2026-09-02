@@ -1,5 +1,9 @@
 import path from "node:path";
-import { parseCtripCardTexts, selectCtripHotelSuggestion } from "../lib/ctrip-parser.mjs";
+import {
+  parseCtripCardTexts,
+  parseCtripCatalogCards,
+  selectCtripHotelSuggestion
+} from "../lib/ctrip-parser.mjs";
 import { isoNow } from "../lib/normalize.mjs";
 import { playwrightLaunchOptions } from "../lib/playwright-options.mjs";
 
@@ -14,38 +18,57 @@ const maximumTargetedHotels = 8;
 export class CtripAdapter {
   name = "ctrip";
 
+  async discover(request) {
+    if (process.env.CTRIP_SCRAPER_ENABLED !== "true") {
+      return { hotels: [], diagnostics: [{ provider: this.name, status: "disabled" }] };
+    }
+    const launched = await launchCtripContext();
+    if (launched.error) return { hotels: [], diagnostics: [launched.error] };
+    const { context, page } = launched;
+    try {
+      const cityID = resolveCityID(request.destination);
+      if (!Number.isFinite(cityID)) {
+        return { hotels: [], diagnostics: [{ provider: this.name, status: "city_id_missing" }] };
+      }
+      const loaded = await loadListPage(page, buildListURL(request, cityID));
+      if (loaded.status === "verification_required") {
+        return {
+          hotels: [],
+          diagnostics: [{ provider: this.name, status: "verification_required", loginURL: page.url() }]
+        };
+      }
+      const capturedAt = isoNow();
+      const hotels = parseCtripCatalogCards(loaded.cards, page.url(), capturedAt);
+      return {
+        hotels,
+        diagnostics: [{
+          provider: this.name,
+          status: loaded.loginForPrice && !hotels.some((hotel) => hotel.amountCNY != null)
+            ? "login_required"
+            : hotels.length ? "ok" : "no_visible_cards",
+          resultCount: hotels.length,
+          capturedAt,
+          ...(loaded.loginForPrice ? { loginURL: page.url() } : {})
+        }]
+      };
+    } catch (error) {
+      return { hotels: [], diagnostics: [{ provider: this.name, status: "failed", detail: error.message }] };
+    } finally {
+      await context.close();
+    }
+  }
+
   async search(request) {
     if (process.env.CTRIP_SCRAPER_ENABLED !== "true") {
       return { quotes: [], diagnostics: [{ provider: this.name, status: "disabled" }] };
     }
 
-    let playwright;
-    try {
-      playwright = await import("playwright");
-    } catch (error) {
-      return { quotes: [], diagnostics: [{ provider: this.name, status: "dependency_missing", detail: error.message }] };
-    }
-
-    const profileDir = path.resolve(process.cwd(), process.env.CTRIP_PROFILE_DIR || ".data/ctrip-profile");
-    let context;
-    try {
-      context = await playwright.chromium.launchPersistentContext(profileDir, {
-        headless: process.env.CTRIP_HEADLESS !== "false",
-        locale: "zh-CN",
-        viewport: { width: 1440, height: 1000 },
-        ...playwrightLaunchOptions()
-      });
-    } catch (error) {
-      return {
-        quotes: [],
-        diagnostics: [{ provider: this.name, status: "browser_unavailable", detail: error.message }]
-      };
-    }
-    const page = context.pages()[0] || await context.newPage();
+    const launched = await launchCtripContext();
+    if (launched.error) return { quotes: [], diagnostics: [launched.error] };
+    const { context, page } = launched;
 
     try {
-      const cityID = commonCityIDs.get(cleanCity(request.destination))
-        ?? Number(process.env[`CTRIP_CITY_ID_${cleanCity(request.destination)}`]);
+      const cityID = resolveCityID(request.destination);
       if (!Number.isFinite(cityID)) {
         return { quotes: [], diagnostics: [{ provider: this.name, status: "city_id_missing" }] };
       }
@@ -112,6 +135,31 @@ export class CtripAdapter {
 
 function cleanCity(value) {
   return String(value ?? "").replace(/市$/, "").trim();
+}
+
+function resolveCityID(destination) {
+  return commonCityIDs.get(cleanCity(destination))
+    ?? Number(process.env[`CTRIP_CITY_ID_${cleanCity(destination)}`]);
+}
+
+async function launchCtripContext() {
+  let playwright;
+  try { playwright = await import("playwright"); }
+  catch (error) {
+    return { error: { provider: "ctrip", status: "dependency_missing", detail: error.message } };
+  }
+  const profileDir = path.resolve(process.cwd(), process.env.CTRIP_PROFILE_DIR || ".data/ctrip-profile");
+  try {
+    const context = await playwright.chromium.launchPersistentContext(profileDir, {
+      headless: process.env.CTRIP_HEADLESS !== "false",
+      locale: "zh-CN",
+      viewport: { width: 1440, height: 1000 },
+      ...playwrightLaunchOptions()
+    });
+    return { context, page: context.pages()[0] || await context.newPage() };
+  } catch (error) {
+    return { error: { provider: "ctrip", status: "browser_unavailable", detail: error.message } };
+  }
 }
 
 function buildListURL(request, cityID, target = null) {
@@ -181,17 +229,19 @@ async function loadListPage(page, url) {
 
   const bodyText = await page.locator("body").innerText().catch(() => "");
   if (/账号异常|安全验证|访问过于频繁|请完成验证/.test(bodyText)) {
-    return { status: "verification_required", cardTexts: [], loginForPrice: false };
+    return { status: "verification_required", cards: [], cardTexts: [], loginForPrice: false };
   }
   if (page.url().includes("passport.ctrip.com") || /登录首页|登录携程/.test(bodyText)) {
-    return { status: "content", cardTexts: [], loginForPrice: true };
+    return { status: "content", cards: [], cardTexts: [], loginForPrice: true };
   }
-  const cardTexts = await page.locator(".list-item").evaluateAll((cards) =>
-    cards.slice(0, 40).map((card) => card.innerText || "")
-  );
+  const cards = await page.locator(".list-item").evaluateAll((nodes) => nodes.slice(0, 40).map((card) => {
+    const anchor = card.matches("a[href]") ? card : card.querySelector("a[href]");
+    return { text: card.innerText || "", href: anchor?.href || null };
+  }));
   return {
     status: "content",
-    cardTexts,
+    cards,
+    cardTexts: cards.map((card) => card.text),
     loginForPrice: /登录(?:以)?查看(?:会员)?价|登录后查看|登录查看低价/.test(bodyText)
   };
 }

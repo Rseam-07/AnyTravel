@@ -48,6 +48,49 @@ export function parseTongchengCardTexts(cards, requestedHotels, fallbackBookingU
   return [...lowestByHotel.values()];
 }
 
+export function parseTongchengCatalogCards(cards, fallbackBookingURL, capturedAt) {
+  const result = new Map();
+  for (const card of cards) {
+    const rawText = typeof card === "string" ? card : card?.text;
+    const bookingURL = typeof card === "object" && card?.href ? card.href : fallbackBookingURL;
+    const text = String(rawText || "").trim();
+    if (!text) continue;
+    const name = extractHotelName(text);
+    if (!name) continue;
+    const withoutReviewCounts = text
+      .replace(/\d{1,3}(?:,\d{3})+\s*(?:条)?点评/g, "")
+      .replace(/\d+\s*(?:条)?点评/g, "");
+    const prices = [...withoutReviewCounts.matchAll(/[¥￥]\s*([\d,]{2,})/g)]
+      .map((match) => Number(match[1].replace(/,/g, "")))
+      .filter((value) => Number.isFinite(value) && value >= 20 && value <= 100_000);
+    const amountCNY = prices.at(-1) ?? null;
+    const providerHotelID = hotelIDFromURL(bookingURL) || `tongcheng-${normalizeHotelName(name)}`;
+    const policies = extractPolicyNotes(text);
+    const listing = {
+      providerHotelID,
+      provider: "tongcheng",
+      source: "tongcheng-session",
+      name,
+      address: extractAddress(text, name),
+      bookingURL,
+      amenities: [],
+      tags: policies,
+      amountCNY,
+      unit: "perNight",
+      kind: amountCNY == null ? "checkOnProvider" : "live",
+      capturedAt,
+      note: amountCNY == null
+        ? "同程登录会话已找到这家住宿；数字价格需在渠道页继续确认"
+        : ["同程页面当前起价", ...policies, "房型、税费和退改以结算页为准"].join("；")
+    };
+    const previous = result.get(providerHotelID);
+    if (!previous || previous.amountCNY == null || amountCNY != null && amountCNY < previous.amountCNY) {
+      result.set(providerHotelID, listing);
+    }
+  }
+  return [...result.values()];
+}
+
 function strongMatch(candidateName, requestedHotels) {
   const candidate = normalizeHotelName(candidateName);
   if (candidate.length < 3) return null;
@@ -85,4 +128,21 @@ function extractPolicyNotes(text) {
   if (/含早|含早餐|双早|单早/.test(text)) notes.push("页面标注含早");
   else if (/无早|不含早/.test(text)) notes.push("页面标注不含早");
   return notes;
+}
+
+function extractAddress(text, name) {
+  const compact = text.replace(/\s+/g, " ");
+  const remainder = compact.slice(compact.indexOf(name) + name.length).trim();
+  const match = remainder.match(/([\p{Script=Han}A-Za-z0-9]{2,40}(?:路|街|巷|大道|镇|村|号|区)[^¥￥\d]{0,18})/u);
+  return match?.[1]?.trim() || "";
+}
+
+function hotelIDFromURL(value) {
+  if (!value) return null;
+  try {
+    const url = new URL(value, "https://m.elong.com/");
+    return url.searchParams.get("hotelid")
+      || url.searchParams.get("hotelId")
+      || url.pathname.match(/(?:hotel|detail)[\/-]?(\d{3,})/i)?.[1];
+  } catch { return null; }
 }

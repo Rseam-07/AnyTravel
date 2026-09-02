@@ -138,6 +138,14 @@ struct ProviderQuote: Codable, Hashable, Identifiable, Sendable {
     var bookingURL: URL?
     var note: String
     var displayPriceText: String?
+    var sourceLabel: String?
+    var totalAmountCNY: Int?
+    var roomName: String?
+    var bedType: String?
+    var mealPlan: String?
+    var cancellationPolicy: String?
+    var taxesIncluded: Bool?
+    var availability: String?
 
     init(
         id: UUID = UUID(),
@@ -148,7 +156,15 @@ struct ProviderQuote: Codable, Hashable, Identifiable, Sendable {
         capturedAt: Date? = nil,
         bookingURL: URL? = nil,
         note: String,
-        displayPriceText: String? = nil
+        displayPriceText: String? = nil,
+        sourceLabel: String? = nil,
+        totalAmountCNY: Int? = nil,
+        roomName: String? = nil,
+        bedType: String? = nil,
+        mealPlan: String? = nil,
+        cancellationPolicy: String? = nil,
+        taxesIncluded: Bool? = nil,
+        availability: String? = nil
     ) {
         self.id = id
         self.provider = provider
@@ -159,6 +175,14 @@ struct ProviderQuote: Codable, Hashable, Identifiable, Sendable {
         self.bookingURL = bookingURL
         self.note = note
         self.displayPriceText = displayPriceText
+        self.sourceLabel = sourceLabel
+        self.totalAmountCNY = totalAmountCNY
+        self.roomName = roomName
+        self.bedType = bedType
+        self.mealPlan = mealPlan
+        self.cancellationPolicy = cancellationPolicy
+        self.taxesIncluded = taxesIncluded
+        self.availability = availability
     }
 
     var priceText: String {
@@ -310,21 +334,33 @@ struct AccommodationOption: Codable, Hashable, Identifiable, Sendable {
 
 struct AccommodationCatalogEntry: Hashable, Sendable {
     var providerHotelID: String
+    var providerHotelIDs: [String: String]
+    var providers: [TravelProvider]
+    var sources: [String]
     var name: String
     var brand: String?
     var address: String
-    var coordinate: Coordinate
+    var coordinate: Coordinate?
     var starRating: Double?
     var guestRating: Double?
     var description: String?
     var imageURL: URL?
-    var bookingURL: URL?
     var amenities: [String]
     var tags: [String]
-    var amountCNY: Int?
-    var quoteKind: QuoteKind
-    var capturedAt: Date
-    var note: String
+    var quotes: [ProviderQuote]
+
+    var bestQuote: ProviderQuote? {
+        quotes
+            .filter { $0.amountCNY != nil }
+            .min { ($0.amountCNY ?? .max) < ($1.amountCNY ?? .max) }
+            ?? quotes.first
+    }
+
+    var bookingURL: URL? { bestQuote?.bookingURL }
+    var amountCNY: Int? { bestQuote?.amountCNY }
+    var quoteKind: QuoteKind { bestQuote?.kind ?? .checkOnProvider }
+    var capturedAt: Date { bestQuote?.capturedAt ?? .now }
+    var note: String { bestQuote?.note ?? "到渠道查看当前房型和价格" }
 }
 
 struct TransportOption: Codable, Hashable, Identifiable, Sendable {

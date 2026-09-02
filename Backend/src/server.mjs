@@ -28,6 +28,15 @@ const server = http.createServer(async (request, response) => {
         service: "anytravel-companion",
         assistant: process.env.ZAI_API_KEY ? "configured" : "disabled",
         amap: process.env.AMAP_API_KEY ? "configured" : "disabled",
+        oneBoundCtrip: process.env.ONEBOUND_API_KEY && process.env.ONEBOUND_API_SECRET ? "configured" : "disabled",
+        ctripSession: process.env.CTRIP_SCRAPER_ENABLED === "true" ? "configured" : "disabled",
+        ctripFlights: (process.env.CTRIP_FLIGHT_SCRAPER_ENABLED ?? process.env.CTRIP_SCRAPER_ENABLED) === "true"
+          ? "configured"
+          : "disabled",
+        tongchengSession: process.env.TONGCHENG_SCRAPER_ENABLED === "true" ? "configured" : "disabled",
+        elongOpenAPI: process.env.ELONG_USER && process.env.ELONG_APP_KEY && process.env.ELONG_SECRET_KEY
+          ? "configured"
+          : "disabled",
         qunarTickets: "public",
         time: new Date().toISOString()
       });
