@@ -70,6 +70,7 @@ enum TravelProvider: String, CaseIterable, Codable, Hashable, Identifiable, Send
     case ctrip
     case qunar
     case tongcheng
+    case fliggy
     case tripCom
     case skyscanner
     case rollingGo
@@ -84,6 +85,7 @@ enum TravelProvider: String, CaseIterable, Codable, Hashable, Identifiable, Send
         case .ctrip: "携程"
         case .qunar: "去哪儿"
         case .tongcheng: "同程旅行"
+        case .fliggy: "飞猪旅行"
         case .tripCom: "Trip.com"
         case .skyscanner: "Skyscanner"
         case .rollingGo: "道旅 RollingGo"

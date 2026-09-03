@@ -103,6 +103,7 @@ final class PlannerViewModel {
     @ObservationIgnored private let pricingBackendClient: PricingBackendClient
     @ObservationIgnored private let rollingGoDirectClient: RollingGoDirectClient
     @ObservationIgnored private let railway12306DirectClient: Railway12306DirectClient
+    @ObservationIgnored private let fliggyFlightDirectClient: FliggyFlightDirectClient
     @ObservationIgnored private let qunarFlightDirectClient: QunarFlightDirectClient
     @ObservationIgnored private let preferencesStore: PlannerPreferencesStore
     @ObservationIgnored private var routeTask: Task<Void, Never>?
@@ -135,6 +136,7 @@ final class PlannerViewModel {
         pricingBackendClient: PricingBackendClient = PricingBackendClient(),
         rollingGoDirectClient: RollingGoDirectClient = RollingGoDirectClient(),
         railway12306DirectClient: Railway12306DirectClient = Railway12306DirectClient(),
+        fliggyFlightDirectClient: FliggyFlightDirectClient = FliggyFlightDirectClient(),
         qunarFlightDirectClient: QunarFlightDirectClient = QunarFlightDirectClient(),
         preferencesStore: PlannerPreferencesStore = PlannerPreferencesStore(),
         tripStore: TripStore = TripStore()
@@ -154,6 +156,7 @@ final class PlannerViewModel {
         self.pricingBackendClient = pricingBackendClient
         self.rollingGoDirectClient = rollingGoDirectClient
         self.railway12306DirectClient = railway12306DirectClient
+        self.fliggyFlightDirectClient = fliggyFlightDirectClient
         self.qunarFlightDirectClient = qunarFlightDirectClient
         self.preferencesStore = preferencesStore
         self.tripStore = tripStore
@@ -2012,34 +2015,58 @@ final class PlannerViewModel {
             guard !Task.isCancelled else { return }
             logisticsStatusMessage = draft.logistics.hasDates ? "正在把当天的住宿价格带回来" : "正在沿景点整理合适的落脚处"
             if canRequestAccommodationQuotes {
-                do {
-                    let anchors = itineraryDays.compactMap { $0.stops.first?.name }
-                    let catalog = if pricingBackendClient.isConfigured {
-                        try await pricingBackendClient.searchAccommodationCatalog(
+                let anchors = itineraryDays.compactMap { $0.stops.first?.name }
+                var backendReturnedRollingGoPrice = false
+                if pricingBackendClient.isConfigured {
+                    do {
+                        let catalog = try await pricingBackendClient.searchAccommodationCatalog(
                             destination: draft.destination,
                             logistics: draft.logistics,
                             anchors: anchors
                         )
-                    } else {
-                        try await rollingGoDirectClient.searchAccommodationCatalog(
-                            destination: draft.destination,
-                            logistics: draft.logistics,
-                            anchors: anchors
+                        discovery = await logisticsSearchService.mergingCatalog(
+                            catalog.value,
+                            into: discovery,
+                            around: destination,
+                            itineraryDays: itineraryDays,
+                            draft: draft
                         )
+                        backendReturnedRollingGoPrice = catalog.value
+                            .flatMap(\.quotes)
+                            .contains { $0.provider == .rollingGo && $0.amountCNY != nil }
+                        receivedQuoteCount += catalog.receivedCount
+                        latestCapture = max(latestCapture ?? catalog.capturedAt, catalog.capturedAt)
+                        allResultsCached = allResultsCached && catalog.isCached
+                        pricingIssues.append(contentsOf: catalog.issues.map(\.message))
+                    } catch {
+                        pricingFailures.append(Self.pricingFailureText(error))
                     }
-                    discovery = await logisticsSearchService.mergingCatalog(
-                        catalog.value,
-                        into: discovery,
-                        around: destination,
-                        itineraryDays: itineraryDays,
-                        draft: draft
-                    )
-                    receivedQuoteCount += catalog.receivedCount
-                    latestCapture = max(latestCapture ?? catalog.capturedAt, catalog.capturedAt)
-                    allResultsCached = allResultsCached && catalog.isCached
-                    pricingIssues.append(contentsOf: catalog.issues.map(\.message))
-                } catch {
-                    pricingFailures.append(Self.pricingFailureText(error))
+                }
+
+                // A stale or unreachable companion URL must never disable the
+                // embedded hotel source. Skip the second call only when the
+                // companion already delivered a concrete RollingGo price.
+                if rollingGoDirectClient.isConfigured, !backendReturnedRollingGoPrice {
+                    do {
+                        let catalog = try await rollingGoDirectClient.searchAccommodationCatalog(
+                            destination: draft.destination,
+                            logistics: draft.logistics,
+                            anchors: anchors
+                        )
+                        discovery = await logisticsSearchService.mergingCatalog(
+                            catalog.value,
+                            into: discovery,
+                            around: destination,
+                            itineraryDays: itineraryDays,
+                            draft: draft
+                        )
+                        receivedQuoteCount += catalog.receivedCount
+                        latestCapture = max(latestCapture ?? catalog.capturedAt, catalog.capturedAt)
+                        allResultsCached = allResultsCached && catalog.isCached
+                        pricingIssues.append(contentsOf: catalog.issues.map(\.message))
+                    } catch {
+                        pricingFailures.append(Self.pricingFailureText(error))
+                    }
                 }
             }
             var updatedAccommodations = discovery.options
@@ -2446,6 +2473,32 @@ final class PlannerViewModel {
             result.issues.append(
                 PricingProviderIssue(
                     provider: "12306",
+                    status: "failed",
+                    detail: Self.pricingFailureText(error)
+                )
+            )
+        }
+
+        do {
+            let fliggyResult = try await fliggyFlightDirectClient.enrichTransportOptions(
+                result.value,
+                origin: draft.logistics.origin,
+                destination: draft.destination,
+                logistics: draft.logistics,
+                accessPoints: accessPoints,
+                accommodation: selectedAccommodation
+            )
+            result.value = fliggyResult.value
+            result.receivedCount += fliggyResult.receivedCount
+            result.capturedAt = max(result.capturedAt, fliggyResult.capturedAt)
+            result.isCached = result.isCached && fliggyResult.isCached
+            result.issues.append(contentsOf: fliggyResult.issues)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            result.issues.append(
+                PricingProviderIssue(
+                    provider: "fliggy",
                     status: "failed",
                     detail: Self.pricingFailureText(error)
                 )

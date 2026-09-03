@@ -78,11 +78,17 @@ iOS 0.7 起可以在 App 内直连同样的公开端点：`Railway12306DirectCli
 
 ## 航班
 
-iOS 0.7 起可以直连去哪儿公开移动航班页：`QunarFlightDirectClient` 用与 `ProviderLoginView` 同一个网站数据存储打开 `touch.qunar.com/ncs/page/flightlist`，页面脚本同时截获 `flight/api/touchInnerList` 等接口响应；解析器先取列表卡片（时刻、机场、航司、航班号、耗时、价格），再钻取响应 JSON 里的 `minPrice` 作为“当日起价”。只有真实数字才会标成实时展示价，并注明“去哪儿当前航班页展示的单程起价；税费、舱位和退改条件以提交订单前为准”。去程与返程按各自日期分别加载；页面返回“安全验证/验证码”或“无航班”时给出明确状态，不冒充空结果。用户此前在应用内保存的去哪儿会话会被复用，密码仍只交给平台网页。
+iOS 0.7 默认使用 `FliggyFlightDirectClient` 读取飞猪公开 H5 搜索。客户端先以普通匿名请求取得 `_m_h5_tk` 页面 Cookie，再使用 MTOP 页面约定的签名发起去程和返程查询；不需要用户登录，也不伪装设备、官方客户端或私有账号。返回的具体航班会保留航司、航班号、机场、时刻、耗时、当前数字起价、抓取时间和购买页；如果页面只给当日最低价，也会明确写成“当日起价”，不会虚构航班详情。
+
+2026-09-03 已用原生 iOS `URLSession` 真实查询宁波（NGB）→天津（TSN）、2026-09-09，接口返回具体航班与大于零的数字价格。解析契约另有三个离线单元测试覆盖令牌流程后的响应、跨平台同航班合并与苏州→无锡机场映射。该页面契约可能调整，失败时 App 会保留铁路、估算与其他已接渠道，并显示本次诊断；不会继续展示过期数字。
+
+`QunarFlightDirectClient` 是第二条航班通道。它只在用户于 AnyTravel 内明确登录并保存去哪儿会话后运行，用与 `ProviderLoginView` 相同的网站数据存储打开 `touch.qunar.com/ncs/page/flightlist`，解析列表卡片与 `flight/api/touchInnerList` 等响应。页面返回“安全验证/验证码”或“无航班”时给出明确状态；未保存会话时不会在后台自动打开页面。密码始终只交给平台网页。
+
+来自飞猪、去哪儿、携程或其他来源的结果由 `NativeFlightOptionMerger` 按方向、航班号，或相近发到时刻与机场进行高置信合并。同一航班只显示一张卡，但每个渠道的价格、抓取时间和购买入口都保留；无法确认相同的班次不会被强行合并。实现调研参考了公开项目 [JiPiao](https://github.com/yangka1212/JiPiao)，AnyTravel 只采用公开页面的数据流程，没有采用规避验证或浏览器指纹修改代码。
 
 `Backend/src/adapters/ctrip-flight.mjs` 是节点侧的携程航班通道：城市映射为机场三字码后，用与酒店相同的持久化会话打开携程航班列表，解析展示航班卡。需要 `CTRIP_FLIGHT_SCRAPER_ENABLED=true`（缺省回退 `CTRIP_SCRAPER_ENABLED`），默认关闭；未启用时健康检查显示 `disabled`。
 
-Skyscanner 的 Live Prices 接口采用 create/poll 流程并要求 API key，尚未接入；如后续接入应遵循其[航班实时价格说明](https://developers.skyscanner.net/docs/flights-live-prices/overview)和[认证说明](https://developers.skyscanner.net/docs/getting-started/authentication)。所有航班价都只是当前页面展示价，不会冒充指定日期锁定价。
+Skyscanner 的 Live Prices 接口采用 create/poll 流程并要求 API key，尚未接入；如后续接入应遵循其[航班实时价格说明](https://developers.skyscanner.net/docs/flights-live-prices/overview)和[认证说明](https://developers.skyscanner.net/docs/getting-started/authentication)。所有航班价都是查询时刻的展示起价，不会冒充锁定价。
 
 ## 智能向导
 

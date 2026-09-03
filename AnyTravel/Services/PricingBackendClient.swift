@@ -42,6 +42,7 @@ struct PricingProviderIssue: Hashable, Sendable {
         case "elong-open-api": "艺龙开放平台"
         case "qunar": "去哪儿"
         case "tongcheng", "ly": "同程旅行"
+        case "fliggy", "feizhu": "飞猪旅行"
         case "trip.com", "tripcom": "Trip.com"
         case "12306", "railway12306": "铁路 12306"
         case "unknown": "报价渠道"
@@ -912,6 +913,7 @@ private extension TravelProvider {
         case "ctrip", "ctrip-flight", "携程": self = .ctrip
         case "qunar", "去哪儿": self = .qunar
         case "tongcheng", "ly", "同程旅行", "elong-open-api": self = .tongcheng
+        case "fliggy", "feizhu", "飞猪", "飞猪旅行": self = .fliggy
         case "trip.com", "tripcom": self = .tripCom
         case "skyscanner": self = .skyscanner
         case "rollinggo", "dida": self = .rollingGo

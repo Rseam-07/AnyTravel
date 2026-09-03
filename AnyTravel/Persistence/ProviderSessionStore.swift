@@ -4,9 +4,10 @@ import WebKit
 
 @Observable
 final class ProviderSessionStore {
+    static let storageKey = "AnyTravelProviderSessionsV1"
+
     private(set) var connectedAt: [ProviderAccount: Date] = [:]
     private let defaults: UserDefaults
-    private let storageKey = "AnyTravelProviderSessionsV1"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -49,6 +50,14 @@ final class ProviderSessionStore {
         connectedAt[provider] != nil
     }
 
+    static func hasSavedSession(_ provider: ProviderAccount, defaults: UserDefaults = .standard) -> Bool {
+        guard let data = defaults.data(forKey: storageKey),
+              let sessions = try? JSONDecoder().decode([ProviderAccount: Date].self, from: data) else {
+            return false
+        }
+        return sessions[provider] != nil
+    }
+
     func disconnect(_ provider: ProviderAccount) async {
         let cookieStore = WKWebsiteDataStore.default().httpCookieStore
         let cookies = await cookieStore.allCookies()
@@ -60,7 +69,7 @@ final class ProviderSessionStore {
     }
 
     private func load() {
-        guard let data = defaults.data(forKey: storageKey),
+        guard let data = defaults.data(forKey: Self.storageKey),
               let decoded = try? JSONDecoder().decode([ProviderAccount: Date].self, from: data) else {
             return
         }
@@ -69,7 +78,7 @@ final class ProviderSessionStore {
 
     private func persist() {
         guard let data = try? JSONEncoder().encode(connectedAt) else { return }
-        defaults.set(data, forKey: storageKey)
+        defaults.set(data, forKey: Self.storageKey)
     }
 }
 

@@ -8,8 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		032E6E6DD2A72CFC6068D22E /* AnyTravelMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4B42D0557B340BF5F6D8600 /* AnyTravelMotion.swift */; };
-		07B81446B82C33FF77389198 /* QunarLiveProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 044A1822CF199019D4DEE75B /* QunarLiveProbeTests.swift */; };
 		080EFA50D64DA0BCEF8A9B73 /* TourismPlanningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36A7A7C2F3677CB2248DC59B /* TourismPlanningTests.swift */; };
+		0C604C61BA8C1BF94B1F846B /* NativeFlightOptionMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA30B0CFA824CB09234F13AC /* NativeFlightOptionMerger.swift */; };
 		10C85C94D796A1624A5098BF /* AMapPlaceClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10F16C059D7AEDE759CA71F4 /* AMapPlaceClient.swift */; };
 		1348DBC8AD830CDD528E8C07 /* PlanExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B256E53C0BF917818B5DA2A /* PlanExportService.swift */; };
 		150F8E02994652C93407AE77 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37AE0994DE8F330ABD92826E /* OnboardingView.swift */; };
@@ -43,12 +43,14 @@
 		A3D9C071B43904A52016D071 /* ActivityShareView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8D65A05785DC3DD4DD52CE1 /* ActivityShareView.swift */; };
 		A4E194A98010010F95FCE069 /* TripConditionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0576F368474607CDDB13D76D /* TripConditionsView.swift */; };
 		A670AC4ECE77AA2A10FF81B6 /* AssistantSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38034B292DE22D534DAD15B2 /* AssistantSettingsStore.swift */; };
+		A6F10740BAB29E87D87F3A05 /* FliggyFlightDirectClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 938F4C8A97217F13FFDCBE6A /* FliggyFlightDirectClientTests.swift */; };
 		A7C77BA26C5E1CA1664624CD /* TourismPlanningPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = F917449BD30488468484DB86 /* TourismPlanningPolicy.swift */; };
 		ADDBABF435D0B016DDAA90B8 /* ProviderLoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E477461756C8474C02F9B0D6 /* ProviderLoginView.swift */; };
 		B072F9D5DF34787968001A8D /* PricingBackendClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C847BE872495F8B2E471121 /* PricingBackendClientTests.swift */; };
 		B422279B1326B6AB878ABACE /* PlannerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE3D806549B7B102222D2DD3 /* PlannerViewModel.swift */; };
 		B576D4F24D79BF187E07215A /* LogisticsSearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 876D736949B41CD5A8360352 /* LogisticsSearchService.swift */; };
 		B60BA09E457C641E2569B068 /* ProviderBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AE65F0E713302A74B0FC6E7 /* ProviderBrowserView.swift */; };
+		BAF7FE7DCB105F32E4D7FC29 /* FliggyFlightDirectClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C87B6F21306B8EE6070158D9 /* FliggyFlightDirectClient.swift */; };
 		BE7AF2C6A89D4D57B13E6105 /* ProviderSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E1BA5E4E73876D044EE4E22 /* ProviderSessionStore.swift */; };
 		BF845AECFE57B36A85A65ED4 /* RollingGoDirectClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 643378348B1B3036FB9FAD78 /* RollingGoDirectClient.swift */; };
 		C0A8C678B53FC56B641AA523 /* AnyTravelUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2B81C0BB306081081033D8C /* AnyTravelUITests.swift */; };
@@ -85,7 +87,6 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		044A1822CF199019D4DEE75B /* QunarLiveProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QunarLiveProbeTests.swift; sourceTree = "<group>"; };
 		0576F368474607CDDB13D76D /* TripConditionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripConditionsView.swift; sourceTree = "<group>"; };
 		0833DB3FB378275BAD135517 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		08ABC481FD0D026C38F11AC4 /* AnyTravelTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = AnyTravelTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -100,6 +101,7 @@
 		2353D8B73835CB2F2F4DF34C /* PricingBackendClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PricingBackendClient.swift; sourceTree = "<group>"; };
 		26B0D5605539FC81ECE5F445 /* AttractionSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttractionSelectionView.swift; sourceTree = "<group>"; };
 		2935A2218BE18F239A516042 /* Railway12306DirectClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Railway12306DirectClient.swift; sourceTree = "<group>"; };
+		2B490BAC7D77D71767A91D97 /* AnyTravel.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = AnyTravel.xcconfig; sourceTree = "<group>"; };
 		302EBC8F7BC06284F1922AB4 /* RoutePlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutePlanner.swift; sourceTree = "<group>"; };
 		33630F3E25704ED5383C8668 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		33F0814EAF574D611AA6271F /* TripStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripStore.swift; sourceTree = "<group>"; };
@@ -127,6 +129,7 @@
 		876D736949B41CD5A8360352 /* LogisticsSearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogisticsSearchService.swift; sourceTree = "<group>"; };
 		8B256E53C0BF917818B5DA2A /* PlanExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanExportService.swift; sourceTree = "<group>"; };
 		91F2F27E05BE3FE278963E8A /* TravelAssistantClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TravelAssistantClientTests.swift; sourceTree = "<group>"; };
+		938F4C8A97217F13FFDCBE6A /* FliggyFlightDirectClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FliggyFlightDirectClientTests.swift; sourceTree = "<group>"; };
 		9D7116B9C9146BB181B262CF /* AnyTravelUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = AnyTravelUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		9DC6ACAC464479C81F4114F9 /* QunarFlightDirectClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QunarFlightDirectClient.swift; sourceTree = "<group>"; };
 		9F1E17F823F0E156E2C00159 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
@@ -138,6 +141,8 @@
 		BCA88C663C81D27A20B534F9 /* EmbeddedServiceConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbeddedServiceConfiguration.swift; sourceTree = "<group>"; };
 		BE3D806549B7B102222D2DD3 /* PlannerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerViewModel.swift; sourceTree = "<group>"; };
 		BECA0B21574804B01B154F89 /* AnyTravel.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AnyTravel.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C87B6F21306B8EE6070158D9 /* FliggyFlightDirectClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FliggyFlightDirectClient.swift; sourceTree = "<group>"; };
+		CA30B0CFA824CB09234F13AC /* NativeFlightOptionMerger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeFlightOptionMerger.swift; sourceTree = "<group>"; };
 		D2B81C0BB306081081033D8C /* AnyTravelUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnyTravelUITests.swift; sourceTree = "<group>"; };
 		D5BB6208705D557AD54EB1CA /* RollingGoDirectClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RollingGoDirectClientTests.swift; sourceTree = "<group>"; };
 		DE7205A4429DDD1E2DEB8827 /* CompletePlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletePlanTests.swift; sourceTree = "<group>"; };
@@ -165,6 +170,7 @@
 				C7DD3EEBFF5467D3461CDB5E /* AnyTravel */,
 				84194F109C7BCBF63492E105 /* AnyTravelTests */,
 				F982BF6E869C7F755A9A33EF /* AnyTravelUITests */,
+				6C56D68D9ACC38D0D477F9AC /* Config */,
 				5F30237E82C448E02FF1B0FE /* Resources */,
 				CE6DE9201AF0EDFCF7462574 /* Products */,
 			);
@@ -234,6 +240,14 @@
 			path = AnyTravel/Resources;
 			sourceTree = "<group>";
 		};
+		6C56D68D9ACC38D0D477F9AC /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				2B490BAC7D77D71767A91D97 /* AnyTravel.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
 		82FF072AF3C8C166542747A4 /* Design */ = {
 			isa = PBXGroup;
 			children = (
@@ -248,13 +262,13 @@
 			children = (
 				1888A6FDCA15F49BA6611FDD /* AMapPlaceClientTests.swift */,
 				DE7205A4429DDD1E2DEB8827 /* CompletePlanTests.swift */,
+				938F4C8A97217F13FFDCBE6A /* FliggyFlightDirectClientTests.swift */,
 				63BC96FA0D8051AF60149EFE /* ItineraryEditingTests.swift */,
 				0CC25C25CD88B6A187F115E3 /* PlanExportTests.swift */,
 				F817F76F85D54181770934B6 /* PlannerIntentParserTests.swift */,
 				7E45621319317C89329BC05E /* PlanPacingTests.swift */,
 				0C847BE872495F8B2E471121 /* PricingBackendClientTests.swift */,
 				E17365E6039D425B046DF4D0 /* QunarFlightDirectClientTests.swift */,
-				044A1822CF199019D4DEE75B /* QunarLiveProbeTests.swift */,
 				E83F0F89B3E79AB64B86359B /* Railway12306DirectClientTests.swift */,
 				D5BB6208705D557AD54EB1CA /* RollingGoDirectClientTests.swift */,
 				36A7A7C2F3677CB2248DC59B /* TourismPlanningTests.swift */,
@@ -279,9 +293,11 @@
 				38034B292DE22D534DAD15B2 /* AssistantSettingsStore.swift */,
 				AF3931AA047D5FC4C87AD5AB /* CompletePlanBuilder.swift */,
 				BCA88C663C81D27A20B534F9 /* EmbeddedServiceConfiguration.swift */,
+				C87B6F21306B8EE6070158D9 /* FliggyFlightDirectClient.swift */,
 				5C1C86C8A21DE06BE8CEE933 /* LocalTransferService.swift */,
 				876D736949B41CD5A8360352 /* LogisticsSearchService.swift */,
 				4AAE82ECAEB622DF3A7E6C5D /* MapSearchService.swift */,
+				CA30B0CFA824CB09234F13AC /* NativeFlightOptionMerger.swift */,
 				8B256E53C0BF917818B5DA2A /* PlanExportService.swift */,
 				37CC688AEBC1168F00CFAE1C /* PlannerIntentParser.swift */,
 				AA21B2A889F7EAC5B340FF45 /* PlanPacingService.swift */,
@@ -456,11 +472,13 @@
 				31CD090CE4E030F848619709 /* AttractionSelectionView.swift in Sources */,
 				626AA03A9D6F443ABAB54C6B /* CompletePlanBuilder.swift in Sources */,
 				E3328A9770842D94C7CD33AE /* EmbeddedServiceConfiguration.swift in Sources */,
+				BAF7FE7DCB105F32E4D7FC29 /* FliggyFlightDirectClient.swift in Sources */,
 				428E721D68D17A946EA18820 /* ItineraryEditorView.swift in Sources */,
 				76F95B920D5A4083CFB2AF83 /* LocalTransferService.swift in Sources */,
 				CD1081C810926CE7EE341A7E /* LogisticsModels.swift in Sources */,
 				B576D4F24D79BF187E07215A /* LogisticsSearchService.swift in Sources */,
 				8EA8295936C70171BDC03F6A /* MapSearchService.swift in Sources */,
+				0C604C61BA8C1BF94B1F846B /* NativeFlightOptionMerger.swift in Sources */,
 				150F8E02994652C93407AE77 /* OnboardingView.swift in Sources */,
 				1348DBC8AD830CDD528E8C07 /* PlanExportService.swift in Sources */,
 				3492409978593094B79AF917 /* PlanPacingService.swift in Sources */,
@@ -496,13 +514,13 @@
 			files = (
 				EAB8415AB8F6003FFC9236C9 /* AMapPlaceClientTests.swift in Sources */,
 				2CFCED69751E67221E0020C1 /* CompletePlanTests.swift in Sources */,
+				A6F10740BAB29E87D87F3A05 /* FliggyFlightDirectClientTests.swift in Sources */,
 				368891E89AB7D639E027671F /* ItineraryEditingTests.swift in Sources */,
 				FAA4410387D5D92EFAFAE0D9 /* PlanExportTests.swift in Sources */,
 				8601623816B3076C76FC309A /* PlanPacingTests.swift in Sources */,
 				17AB40509E0C22B972F08D05 /* PlannerIntentParserTests.swift in Sources */,
 				B072F9D5DF34787968001A8D /* PricingBackendClientTests.swift in Sources */,
 				72D386A6B96F30B22566C974 /* QunarFlightDirectClientTests.swift in Sources */,
-				07B81446B82C33FF77389198 /* QunarLiveProbeTests.swift in Sources */,
 				9D3DAFAC03BCC0DB51ED729E /* Railway12306DirectClientTests.swift in Sources */,
 				2C9F312BE7B600D9DE74B624 /* RollingGoDirectClientTests.swift in Sources */,
 				080EFA50D64DA0BCEF8A9B73 /* TourismPlanningTests.swift in Sources */,
@@ -722,11 +740,12 @@
 		};
 		905D471176BEFD838291E6FF /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 2B490BAC7D77D71767A91D97 /* AnyTravel.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 13;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AnyTravel/Resources/Info.plist;
@@ -734,7 +753,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.6.3;
+				MARKETING_VERSION = 0.7.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.anytravel.app;
 				PRODUCT_NAME = AnyTravel;
 				SDKROOT = iphoneos;
@@ -765,11 +784,12 @@
 		};
 		F24AE07EDB926810CC644139 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 2B490BAC7D77D71767A91D97 /* AnyTravel.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 13;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AnyTravel/Resources/Info.plist;
@@ -777,7 +797,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.6.3;
+				MARKETING_VERSION = 0.7.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.anytravel.app;
 				PRODUCT_NAME = AnyTravel;
 				SDKROOT = iphoneos;

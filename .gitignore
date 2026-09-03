@@ -11,6 +11,7 @@ output/playwright/
 Backend/node_modules/
 Backend/.data/
 Backend/.env
+Config/Secrets.xcconfig
 Web/node_modules/
 Web/.env.local
 Web/dist/

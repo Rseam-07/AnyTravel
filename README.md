@@ -22,7 +22,7 @@ AnyTravel 是一款地图优先的开源 iOS 与 Android 旅行规划应用。�
 
 动效实录：[首次启动与初始化](Documentation/Demo/onboarding-motion.mp4) · [地图、住宿、交通与费用联动](Documentation/Demo/map-plan-motion.mp4)
 
-下载：[iOS 0.6.3 无签名 IPA](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.6.3) · [Android 0.4.0 APK](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.4.0)
+下载：[iOS 0.7.0 无签名 IPA](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.7.0) · [Android 0.4.0 APK](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.4.0)
 
 Web 版（开发中）：位于 [Web/](Web/README.md)，React + TypeScript + MapLibre GL，桌面为 Apple Maps 式大屏横排（左面板 + 全屏地图 + 底部轨道），移动端为三档底部面板；`cd Web && npm install && npm run dev` 后访问 `http://127.0.0.1:5182`。已跑通：目的地/条件输入、OSM 景点与营业时间、空间聚类方案、OSRM 耗时、天气、住宿比价（RollingGo 实测真价）、12306 去返程、去哪儿门票、DeepSeek 内置对话（白名单动作）、费用对比、旅册与分享链接。
 
@@ -35,7 +35,7 @@ Web 版（开发中）：位于 [Web/](Web/README.md)，React + TypeScript + Map
 ## 一段旅程如何展开
 
 - 第一次打开应用时，先看四页简短介绍，再留下常用出发地、人数和预算。行程默认保持轻松节奏。
-- iOS 可在应用内登录携程、去哪儿、同程、Trip.com 和铁路 12306；Android 0.4 先提供平台页面入口。密码只提交给平台网页，AnyTravel 不读取或保存密码。
+- iOS 可在应用内登录携程、去哪儿、飞猪、同程、Trip.com 和铁路 12306；Android 0.4 先提供平台页面入口。密码只提交给平台网页，AnyTravel 不读取或保存密码。
 - 日期、预算、兴趣、住宿和交通没有固定填写顺序，每一项都可以暂时留白。
 - `MKLocalSearch` 会寻找真实景点、酒店、民宿和交通枢纽；`MKDirections` 会逐段绘制当前日路线。
 - 方案生成后仍可继续搜索 Apple Maps 地点、添加或删除停靠、拖动顺序、跨天移动或复制，并可撤销与重做；也能修改日期、出发地、人数、预算与交通偏好。地图路线和受影响的住宿、交通会重新计算。
@@ -61,7 +61,7 @@ Web 版（开发中）：位于 [Web/](Web/README.md)，React + TypeScript + Map
 | 门到门接驳 | iOS 使用 Apple MapKit 分别查询去程枢纽→住宿、住宿→返程枢纽的公交、驾车和步行 | 地图路线、耗时、距离、估算费用与推荐理由；地图缺少公交路线时明确标成“距离估算” |
 | 方案导出 | iOS 原生生成带地图的多页 PDF 与标准 iCalendar 文件 | 日程、住处、往返交通、接驳和费用完整落款；无日期仍可导出 PDF，日历会明确要求先补日期 |
 | 其他住宿渠道 | iOS 支持去哪儿、同程与 Trip.com 应用内登录及会话复用；同程/艺龙浏览器适配器已落地；Android 提供购买页入口 | 同程只有在强匹配且得到数字价格时才标实时；去哪儿酒店与 Trip.com 未接通时明确显示“到渠道查询” |
-| 航班 | iOS 直连去哪儿公开移动航班页（复用应用内登录会话），按日读取展示价与“当日起价”；节点新增携程航班通道（默认关闭，需持久会话） | 去程/返程独立、航空公司/航班号/时刻/耗时与当前页面展示起价；安全验证与无航班状态明确分开，不把估算冒充实时票价 |
+| 航班 | iOS 默认直连飞猪公开 H5 搜索，按日读取具体航班与起价；用户明确保存去哪儿会话后再叠加去哪儿移动页；节点另有默认关闭的携程会话通道 | 去程/返程独立，展示航司、航班号、机场、时刻、耗时与当前起价；同一航班合并多渠道报价，安全验证、无航班与无价格状态分开 |
 | 智能向导 | 伴随服务托管 GLM-5.3-Flash；App 内置 `ANYTRAVEL_ZAI_API_KEY` 时可由应用直连接口；iOS 也支持用户自定义 OpenAI 兼容 Base URL、模型与 Key | 回应以卡片浮在地图上；可设置目的地/出发地、日期/天数、人数、预算、节奏、交通、兴趣与住宿筛选，也可直接生成或聚焦已有地点；失败时回退本机解析 |
 
 行程编排的模型、假设与边界见 [行程规划模型](Documentation/ITINERARY_PLANNING_MODEL.md)，各适配器的状态见 [数据渠道说明](Documentation/DATA_CHANNELS.md)，本轮参考项目见 [开源调研记录](Documentation/OPEN_SOURCE_RESEARCH.md)，圆周旅迹的静态功能对照见 [参考审计](Documentation/CIRCLE_TRIP_REFERENCE_AUDIT.md)。PDF 与日历的降级规则见 [方案导出说明](Documentation/EXPORT_FORMATS.md)。铁路购票链接始终指向 [铁路 12306 官方页面](https://www.12306.cn/mormhweb/zxdt/202412/t20241211_43192.html)。RollingGo 接入参考其[官方开源仓库](https://github.com/RollingGo-AI/rollinggo-hotel-skill-cn)。
@@ -125,7 +125,7 @@ xcodebuild \
 cd Backend && npm test
 ```
 
-0.7.0（开发中）验证结果：65/65 iOS 单元测试（含去哪儿公开航班页联网探针）、16/16 XCUITest、42/42 Node 测试通过；完整 iOS 套件在 iPhone 17 Pro / iOS 26.5 模拟器为 81/81，0 失败、0 跳过。本轮新增应用内直连价格通道（RollingGo、12306、去哪儿航班页）、生成前景点挑选与多渠道住宿报价；艺龙开放平台、万邦携程目录与携程航班通道已落地但未配置凭据，尚未联网验收。发布与真机验收边界见 [接力交接](Documentation/HANDOFF.md)。
+0.7.0 验证结果：68/68 iOS 单元测试、16/16 XCUITest、46/46 Node 测试通过，共 84 个 iOS 自动化用例，0 失败。另以真实网络验证飞猪航班直连能返回具体航班和数字起价，RollingGo 能按指定入住日期返回酒店数字价格。本轮还加入生成前景点挑选、同一航班/酒店的多渠道合并，以及伴随服务失败后的直连兜底；艺龙开放平台、万邦携程目录与携程航班通道已落地但未配置凭据，尚未联网验收。发布与真机验收边界见 [接力交接](Documentation/HANDOFF.md)。
 
 0.6.3 发布前验证结果：57/57 iOS 单元测试、16/16 XCUITest、29/29 Node 测试通过。iPhone 17 Pro / iOS 26.5 模拟器覆盖 Apple 地图式三档面板拖拽、最小档自然语言输入、最大档内容浏览、人数和往返日期双向调整、自动规划地点去重，以及重置、设置、旅册、定位、地图样式和北向按钮的真实点击闭环；浅色偏好页和浅色/深色完整方案均完成截图检查。设备 Release 构建产物为 0.6.3（12）。所有服务端密钥只保存在被 Git 忽略的节点环境文件中。
 

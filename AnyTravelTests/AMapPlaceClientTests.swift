@@ -82,7 +82,11 @@ final class AMapPlaceClientTests: XCTestCase {
         addTeardownBlock { defaults.removePersistentDomain(forName: suiteName) }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [AMapURLProtocol.self]
-        return AMapPlaceClient(session: URLSession(configuration: configuration), defaults: defaults)
+        return AMapPlaceClient(
+            session: URLSession(configuration: configuration),
+            defaults: defaults,
+            directAPIKey: { "" }
+        )
     }
 }
 

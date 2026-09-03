@@ -90,11 +90,51 @@ final class QunarFlightDirectClientTests: XCTestCase {
         XCTAssertEqual(outbound.quotes.first?.provider, .qunar)
         XCTAssertEqual(outbound.quotes.first?.amountCNY, 399)
         XCTAssertEqual(outbound.quotes.first?.kind, .live)
-        XCTAssertTrue(outbound.quotes.contains { $0.provider == .ctrip })
+        XCTAssertFalse(outbound.quotes.contains { $0.provider == .ctrip })
         XCTAssertTrue(returnTrip.title.contains("当日起价"))
         XCTAssertEqual(returnTrip.quotes.first?.amountCNY, 420)
         XCTAssertEqual(returnTrip.quotes.first?.displayPriceText, "¥420起")
         XCTAssertEqual(result.receivedCount, 2)
+        XCTAssertTrue(result.issues.isEmpty)
+    }
+
+    @MainActor
+    func testDefaultClientDoesNotOpenQunarWithoutExplicitlySavedSession() async throws {
+        let suiteName = "QunarFlightDirectClientTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        XCTAssertFalse(ProviderSessionStore.hasSavedSession(.qunar, defaults: defaults))
+
+        var logistics = TripLogistics()
+        logistics.startDate = Date(timeIntervalSince1970: 2_000_000_000)
+        let estimate = TransportOption(
+            mode: .flight,
+            title: "航班抵达天津",
+            originName: "宁波",
+            destinationName: "天津",
+            direction: .outbound
+        )
+
+        // The production client reads the standard store. Clear only this provider's
+        // marker so the assertion remains deterministic without touching WebKit data.
+        let standard = UserDefaults.standard
+        let previous = standard.data(forKey: ProviderSessionStore.storageKey)
+        standard.removeObject(forKey: ProviderSessionStore.storageKey)
+        defer {
+            if let previous { standard.set(previous, forKey: ProviderSessionStore.storageKey) }
+        }
+
+        let result = try await QunarFlightDirectClient().enrichTransportOptions(
+            [estimate],
+            origin: "宁波",
+            destination: "天津",
+            logistics: logistics,
+            accessPoints: [],
+            accommodation: nil
+        )
+
+        XCTAssertEqual(result.value, [estimate])
+        XCTAssertEqual(result.receivedCount, 0)
         XCTAssertTrue(result.issues.isEmpty)
     }
 

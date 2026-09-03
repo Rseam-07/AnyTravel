@@ -67,15 +67,20 @@ struct QunarFlightDirectClient {
 
     private let pageLoader: PageLoader
     private let resultLimit: Int
+    private let requiresSavedSession: Bool
 
-    init(
-        resultLimit: Int = 8,
-        pageLoader: @escaping PageLoader = { url in
+    init(resultLimit: Int = 8) {
+        self.pageLoader = { url in
             try await QunarFlightWebPageLoader.load(url)
         }
-    ) {
+        self.resultLimit = min(max(resultLimit, 1), 12)
+        self.requiresSavedSession = true
+    }
+
+    init(resultLimit: Int = 8, pageLoader: @escaping PageLoader) {
         self.pageLoader = pageLoader
         self.resultLimit = min(max(resultLimit, 1), 12)
+        self.requiresSavedSession = false
     }
 
     func enrichTransportOptions(
@@ -86,6 +91,15 @@ struct QunarFlightDirectClient {
         accessPoints: [AccessPoint],
         accommodation: AccommodationOption?
     ) async throws -> PricingEnrichmentResult<[TransportOption]> {
+        if requiresSavedSession && !ProviderSessionStore.hasSavedSession(.qunar) {
+            return PricingEnrichmentResult(
+                value: currentOptions,
+                receivedCount: 0,
+                capturedAt: .now,
+                isCached: false,
+                issues: []
+            )
+        }
         guard let departureDate = logistics.startDate else { throw QunarFlightDirectError.missingDates }
         let originCity = Self.normalizedCity(origin)
         let destinationCity = Self.flightCity(
@@ -143,10 +157,12 @@ struct QunarFlightDirectClient {
                     receivedCount += live.reduce(0) { count, option in
                         count + option.quotes.filter { $0.provider == .qunar && $0.amountCNY != nil }.count
                     }
-                    options.removeAll {
-                        $0.mode == .flight && $0.journeyDirection == journey.direction
-                    }
-                    options.append(contentsOf: live)
+                    options = NativeFlightOptionMerger.merging(
+                        live,
+                        into: options,
+                        provider: .qunar,
+                        direction: journey.direction
+                    )
                 }
             } catch is CancellationError {
                 throw CancellationError()
@@ -181,10 +197,6 @@ struct QunarFlightDirectClient {
         accommodation: AccommodationOption?,
         capturedAt: Date
     ) -> [TransportOption] {
-        let placeholders = currentOptions.first {
-            $0.mode == .flight && $0.journeyDirection == journey.direction
-        }?.quotes.filter { $0.provider != .qunar } ?? []
-
         if !parsedFlights.isEmpty {
             return parsedFlights.map { flight in
                 let localAirportName = journey.direction == .outbound
@@ -235,7 +247,7 @@ struct QunarFlightDirectClient {
                     arrivalTime: arrivalDate(day: journey.date, departure: flight.departureTime, arrival: flight.arrivalTime),
                     arrivalAccessPoint: accessPoint,
                     hotelTransferMeters: transferMeters,
-                    quotes: [quote] + placeholders,
+                    quotes: [quote],
                     recommendationReasons: reasons,
                     isRecommended: false
                 )
