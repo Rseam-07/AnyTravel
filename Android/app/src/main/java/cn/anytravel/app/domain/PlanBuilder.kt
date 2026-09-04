@@ -21,9 +21,14 @@ import java.net.URLEncoder
 import kotlin.math.roundToInt
 
 class PlanBuilder {
-    fun build(draft: TripDraft, pack: DestinationPack): CompletePlan {
-        val orderedPlaces = orderPlaces(draft, pack)
-        val days = buildDays(draft, orderedPlaces)
+    fun build(
+        draft: TripDraft,
+        pack: DestinationPack,
+        selectedPlaceIDs: Set<String> = emptySet(),
+        selectionWasSkipped: Boolean = selectedPlaceIDs.isEmpty()
+    ): CompletePlan {
+        val orderedPlaces = orderPlaces(draft, pack, selectedPlaceIDs)
+        val days = buildDays(draft, orderedPlaces, selectedPlaceIDs)
         val accommodations = buildAccommodations(draft, pack, days)
         val selectedAccommodation = accommodations.firstOrNull()
         val transports = buildTransports(draft, pack.accessPoints, selectedAccommodation)
@@ -37,7 +42,9 @@ class PlanBuilder {
             transports = transports,
             selectedTransportId = selectedTransport?.id,
             expenses = buildExpenses(draft, selectedAccommodation, selectedTransport),
-            sourceNote = pack.sourceNote
+            sourceNote = pack.sourceNote,
+            selectedPlaceIDs = selectedPlaceIDs.intersect(orderedPlaces.mapTo(mutableSetOf()) { it.id }),
+            planningNotes = planningNotes(draft, orderedPlaces, selectedPlaceIDs, selectionWasSkipped)
         )
     }
 
@@ -68,45 +75,78 @@ class PlanBuilder {
     fun mergeLiveData(
         plan: CompletePlan,
         accommodationQuotes: Map<String, List<PriceQuote>>,
-        liveTransports: List<TransportOption>
+        liveTransports: List<TransportOption>,
+        discoveredAccommodations: List<AccommodationOption> = emptyList()
     ): CompletePlan {
-        val accommodations = plan.accommodations.map { option ->
+        val quoted = plan.accommodations.map { option ->
             val live = accommodationQuotes[option.id].orEmpty()
             if (live.isEmpty()) option else option.copy(
-                quotes = live + option.quotes.filter { fallback -> live.none { it.provider == fallback.provider } }
+                quotes = mergeQuotes(option.quotes, live)
             )
-        }.sortedBy { option ->
-            option.quotes.filter { it.kind == QuoteKind.LIVE }.mapNotNull { it.amountCNY }.minOrNull()
+        }
+        val accommodations = mergeAccommodations(quoted, discoveredAccommodations).sortedBy { option ->
+            option.quotes.filter { it.isCurrentPrice() }.mapNotNull { it.amountCNY }.minOrNull()
                 ?: Int.MAX_VALUE
         }
-        val selectedAccommodationId = plan.selectedAccommodationId?.takeIf { id -> accommodations.any { it.id == id } }
-            ?: accommodations.firstOrNull()?.id
-        val selectedAccommodation = accommodations.firstOrNull { it.id == selectedAccommodationId }
-        val transports = if (liveTransports.isEmpty()) {
-            rerankTransports(plan.draft, plan.transports, selectedAccommodation)
-        } else {
-            val liveModes = liveTransports.map { it.mode }.toSet()
-            rerankTransports(
-                plan.draft,
-                liveTransports + plan.transports.filterNot { it.mode in liveModes },
-                selectedAccommodation
-            )
+        val previousAccommodation = accommodations.firstOrNull { it.id == plan.selectedAccommodationId }
+        val selectedAccommodationId = when {
+            previousAccommodation?.quotes?.any { it.isCurrentPrice() } == true -> previousAccommodation.id
+            accommodations.any { option -> option.quotes.any { it.isCurrentPrice() } } ->
+                accommodations.first { option -> option.quotes.any { it.isCurrentPrice() } }.id
+            previousAccommodation != null -> previousAccommodation.id
+            else -> accommodations.firstOrNull()?.id
         }
-        val selectedTransport = transports.firstOrNull()
+        val selectedAccommodation = accommodations.firstOrNull { it.id == selectedAccommodationId }
+        val transports = rerankTransports(
+            plan.draft,
+            mergeTransports(plan.transports, liveTransports),
+            selectedAccommodation
+        )
+        val previousTransport = transports.firstOrNull { it.id == plan.selectedTransportId }
+        val selectedTransportId = when {
+            previousTransport?.quotes?.any { it.isCurrentPrice() } == true -> previousTransport.id
+            previousTransport != null && transports.any {
+                it.direction == previousTransport.direction && it.mode == previousTransport.mode && it.quotes.any(PriceQuote::isCurrentPrice)
+            } -> transports.first {
+                it.direction == previousTransport.direction && it.mode == previousTransport.mode && it.quotes.any(PriceQuote::isCurrentPrice)
+            }.id
+            previousTransport != null -> previousTransport.id
+            else -> transports.firstOrNull {
+                it.direction == cn.anytravel.app.model.TransportDirection.OUTBOUND && it.quotes.any(PriceQuote::isCurrentPrice)
+            }?.id ?: transports.firstOrNull { it.direction == cn.anytravel.app.model.TransportDirection.OUTBOUND }?.id
+                ?: transports.firstOrNull()?.id
+        }
+        val selectedTransport = transports.firstOrNull { it.id == selectedTransportId }
         return plan.copy(
             accommodations = accommodations.map { it.copy(isRecommended = it.id == selectedAccommodationId) },
             selectedAccommodationId = selectedAccommodationId,
             transports = transports,
-            selectedTransportId = selectedTransport?.id,
+            selectedTransportId = selectedTransportId,
             expenses = buildExpenses(plan.draft, selectedAccommodation, selectedTransport)
         )
     }
 
-    private fun orderPlaces(draft: TripDraft, pack: DestinationPack): List<TravelPlace> {
-        val matching = pack.places.filter { it.interest in draft.interests }
-        val candidates = (matching + pack.places.filterNot { it in matching }).distinctBy { it.id }
-        val targetCount = (draft.dayCount * draft.pace.stopsPerDay).coerceAtMost(candidates.size)
-        val remaining = candidates.toMutableList()
+    private fun orderPlaces(
+        draft: TripDraft,
+        pack: DestinationPack,
+        selectedPlaceIDs: Set<String>
+    ): List<TravelPlace> {
+        val candidates = deduplicatePlaces(pack.places)
+        val selected = candidates.filter { it.id in selectedPlaceIDs }.sortedBy { it.popularityRank }
+        val remainingCandidates = candidates.filterNot { it.id in selectedPlaceIDs }.sortedWith(
+            compareBy<TravelPlace> { if (it.interest in draft.interests) 0 else 1 }
+                .thenBy { it.popularityRank }
+        )
+        val targetCount = maxOf(draft.dayCount * draft.pace.stopsPerDay, selected.size)
+            .coerceAtMost(candidates.size)
+        val chosen = (selected + remainingCandidates.take((targetCount - selected.size).coerceAtLeast(0)))
+            .distinctBy { normalizedPlaceName(it.name) }
+        val selectedOrder = selected.associate { it.id to it.popularityRank }
+        val weighted = chosen.sortedWith(
+            compareBy<TravelPlace> { if (it.id in selectedPlaceIDs) 0 else 1 }
+                .thenBy { selectedOrder[it.id] ?: it.popularityRank }
+        )
+        val remaining = weighted.toMutableList()
         val result = mutableListOf<TravelPlace>()
         var cursor = pack.center
         while (remaining.isNotEmpty() && result.size < targetCount) {
@@ -118,11 +158,19 @@ class PlanBuilder {
         return result
     }
 
-    private fun buildDays(draft: TripDraft, orderedPlaces: List<TravelPlace>): List<ItineraryDay> {
-        val perDay = draft.pace.stopsPerDay
+    private fun buildDays(
+        draft: TripDraft,
+        orderedPlaces: List<TravelPlace>,
+        selectedPlaceIDs: Set<String>
+    ): List<ItineraryDay> {
+        val base = orderedPlaces.size / draft.dayCount.coerceAtLeast(1)
+        val remainder = orderedPlaces.size % draft.dayCount.coerceAtLeast(1)
+        var offset = 0
         return (0 until draft.dayCount).map { dayIndex ->
-            val stops = orderedPlaces.drop(dayIndex * perDay).take(perDay)
-            ItineraryDay(dayIndex, stops, buildSchedule(dayIndex, stops, draft.pace, !draft.skipAccommodation))
+            val count = base + if (dayIndex < remainder) 1 else 0
+            val stops = orderedPlaces.drop(offset).take(count)
+            offset += count
+            ItineraryDay(dayIndex, stops, buildSchedule(dayIndex, stops, draft.pace, !draft.skipAccommodation, selectedPlaceIDs))
         }
     }
 
@@ -130,35 +178,68 @@ class PlanBuilder {
         dayIndex: Int,
         stops: List<TravelPlace>,
         pace: TripPace,
-        hasAccommodation: Boolean
+        hasAccommodation: Boolean,
+        selectedPlaceIDs: Set<String>
     ): List<ScheduleItem> {
-        val slots = when (pace) {
-            TripPace.RELAXED -> listOf("10:00–12:00", "14:30–16:30")
-            TripPace.BALANCED -> listOf("09:30–11:30", "13:30–15:30", "16:00–18:00")
-            TripPace.FULL -> listOf("09:00–10:30", "11:00–12:30", "14:00–15:30", "16:00–17:30")
-        }
         val schedule = mutableListOf<ScheduleItem>()
+        var minute = when (pace) {
+            TripPace.RELAXED -> 9 * 60 + 45
+            TripPace.BALANCED -> 9 * 60 + 15
+            TripPace.FULL -> 8 * 60 + 45
+        }
+        var lunchAdded = false
         stops.forEachIndexed { index, stop ->
-            if (index == 1) {
+            if (index > 0) {
+                val transferStart = minute
+                minute += when (pace) {
+                    TripPace.RELAXED -> 35
+                    TripPace.BALANCED -> 30
+                    TripPace.FULL -> 25
+                }
+                schedule += ScheduleItem(
+                    id = "$dayIndex-transfer-$index",
+                    timeText = timeRange(transferStart, minute),
+                    title = "前往${stop.name}",
+                    detail = "已留出换乘、找路与进场缓冲，实际以地图路线为准"
+                )
+            }
+            if (!lunchAdded && minute >= 11 * 60 + 40) {
+                val lunchStart = minute.coerceAtLeast(12 * 60)
+                minute = lunchStart + if (pace == TripPace.RELAXED) 90 else 70
                 schedule += ScheduleItem(
                     id = "$dayIndex-lunch",
-                    timeText = if (pace == TripPace.RELAXED) "12:00–14:30" else "12:30–13:30",
+                    timeText = timeRange(lunchStart, minute),
                     title = "午餐与休息",
                     detail = "在相邻地点附近用餐，给排队和临时调整留出余量"
                 )
+                lunchAdded = true
             }
+            val visitStart = minute
+            val paceFactor = when (pace) {
+                TripPace.RELAXED -> 1.10
+                TripPace.BALANCED -> 1.0
+                TripPace.FULL -> 0.86
+            }
+            val selectedBonus = if (stop.id in selectedPlaceIDs) 30 else 0
+            val visitMinutes = (((stop.suggestedVisitMinutes * paceFactor).roundToInt() + selectedBonus + 7) / 15 * 15)
+                .coerceIn(60, 210)
+            minute += visitMinutes
             schedule += ScheduleItem(
                 id = "$dayIndex-${stop.id}",
-                timeText = slots[index.coerceAtMost(slots.lastIndex)],
+                timeText = timeRange(visitStart, minute),
                 title = stop.name,
-                detail = stop.introduction,
+                detail = buildString {
+                    if (stop.id in selectedPlaceIDs) append("主游览点 · ")
+                    append(stop.introduction)
+                    append(" · 建议停留${durationText(visitMinutes)}")
+                },
                 placeId = stop.id
             )
         }
         if (hasAccommodation && stops.isNotEmpty()) {
             schedule += ScheduleItem(
                 id = "$dayIndex-hotel",
-                timeText = if (pace == TripPace.FULL) "18:30后" else "17:30后",
+                timeText = "${clock(minute)}后",
                 title = if (dayIndex == 0) "办理入住并休息" else "回到住处",
                 detail = "把晚间留白保留下来，不让旅行变成赶路"
             )
@@ -271,14 +352,218 @@ class PlanBuilder {
         }
         val sorted = refreshed.sortedWith(
             compareBy<TransportOption> {
+                if (it.direction == cn.anytravel.app.model.TransportDirection.OUTBOUND) 0 else 1
+            }.thenBy {
                 if (draft.preferredLongDistanceMode == null || it.mode == draft.preferredLongDistanceMode) 0 else 1
             }.thenBy {
-                it.quotes.mapNotNull { quote -> quote.amountCNY }.minOrNull() ?: Int.MAX_VALUE
+                if (it.quotes.any { quote -> quote.isCurrentPrice() }) 0 else 1
+            }.thenBy {
+                it.quotes.filter { quote -> quote.isCurrentPrice() }.mapNotNull { quote -> quote.amountCNY }.minOrNull()
+                    ?: Int.MAX_VALUE
             }.thenBy {
                 (it.durationMinutes ?: 9_999) + ((it.hotelTransferMeters ?: 0) / 450)
             }
         )
         return sorted.mapIndexed { index, option -> option.copy(isRecommended = index == 0) }
+    }
+
+    private fun deduplicatePlaces(places: List<TravelPlace>): List<TravelPlace> {
+        val result = mutableListOf<TravelPlace>()
+        for (place in places.sortedBy { it.popularityRank }) {
+            val normalized = normalizedPlaceName(place.name)
+            val index = result.indexOfFirst { existing ->
+                normalizedPlaceName(existing.name) == normalized ||
+                    (existing.interest == place.interest && existing.coordinate.distanceTo(place.coordinate) <= 90)
+            }
+            if (index < 0) {
+                result += place
+            } else {
+                val existing = result[index]
+                result[index] = if (place.popularityRank < existing.popularityRank) place else existing
+            }
+        }
+        return result
+    }
+
+    private fun mergeQuotes(existing: List<PriceQuote>, incoming: List<PriceQuote>): List<PriceQuote> {
+        val merged = linkedMapOf<String, PriceQuote>()
+        (existing + incoming).forEach { quote ->
+            val key = "${quote.provider.lowercase()}|${quote.unit}"
+            val current = merged[key]
+            val quoteScore = quoteScore(quote)
+            if (current == null || quoteScore < quoteScore(current)) merged[key] = quote
+        }
+        return merged.values.sortedWith(
+            compareBy<PriceQuote> { if (it.isCurrentPrice()) 0 else 1 }
+                .thenBy { it.amountCNY ?: Int.MAX_VALUE }
+        )
+    }
+
+    private fun mergeTransports(
+        existing: List<TransportOption>,
+        incoming: List<TransportOption>
+    ): List<TransportOption> {
+        if (incoming.isEmpty()) return existing
+        val result = existing.toMutableList()
+        for (option in incoming) {
+            val index = result.indexOfFirst { current -> sameTransport(current, option) }
+            if (index < 0) {
+                result += option
+            } else {
+                val current = result[index]
+                val richer = if (transportCompleteness(option) >= transportCompleteness(current)) option else current
+                result[index] = richer.copy(
+                    id = current.id,
+                    arrivalAccessPoint = option.arrivalAccessPoint ?: current.arrivalAccessPoint,
+                    hotelTransferMeters = option.hotelTransferMeters ?: current.hotelTransferMeters,
+                    quotes = mergeQuotes(current.quotes, option.quotes),
+                    recommendationReasons = (current.recommendationReasons + option.recommendationReasons)
+                        .distinct().take(5),
+                    isRecommended = current.isRecommended || option.isRecommended
+                )
+            }
+        }
+        val liveKeys = incoming.filter(::hasCurrentPrice)
+            .map { it.mode to it.direction }.toSet()
+        return result.filterNot { option ->
+            isTransportPlaceholder(option) && (option.mode to option.direction) in liveKeys
+        }.distinctBy { option ->
+            "${option.mode}|${option.direction}|${transportServiceNumber(option)}|${option.departureTime.orEmpty()}"
+        }
+    }
+
+    private fun sameTransport(lhs: TransportOption, rhs: TransportOption): Boolean {
+        if (lhs.mode != rhs.mode || lhs.direction != rhs.direction) return false
+        val lhsService = transportServiceNumber(lhs)
+        val rhsService = transportServiceNumber(rhs)
+        if (lhsService.isNotBlank() && rhsService.isNotBlank() && lhsService == rhsService) {
+            return lhs.departureTime == null || rhs.departureTime == null || lhs.departureTime == rhs.departureTime
+        }
+        return normalizedTransportPlace(lhs.originName) == normalizedTransportPlace(rhs.originName) &&
+            normalizedTransportPlace(lhs.destinationName) == normalizedTransportPlace(rhs.destinationName) &&
+            lhs.departureTime != null && lhs.departureTime == rhs.departureTime
+    }
+
+    private fun transportServiceNumber(option: TransportOption): String =
+        Regex("(?i)\\b(?:[A-Z]{1,3}\\s?\\d{1,5}|\\d{2,4})\\b")
+            .find(option.title)?.value?.replace(" ", "")?.uppercase().orEmpty()
+
+    private fun normalizedTransportPlace(value: String): String = value.lowercase()
+        .replace(Regex("机场|火车站|高铁站|站|航站楼|t\\d+|\\s"), "")
+
+    private fun isTransportPlaceholder(option: TransportOption): Boolean =
+        option.title.contains("待实时查询") ||
+            !hasCurrentPrice(option)
+
+    private fun hasCurrentPrice(option: TransportOption): Boolean =
+        option.quotes.any { it.isCurrentPrice() }
+
+    private fun transportCompleteness(option: TransportOption): Int =
+        listOf(option.departureTime, option.arrivalTime).count { !it.isNullOrBlank() } * 2 +
+            (if (option.durationMinutes != null) 1 else 0) +
+            (if (hasCurrentPrice(option)) 3 else 0)
+
+    private fun quoteScore(quote: PriceQuote): Long {
+        val kind = when (quote.kind) {
+            QuoteKind.LIVE -> 0L
+            QuoteKind.INDICATIVE -> 1L
+            QuoteKind.CHECK_ON_PROVIDER -> 2L
+            QuoteKind.BUDGET_ENVELOPE -> 3L
+        }
+        return kind * 1_000_000L + (quote.amountCNY ?: 999_999)
+    }
+
+    private fun mergeAccommodations(
+        existing: List<AccommodationOption>,
+        incoming: List<AccommodationOption>
+    ): List<AccommodationOption> {
+        val result = existing.toMutableList()
+        for (option in incoming) {
+            val normalized = normalizedHotelName(option.name)
+            val index = result.indexOfFirst { current ->
+                val currentName = normalizedHotelName(current.name)
+                currentName == normalized ||
+                    (currentName.length >= 4 && normalized.length >= 4 &&
+                        (currentName.contains(normalized) || normalized.contains(currentName))) ||
+                    (current.coordinate.distanceTo(option.coordinate) <= 100 &&
+                        currentName.take(4) == normalized.take(4))
+            }
+            if (index < 0) {
+                result += option
+            } else {
+                val current = result[index]
+                result[index] = current.copy(
+                    address = option.address.ifBlank { current.address },
+                    coordinate = option.coordinate,
+                    averageAttractionDistanceMeters = minOf(
+                        current.averageAttractionDistanceMeters,
+                        option.averageAttractionDistanceMeters
+                    ),
+                    hubDistanceMeters = minOf(current.hubDistanceMeters, option.hubDistanceMeters),
+                    quotes = mergeQuotes(current.quotes, option.quotes),
+                    recommendationReasons = (current.recommendationReasons + option.recommendationReasons).distinct().take(4),
+                    brand = option.brand ?: current.brand,
+                    starRating = option.starRating ?: current.starRating,
+                    guestRating = option.guestRating ?: current.guestRating,
+                    imageURL = option.imageURL ?: current.imageURL,
+                    amenities = (current.amenities + option.amenities).distinct().take(12),
+                    tags = (current.tags + option.tags).distinct().take(10),
+                    sources = (current.sources + option.sources).distinct()
+                )
+            }
+        }
+        val hasRealHotel = result.any { it.name != "住宿位置待选择" && it.quotes.any { quote -> quote.isCurrentPrice() } }
+        return if (hasRealHotel) result.filterNot { it.name == "住宿位置待选择" } else result
+    }
+
+    private fun planningNotes(
+        draft: TripDraft,
+        places: List<TravelPlace>,
+        selectedPlaceIDs: Set<String>,
+        selectionWasSkipped: Boolean
+    ): List<String> = buildList {
+        if (selectionWasSkipped) {
+            add("你跳过了景点勾选，已按热度、兴趣与距离补齐一份默认轻松路线。")
+        } else if (selectedPlaceIDs.size < draft.dayCount) {
+            add("你选的主游览点较少，已按热门程度补入相邻地点；主游览点会留出更长时间。")
+        } else {
+            add("已优先保留你勾选的${selectedPlaceIDs.size}处，并让主游览点拥有更完整的停留时间。")
+        }
+        val comfortableCapacity = draft.dayCount * TripPace.RELAXED.stopsPerDay
+        if (selectedPlaceIDs.size > comfortableCapacity || places.size > draft.dayCount * draft.pace.stopsPerDay) {
+            add("点位偏多，当前方案可能有行程压力；可减少景点或延长天数。")
+        }
+        add("每天包含移动、进场与用餐余量，同名或相距过近的重复地点已合并。")
+    }
+
+    private fun normalizedPlaceName(value: String): String = value.lowercase()
+        .replace("风景名胜区", "")
+        .replace("历史文化街区", "")
+        .replace("博物馆", "")
+        .replace("景区", "")
+        .replace("公园", "")
+        .replace(Regex("[\\s()（）·—_-]"), "")
+
+    private fun normalizedHotelName(value: String): String = value.lowercase()
+        .replace("国际大酒店", "")
+        .replace("精品酒店", "")
+        .replace("度假酒店", "")
+        .replace("酒店", "")
+        .replace("宾馆", "")
+        .replace("民宿", "")
+        .replace(Regex("[\\s()（）·—_-]"), "")
+
+    private fun timeRange(start: Int, end: Int): String = "${clock(start)}–${clock(end)}"
+
+    private fun clock(minutes: Int): String {
+        val normalized = minutes.coerceAtLeast(0)
+        return "%02d:%02d".format(normalized / 60, normalized % 60)
+    }
+
+    private fun durationText(minutes: Int): String = when {
+        minutes < 60 -> "${minutes}分钟"
+        minutes % 60 == 0 -> "${minutes / 60}小时"
+        else -> "${minutes / 60}小时${minutes % 60}分钟"
     }
 
     private fun buildExpenses(
@@ -306,5 +591,8 @@ class PlanBuilder {
         )
     }
 }
+
+private fun PriceQuote.isCurrentPrice(): Boolean =
+    amountCNY != null && (kind == QuoteKind.LIVE || kind == QuoteKind.INDICATIVE)
 
 private fun List<Double>.averageOrZero(): Double = if (isEmpty()) 0.0 else average()

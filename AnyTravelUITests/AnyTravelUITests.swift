@@ -2,6 +2,77 @@ import XCTest
 
 @MainActor
 final class AnyTravelUITests: XCTestCase {
+    func testLiveHotelAndRailPricesReachTheirVisibleCards() throws {
+        #if !ANYTRAVEL_LIVE_TESTS
+        guard ProcessInfo.processInfo.environment["ANYTRAVEL_RUN_LIVE_TESTS"] == "1" else {
+            throw XCTSkip("Live pricing UI test is opt-in")
+        }
+        #endif
+
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-test-ready", "--ui-test-live-pricing"]
+        app.launch()
+
+        let accommodationTab = app.buttons["住宿"]
+        XCTAssertTrue(accommodationTab.waitForExistence(timeout: 8))
+        accommodationTab.tap()
+
+        let pricedHotel = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@ AND label CONTAINS %@", "道旅 RollingGo", "实时价", "¥")
+        ).firstMatch
+        XCTAssertTrue(pricedHotel.waitForExistence(timeout: 55))
+        XCTAssertTrue(pricedHotel.isHittable)
+
+        let hotelScreenshot = XCTAttachment(screenshot: app.screenshot())
+        hotelScreenshot.name = "实时酒店价格已在首屏卡片可见"
+        hotelScreenshot.lifetime = .keepAlways
+        add(hotelScreenshot)
+
+        let transportTab = app.buttons["交通"]
+        XCTAssertTrue(transportTab.waitForExistence(timeout: 5))
+        transportTab.tap()
+
+        let pricedTrain = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@ AND label CONTAINS %@", "铁路12306", "实时价", "¥")
+        ).firstMatch
+        XCTAssertTrue(pricedTrain.waitForExistence(timeout: 45))
+        XCTAssertTrue(pricedTrain.isHittable)
+        XCTAssertTrue(pricedTrain.isSelected)
+
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "实时酒店与铁路价格已进入卡片"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    func testLiveFlightFareReachesTheVisibleTransportCard() throws {
+        #if !ANYTRAVEL_LIVE_TESTS
+        guard ProcessInfo.processInfo.environment["ANYTRAVEL_RUN_LIVE_TESTS"] == "1" else {
+            throw XCTSkip("Live pricing UI test is opt-in")
+        }
+        #endif
+
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-test-ready", "--ui-test-live-flight", "--ui-test-live-pricing"]
+        app.launch()
+
+        let transportTab = app.buttons["交通"]
+        XCTAssertTrue(transportTab.waitForExistence(timeout: 8))
+        transportTab.tap()
+
+        let pricedFlight = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@ AND label CONTAINS %@", "飞猪旅行", "实时价", "¥")
+        ).firstMatch
+        XCTAssertTrue(pricedFlight.waitForExistence(timeout: 55))
+        XCTAssertTrue(pricedFlight.isHittable)
+        XCTAssertTrue(pricedFlight.isSelected)
+
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "实时航班价格已进入交通卡片"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
     func testWelcomeScreenHasAUsableStartingPoint() {
         let app = XCUIApplication()
         app.launchArguments = ["--skip-onboarding"]

@@ -22,7 +22,7 @@ AnyTravel 是一款地图优先的开源 iOS 与 Android 旅行规划应用。�
 
 动效实录：[首次启动与初始化](Documentation/Demo/onboarding-motion.mp4) · [地图、住宿、交通与费用联动](Documentation/Demo/map-plan-motion.mp4)
 
-下载：[iOS 0.7.0 无签名 IPA](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.7.0) · [Android 0.4.0 APK](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.4.0)
+下载：[iOS 0.7.1 无签名 IPA](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.7.1) · [Android 0.7.1 通用 APK](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.7.1)
 
 Web 版（开发中）：位于 [Web/](Web/README.md)，React + TypeScript + MapLibre GL，桌面为 Apple Maps 式大屏横排（左面板 + 全屏地图 + 底部轨道），移动端为三档底部面板；`cd Web && npm install && npm run dev` 后访问 `http://127.0.0.1:5182`。已跑通：目的地/条件输入、OSM 景点与营业时间、空间聚类方案、OSRM 耗时、天气、住宿比价（RollingGo 实测真价）、12306 去返程、去哪儿门票、DeepSeek 内置对话（白名单动作）、费用对比、旅册与分享链接。
 
@@ -53,15 +53,15 @@ Web 版（开发中）：位于 [Web/](Web/README.md)，React + TypeScript + Map
 
 | 内容 | 当前实现 | 结果如何展示 |
 | --- | --- | --- |
-| 地点与市内路线 | iOS 以 Apple MapKit 为主，并可通过伴随服务或 App 内置高德 Web 服务 Key 补充候选（含营业时间、评分）；Android 使用人工核对目的地包与系统 Geocoder | 高德候选保留来源与 GCJ-02→WGS84 坐标语义；渠道失败时继续使用 Apple Maps，Android 0.4 明确标注路线为示意 |
-| 酒店与民宿位置 | iOS 并行搜索酒店、精品酒店、连锁酒店、民宿、公寓酒店与青旅，再合并 RollingGo 城市及行程景点锚点目录（节点或内置密钥直连），去重后最多展示 60 家 | 地图卡片显示品牌、星级、设施、标签、景点均距、交通枢纽距离与“N家比价”；支持综合、低价、近景点、近交通、实时价和官网筛选 |
+| 地点与市内路线 | iOS 以 Apple MapKit 为主，并可通过伴随服务或 App 内置高德 Web 服务 Key 补充候选（含营业时间、评分）；Android 使用人工核对目的地包与系统 Geocoder，并提供生成前热门景点勾选 | 高德候选保留来源与 GCJ-02→WGS84 坐标语义；渠道失败时继续使用 Apple Maps，Android 明确标注尚未取得路网几何的路线为示意 |
+| 酒店与民宿位置 | iOS 并行搜索多类住宿，Android 使用目的地目录与 RollingGo 返回目录；两端都会合并 RollingGo 城市及景点锚点结果并去重 | 地图卡片显示品牌、星级、设施、标签、景点均距、交通枢纽距离与多渠道报价；两端支持低价、距离与实时价筛选 |
 | 酒店实时价格 | 两端支持 RollingGo MCP（节点或 App 内置密钥）；iOS 伴随服务另支持用户自行登录后的携程与同程/艺龙持久化浏览器会话；节点新增艺龙开放平台与万邦携程目录适配器（未配置凭据时如实显示 disabled） | 渠道、每晚/总价口径、房型/床型/早餐/取消政策、抓取时间、缓存过期、部分成功、登录/验证状态、品牌官网与购买入口 |
 | 景点门票 | iOS 伴随服务读取去哪儿门票公开列表，并按景点名称严格匹配 | 地点卡、时间轴与费用表显示当前公开起价、抓取时间和购买页；计划日期、票种、优惠与库存仍需在平台复核 |
-| 铁路班次与票价 | 铁路 12306 公开查询页，节点与应用内直连两路按抵达日与返程日分别只读查询，合并去重 | 去程/返程独立车次、发到时间、余票、席别价格与官方购票页；单边失败不遮住另一边 |
+| 铁路班次与票价 | iOS 与 Android 均可直连铁路 12306 公开查询页，按抵达日与返程日分别只读查询；节点结果可继续合并去重 | 去程/返程独立车次、发到时间、余票、席别价格与官方购票页；单边失败不遮住另一边，真实班次会替换预算占位 |
 | 门到门接驳 | iOS 使用 Apple MapKit 分别查询去程枢纽→住宿、住宿→返程枢纽的公交、驾车和步行 | 地图路线、耗时、距离、估算费用与推荐理由；地图缺少公交路线时明确标成“距离估算” |
 | 方案导出 | iOS 原生生成带地图的多页 PDF 与标准 iCalendar 文件 | 日程、住处、往返交通、接驳和费用完整落款；无日期仍可导出 PDF，日历会明确要求先补日期 |
 | 其他住宿渠道 | iOS 支持去哪儿、同程与 Trip.com 应用内登录及会话复用；同程/艺龙浏览器适配器已落地；Android 提供购买页入口 | 同程只有在强匹配且得到数字价格时才标实时；去哪儿酒店与 Trip.com 未接通时明确显示“到渠道查询” |
-| 航班 | iOS 默认直连飞猪公开 H5 搜索，按日读取具体航班与起价；用户明确保存去哪儿会话后再叠加去哪儿移动页；节点另有默认关闭的携程会话通道 | 去程/返程独立，展示航司、航班号、机场、时刻、耗时与当前起价；同一航班合并多渠道报价，安全验证、无航班与无价格状态分开 |
+| 航班 | iOS 与 Android 默认直连飞猪公开 H5 搜索，按日读取具体航班与起价；iOS 在用户明确保存去哪儿会话后可叠加去哪儿移动页，节点另有携程会话通道 | 去程/返程独立，展示航司、航班号、机场、时刻、耗时与当前起价；同一航班合并多渠道报价，真实航班会替换预算占位 |
 | 智能向导 | 伴随服务托管 GLM-5.3-Flash；App 内置 `ANYTRAVEL_ZAI_API_KEY` 时可由应用直连接口；iOS 也支持用户自定义 OpenAI 兼容 Base URL、模型与 Key | 回应以卡片浮在地图上；可设置目的地/出发地、日期/天数、人数、预算、节奏、交通、兴趣与住宿筛选，也可直接生成或聚焦已有地点；失败时回退本机解析 |
 
 行程编排的模型、假设与边界见 [行程规划模型](Documentation/ITINERARY_PLANNING_MODEL.md)，各适配器的状态见 [数据渠道说明](Documentation/DATA_CHANNELS.md)，本轮参考项目见 [开源调研记录](Documentation/OPEN_SOURCE_RESEARCH.md)，圆周旅迹的静态功能对照见 [参考审计](Documentation/CIRCLE_TRIP_REFERENCE_AUDIT.md)。PDF 与日历的降级规则见 [方案导出说明](Documentation/EXPORT_FORMATS.md)。铁路购票链接始终指向 [铁路 12306 官方页面](https://www.12306.cn/mormhweb/zxdt/202412/t20241211_43192.html)。RollingGo 接入参考其[官方开源仓库](https://github.com/RollingGo-AI/rollinggo-hotel-skill-cn)。
@@ -125,7 +125,7 @@ xcodebuild \
 cd Backend && npm test
 ```
 
-0.7.0 验证结果：68/68 iOS 单元测试、16/16 XCUITest、46/46 Node 测试通过，共 84 个 iOS 自动化用例，0 失败。另以真实网络验证飞猪航班直连能返回具体航班和数字起价，RollingGo 能按指定入住日期返回酒店数字价格。本轮还加入生成前景点挑选、同一航班/酒店的多渠道合并，以及伴随服务失败后的直连兜底；艺龙开放平台、万邦携程目录与携程航班通道已落地但未配置凭据，尚未联网验收。发布与真机验收边界见 [接力交接](Documentation/HANDOFF.md)。
+0.7.1 验证结果：常规 iOS 套件中 70 个单元测试与 16 个 XCUITest 通过；另启用真实网络开关后，3 个数据源测试与 2 个首屏可见性测试通过，91 个不同测试用例均取得通过结果。可见性测试确认 RollingGo 酒店每晚价、铁路 12306 车次/席别价和飞猪航班起价进入可点击卡片并成为默认选择。Android 6/6 规划单元测试、1/1 RollingGo/12306/飞猪实时源联网测试和 lint 通过。Android 0.7.1 已把地图面板、自然语言、景点勾选、住宿与交通筛选和真实价格优先选择按 iOS 的流程同步；发布 APK 为调试签名通用包。当前构建机没有 Android 设备或 emulator/system image，本轮未执行 connected Compose 界面测试。发布与真机验收边界见 [接力交接](Documentation/HANDOFF.md)。
 
 0.6.3 发布前验证结果：57/57 iOS 单元测试、16/16 XCUITest、29/29 Node 测试通过。iPhone 17 Pro / iOS 26.5 模拟器覆盖 Apple 地图式三档面板拖拽、最小档自然语言输入、最大档内容浏览、人数和往返日期双向调整、自动规划地点去重，以及重置、设置、旅册、定位、地图样式和北向按钮的真实点击闭环；浅色偏好页和浅色/深色完整方案均完成截图检查。设备 Release 构建产物为 0.6.3（12）。所有服务端密钥只保存在被 Git 忽略的节点环境文件中。
 

@@ -19,6 +19,11 @@ enum RollingGoDirectError: LocalizedError, Equatable {
 }
 
 struct RollingGoDirectClient {
+    private struct QueryOutcome {
+        var hotels: [RollingGoHotel]
+        var issue: PricingProviderIssue?
+    }
+
     private let session: URLSession
     private let apiKey: () -> String
     private let endpoint: URL
@@ -58,38 +63,42 @@ struct RollingGoDirectClient {
             .prefix(2)
         let capturedAt = Date.now
 
-        var entries: [AccommodationCatalogEntry] = []
-        var issues: [PricingProviderIssue] = []
-        for (index, place) in locations.enumerated() {
-            do {
-                let hotels = try await callSearch(
-                    apiKey: key,
-                    arguments: RollingGoSearchArguments(
-                        originQuery: "查找\(destination)\(index == 0 ? "" : "靠近\(place)")适合\(logistics.travelers)人入住的酒店和民宿，比较\(stayNights)晚实时价格",
-                        place: place,
-                        placeType: index == 0 ? "城市" : "景点",
-                        checkInParam: .init(
-                            adultCount: adultsPerRoom,
-                            checkInDate: Self.dayFormatter.string(from: checkIn),
-                            stayNights: stayNights
-                        ),
-                        size: index == 0 ? requestedSize : min(requestedSize, 10)
-                    ),
-                    requestID: Int(capturedAt.timeIntervalSince1970) + index
-                )
-                entries.append(contentsOf: hotels.compactMap {
-                    Self.catalogEntry(from: $0, stayNights: stayNights, capturedAt: capturedAt)
-                })
-            } catch {
-                issues.append(
-                    PricingProviderIssue(
-                        provider: "rollinggo",
-                        status: "failed",
-                        detail: error.localizedDescription
-                    )
-                )
-            }
+        let arguments = locations.enumerated().map { index, place in
+            RollingGoSearchArguments(
+                originQuery: "查找\(destination)\(index == 0 ? "" : "靠近\(place)")适合\(logistics.travelers)人入住的酒店和民宿，比较\(stayNights)晚实时价格",
+                place: place,
+                placeType: index == 0 ? "城市" : "景点",
+                checkInParam: .init(
+                    adultCount: adultsPerRoom,
+                    checkInDate: Self.dayFormatter.string(from: checkIn),
+                    stayNights: stayNights
+                ),
+                size: index == 0 ? requestedSize : min(requestedSize, 10)
+            )
         }
+        let requestID = Int(capturedAt.timeIntervalSince1970)
+        // The city and attraction searches are independent. Running them together
+        // keeps a slow attraction query from delaying the first useful hotel cards.
+        async let cityOutcome = searchOutcome(
+            apiKey: key,
+            arguments: arguments.first,
+            requestID: requestID
+        )
+        async let firstAnchorOutcome = searchOutcome(
+            apiKey: key,
+            arguments: arguments.count > 1 ? arguments[1] : nil,
+            requestID: requestID + 1
+        )
+        async let secondAnchorOutcome = searchOutcome(
+            apiKey: key,
+            arguments: arguments.count > 2 ? arguments[2] : nil,
+            requestID: requestID + 2
+        )
+        let outcomes = await [cityOutcome, firstAnchorOutcome, secondAnchorOutcome]
+        let entries = outcomes.flatMap(\.hotels).compactMap {
+            Self.catalogEntry(from: $0, stayNights: stayNights, capturedAt: capturedAt)
+        }
+        var issues = outcomes.compactMap(\.issue)
 
         let merged = Self.deduplicated(entries)
         if merged.isEmpty, issues.isEmpty {
@@ -102,6 +111,29 @@ struct RollingGoDirectClient {
             isCached: false,
             issues: issues
         )
+    }
+
+    private func searchOutcome(
+        apiKey: String,
+        arguments: RollingGoSearchArguments?,
+        requestID: Int
+    ) async -> QueryOutcome {
+        guard let arguments else { return QueryOutcome(hotels: [], issue: nil) }
+        do {
+            return QueryOutcome(
+                hotels: try await callSearch(apiKey: apiKey, arguments: arguments, requestID: requestID),
+                issue: nil
+            )
+        } catch {
+            return QueryOutcome(
+                hotels: [],
+                issue: PricingProviderIssue(
+                    provider: "rollinggo",
+                    status: "failed",
+                    detail: error.localizedDescription
+                )
+            )
+        }
     }
 
     private func callSearch(
@@ -137,11 +169,50 @@ struct RollingGoDirectClient {
               let content = outer.result?.content else { throw RollingGoDirectError.invalidResponse }
         var hotels: [RollingGoHotel] = []
         for item in content where item.type == "text" {
-            guard let textData = item.text.data(using: .utf8),
-                  let search = try? JSONDecoder().decode(RollingGoSearchResponse.self, from: textData) else { continue }
-            hotels.append(contentsOf: search.hotelInformationList ?? [])
+            hotels.append(contentsOf: Self.hotels(from: item.text))
         }
         return hotels
+    }
+
+    private static func hotels(from text: String) -> [RollingGoHotel] {
+        guard let data = text.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) else { return [] }
+        var dictionaries: [[String: Any]] = []
+        collectHotelDictionaries(root, into: &dictionaries)
+        return dictionaries.compactMap(RollingGoHotel.init(dictionary:))
+    }
+
+    private static func collectHotelDictionaries(_ value: Any, into output: inout [[String: Any]]) {
+        if let values = value as? [Any] {
+            values.forEach { collectHotelDictionaries($0, into: &output) }
+            return
+        }
+        guard let dictionary = value as? [String: Any] else { return }
+        let name = firstValue(in: dictionary, keys: ["name", "hotelName", "nameCn", "hotel_name"])
+        let hasPrice = firstValue(
+            in: dictionary,
+            keys: ["displayPrice", "minPrice", "price", "lowestPrice", "totalPrice"]
+        ) != nil
+        let hasLatitude = firstValue(
+            in: dictionary,
+            keys: ["latitude", "lat", "hotelLat", "hotelLatitude"]
+        ) != nil
+        let hasLongitude = firstValue(
+            in: dictionary,
+            keys: ["longitude", "lng", "lon", "hotelLng", "hotelLongitude"]
+        ) != nil
+        let hasMetadata = firstValue(
+            in: dictionary,
+            keys: ["address", "hotelAddress", "brand", "starRating", "amenities", "hotelAmenities"]
+        ) != nil
+        if name != nil, hasPrice || (hasLatitude && hasLongitude) || hasMetadata {
+            output.append(dictionary)
+        }
+        dictionary.values.forEach { collectHotelDictionaries($0, into: &output) }
+    }
+
+    private static func firstValue(in dictionary: [String: Any], keys: [String]) -> Any? {
+        keys.lazy.compactMap { dictionary[$0] }.first
     }
 
     private static func payloadData(from data: Data) throws -> Data {
@@ -181,8 +252,8 @@ struct RollingGoDirectClient {
             totalAmountCNY: hotel.price?.lowestPrice.flatMap { Int($0.rounded()) }
         )
         return AccommodationCatalogEntry(
-            providerHotelID: hotel.hotelID.map(String.init) ?? "rollinggo-\(name)",
-            providerHotelIDs: hotel.hotelID.map { ["rollinggo": String($0)] } ?? [:],
+            providerHotelID: hotel.hotelID ?? "rollinggo-\(name)",
+            providerHotelIDs: hotel.hotelID.map { ["rollinggo": $0] } ?? [:],
             providers: [.rollingGo],
             sources: ["rollinggo"],
             name: name,
@@ -279,12 +350,8 @@ private struct RollingGoMCPResponse: Decodable {
     var result: Result?
 }
 
-private struct RollingGoSearchResponse: Decodable {
-    var hotelInformationList: [RollingGoHotel]?
-}
-
-private struct RollingGoHotel: Decodable {
-    var hotelID: Int?
+private struct RollingGoHotel {
+    var hotelID: String?
     var bookingURL: URL?
     var name: String
     var brand: String?
@@ -298,18 +365,86 @@ private struct RollingGoHotel: Decodable {
     var hotelAmenities: [String]?
     var tags: [String]?
 
-    enum CodingKeys: String, CodingKey {
-        case hotelID = "hotelId"
-        case bookingURL = "bookingUrl"
-        case name, brand, address, latitude, longitude, starRating, price, description
-        case imageURL = "imageUrl"
-        case hotelAmenities, tags
+    init?(dictionary: [String: Any]) {
+        name = Self.string(Self.first(dictionary, ["name", "hotelName", "nameCn", "hotel_name"]))
+        guard !name.isEmpty else { return nil }
+        hotelID = Self.string(Self.first(dictionary, ["hotelId", "hotelID", "id", "hotel_id"]))
+            .nilIfEmpty
+        bookingURL = Self.url(Self.first(dictionary, ["bookingUrl", "bookingURL", "url"]))
+        brand = Self.string(Self.first(dictionary, ["brand", "brandName", "hotelBrand"])).nilIfEmpty
+        address = Self.string(Self.first(dictionary, ["address", "hotelAddress", "addressCn"])).nilIfEmpty
+        latitude = Self.number(Self.first(dictionary, ["latitude", "lat", "hotelLat", "hotelLatitude"]))
+        longitude = Self.number(Self.first(dictionary, ["longitude", "lng", "lon", "hotelLng", "hotelLongitude"]))
+        starRating = Self.number(Self.first(dictionary, ["starRating", "star", "starLevel"]))
+        description = Self.string(Self.first(dictionary, ["description", "summary", "introduction"])).nilIfEmpty
+        imageURL = Self.url(Self.first(dictionary, ["imageUrl", "imageURL", "coverImage", "cover"]))
+        hotelAmenities = Self.strings(Self.first(dictionary, ["hotelAmenities", "amenities", "facilities", "facilityList", "services"]))
+        tags = Self.strings(Self.first(dictionary, ["tags", "labels", "themes"]))
+
+        if let structured = dictionary["price"] as? [String: Any] {
+            price = RollingGoPrice(
+                message: Self.string(structured["message"]).nilIfEmpty,
+                hasPrice: Self.bool(structured["hasPrice"]),
+                currency: Self.string(structured["currency"]).nilIfEmpty,
+                lowestPrice: Self.number(Self.first(structured, ["lowestPrice", "totalPrice", "displayPrice", "minPrice", "price", "message"]))
+            )
+        } else {
+            let amount = Self.number(Self.first(dictionary, ["displayPrice", "minPrice", "price", "lowestPrice", "totalPrice"]))
+            price = amount.map { RollingGoPrice(message: nil, hasPrice: true, currency: "CNY", lowestPrice: $0) }
+        }
+    }
+
+    private static func first(_ dictionary: [String: Any], _ keys: [String]) -> Any? {
+        keys.lazy.compactMap { dictionary[$0] }.first
+    }
+
+    private static func string(_ value: Any?) -> String {
+        if let value = value as? String { return value.trimmingCharacters(in: .whitespacesAndNewlines) }
+        if let value = value as? NSNumber { return value.stringValue }
+        return ""
+    }
+
+    private static func number(_ value: Any?) -> Double? {
+        if let value = value as? NSNumber { return value.doubleValue }
+        let raw = string(value)
+        if let direct = Double(raw) { return direct }
+        guard let match = raw.range(of: #"\d+(?:\.\d+)?"#, options: .regularExpression) else { return nil }
+        return Double(raw[match])
+    }
+
+    private static func bool(_ value: Any?) -> Bool? {
+        if let value = value as? Bool { return value }
+        if let value = value as? NSNumber { return value.boolValue }
+        let raw = string(value).lowercased()
+        if ["true", "1", "yes"].contains(raw) { return true }
+        if ["false", "0", "no"].contains(raw) { return false }
+        return nil
+    }
+
+    private static func url(_ value: Any?) -> URL? {
+        let raw = string(value)
+        return raw.isEmpty ? nil : URL(string: raw)
+    }
+
+    private static func strings(_ value: Any?) -> [String]? {
+        guard let items = value as? [Any] else { return nil }
+        let values = items.compactMap { item -> String? in
+            if let dictionary = item as? [String: Any] {
+                return string(first(dictionary, ["name", "title", "label"])).nilIfEmpty
+            }
+            return string(item).nilIfEmpty
+        }
+        return values.isEmpty ? nil : values
     }
 }
 
-private struct RollingGoPrice: Decodable {
+private struct RollingGoPrice {
     var message: String?
     var hasPrice: Bool?
     var currency: String?
     var lowestPrice: Double?
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

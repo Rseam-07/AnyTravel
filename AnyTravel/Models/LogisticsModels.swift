@@ -208,6 +208,13 @@ struct ProviderQuote: Codable, Hashable, Identifiable, Sendable {
         guard let capturedAt else { return false }
         return Date.now.timeIntervalSince(capturedAt) >= 30 * 60
     }
+
+    /// A dated provider result that can be presented as the current price.
+    /// Budget envelopes and UI fixtures may carry numbers too, but must not
+    /// outrank a live or indicative provider quote.
+    var isCurrentPrice: Bool {
+        amountCNY != nil && (kind == .live || kind == .indicative)
+    }
 }
 
 enum AccessPointKind: String, Codable, Hashable, Sendable {
@@ -329,7 +336,7 @@ struct AccommodationOption: Codable, Hashable, Identifiable, Sendable {
 
     var bestPricedQuote: ProviderQuote? {
         quotes
-            .filter { $0.amountCNY != nil && $0.kind != .demo }
+            .filter(\.isCurrentPrice)
             .min { ($0.amountCNY ?? .max) < ($1.amountCNY ?? .max) }
     }
 }

@@ -78,7 +78,9 @@ data class TravelPlace(
     val coordinate: Coordinate,
     val interest: TripInterest,
     val introduction: String,
-    val source: String
+    val source: String,
+    val popularityRank: Int = 999,
+    val suggestedVisitMinutes: Int = 90
 )
 
 @Serializable
@@ -122,7 +124,11 @@ data class PriceQuote(
     val kind: QuoteKind,
     val capturedAt: String? = null,
     val bookingURL: String? = null,
-    val note: String
+    val note: String,
+    val displayPriceText: String? = null,
+    val sourceLabel: String? = null,
+    val totalAmountCNY: Int? = null,
+    val availability: String? = null
 )
 
 @Serializable
@@ -135,7 +141,14 @@ data class AccommodationOption(
     val hubDistanceMeters: Int,
     val quotes: List<PriceQuote>,
     val recommendationReasons: List<String>,
-    val isRecommended: Boolean
+    val isRecommended: Boolean,
+    val brand: String? = null,
+    val starRating: Double? = null,
+    val guestRating: Double? = null,
+    val imageURL: String? = null,
+    val amenities: List<String> = emptyList(),
+    val tags: List<String> = emptyList(),
+    val sources: List<String> = emptyList()
 )
 
 @Serializable
@@ -144,6 +157,12 @@ data class AccessPoint(
     val kind: LongDistanceMode,
     val coordinate: Coordinate
 )
+
+@Serializable
+enum class TransportDirection(val title: String) {
+    OUTBOUND("去程"),
+    RETURN("返程")
+}
 
 @Serializable
 data class TransportOption(
@@ -159,7 +178,8 @@ data class TransportOption(
     val hotelTransferMeters: Int?,
     val quotes: List<PriceQuote>,
     val recommendationReasons: List<String>,
-    val isRecommended: Boolean
+    val isRecommended: Boolean,
+    val direction: TransportDirection = TransportDirection.OUTBOUND
 )
 
 @Serializable
@@ -207,7 +227,9 @@ data class CompletePlan(
     val selectedTransportId: String?,
     val expenses: List<ExpenseLine>,
     val sourceNote: String,
-    val routeIsSchematic: Boolean = true
+    val routeIsSchematic: Boolean = true,
+    val selectedPlaceIDs: Set<String> = emptySet(),
+    val planningNotes: List<String> = emptyList()
 ) {
     val selectedAccommodation: AccommodationOption?
         get() = accommodations.firstOrNull { it.id == selectedAccommodationId }

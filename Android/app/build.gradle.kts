@@ -1,7 +1,21 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
+}
+
+val localSecrets = Properties().apply {
+    val source = rootProject.file("secrets.properties")
+    if (source.isFile) source.inputStream().use(::load)
+}
+
+fun buildConfigString(name: String): String {
+    val value = (localSecrets.getProperty(name) ?: System.getenv(name) ?: "")
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+    return "\"$value\""
 }
 
 android {
@@ -20,12 +34,15 @@ android {
         targetSdk {
             version = release(37)
         }
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 14
+        versionName = "0.7.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
         buildConfigField("String", "MAP_STYLE_URL", "\"https://tiles.openfreemap.org/styles/liberty\"")
+        buildConfigField("String", "ROLLINGGO_API_KEY", buildConfigString("ROLLINGGO_API_KEY"))
+        buildConfigField("String", "AMAP_API_KEY", buildConfigString("AMAP_API_KEY"))
+        buildConfigField("String", "ZAI_API_KEY", buildConfigString("ZAI_API_KEY"))
     }
 
     buildTypes {

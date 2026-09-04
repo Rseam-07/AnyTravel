@@ -14,6 +14,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -106,7 +107,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -123,6 +127,7 @@ import cn.anytravel.app.model.PriceQuote
 import cn.anytravel.app.model.QuoteKind
 import cn.anytravel.app.model.QuoteUnit
 import cn.anytravel.app.model.TransportOption
+import cn.anytravel.app.model.TransportDirection
 import cn.anytravel.app.model.TripDraft
 import cn.anytravel.app.model.TripInterest
 import cn.anytravel.app.model.TripPace
@@ -144,7 +149,20 @@ import java.time.ZoneOffset
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlannerScreen(state: PlannerUiState, viewModel: PlannerViewModel) {
+    var panelDragging by remember { mutableStateOf(false) }
     BoxWithConstraints(Modifier.fillMaxSize()) {
+        val containerHeightPx = with(LocalDensity.current) { maxHeight.toPx() }.coerceAtLeast(1f)
+        val targetHeight = maxHeight * state.panelFraction
+        val panelHeight by animateDpAsState(
+            targetValue = targetHeight,
+            animationSpec = if (panelDragging) snap() else AnyTravelMotion.settle(),
+            label = "planner panel height"
+        )
+        val dragModifier = Modifier.panelDrag(
+            onStart = { panelDragging = true },
+            onDelta = { pixels -> viewModel.resizePanelBy(-pixels / containerHeightPx) },
+            onEnd = { panelDragging = false }
+        )
         PlannerMap(
             plan = state.plan,
             draftCenter = DestinationCatalog.find(state.draft.destination)?.center,
@@ -199,25 +217,29 @@ fun PlannerScreen(state: PlannerUiState, viewModel: PlannerViewModel) {
         }
 
         if (state.plan == null) {
-            DraftPanel(
-                state = state,
-                onDraftChange = viewModel::updateDraft,
-                onGenerate = viewModel::generatePlan,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.62f)
-            )
+            if (state.panelFraction < 0.30f) {
+                CompactDraftPanel(
+                    state = state,
+                    onDraftChange = viewModel::updateDraft,
+                    onGenerate = viewModel::generatePlan,
+                    dragHandleModifier = dragModifier,
+                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(panelHeight)
+                )
+            } else {
+                DraftPanel(
+                    state = state,
+                    onDraftChange = viewModel::updateDraft,
+                    onGenerate = viewModel::generatePlan,
+                    dragHandleModifier = dragModifier,
+                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(panelHeight)
+                )
+            }
         } else {
-            val targetHeight = if (state.panelExpanded) maxHeight * 0.78f else maxHeight * 0.46f
-            val panelHeight by animateDpAsState(
-                targetValue = targetHeight,
-                animationSpec = AnyTravelMotion.settle(),
-                label = "plan panel height"
-            )
             PlanPanel(
                 state = state,
                 viewModel = viewModel,
+                compact = state.panelFraction < 0.30f,
+                dragHandleModifier = dragModifier,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
@@ -245,6 +267,15 @@ fun PlannerScreen(state: PlannerUiState, viewModel: PlannerViewModel) {
             onDismiss = { viewModel.showLibrary(false) },
             onOpen = viewModel::loadPlan,
             onDelete = viewModel::deletePlan
+        )
+    }
+    if (state.attractionPickerVisible) {
+        AttractionSelectionSheet(
+            state = state,
+            onToggle = viewModel::toggleAttraction,
+            onConfirm = viewModel::confirmAttractions,
+            onSkip = viewModel::skipAttractionSelection,
+            onDismiss = viewModel::dismissAttractionSelection
         )
     }
 }
@@ -335,10 +366,51 @@ private fun MessageBanner(text: String, isError: Boolean, onDismiss: () -> Unit)
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
+private fun CompactDraftPanel(
+    state: PlannerUiState,
+    onDraftChange: ((TripDraft) -> TripDraft) -> Unit,
+    onGenerate: () -> Unit,
+    dragHandleModifier: Modifier,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.navigationBarsPadding().imePadding(),
+        shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
+        tonalElevation = 12.dp,
+        shadowElevation = 18.dp
+    ) {
+        Column(Modifier.padding(horizontal = 16.dp)) {
+            DragHandle(dragHandleModifier.height(32.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = state.draft.destination,
+                    onValueChange = { value -> onDraftChange { it.copy(destination = value) } },
+                    placeholder = { Text("下一次旅行，你想前往哪里？") },
+                    leadingIcon = { Icon(Icons.Rounded.LocationOn, contentDescription = null) },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(18.dp)
+                )
+                Button(
+                    onClick = onGenerate,
+                    enabled = state.draft.destination.isNotBlank(),
+                    modifier = Modifier.size(54.dp),
+                    contentPadding = PaddingValues(0.dp),
+                    shape = CircleShape
+                ) { Icon(Icons.Rounded.Route, contentDescription = "让地图规划旅程") }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@Composable
 private fun DraftPanel(
     state: PlannerUiState,
     onDraftChange: ((TripDraft) -> TripDraft) -> Unit,
     onGenerate: () -> Unit,
+    dragHandleModifier: Modifier,
     modifier: Modifier = Modifier
 ) {
     var showDatePicker by remember { mutableStateOf(false) }
@@ -354,7 +426,7 @@ private fun DraftPanel(
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            item { DragHandle() }
+            item { DragHandle(dragHandleModifier.height(32.dp)) }
             item {
                 Text("下一次旅行，你想前往哪里？", style = MaterialTheme.typography.headlineSmall)
                 Spacer(Modifier.height(6.dp))
@@ -547,7 +619,13 @@ private fun CompactStepper(
 }
 
 @Composable
-private fun PlanPanel(state: PlannerUiState, viewModel: PlannerViewModel, modifier: Modifier = Modifier) {
+private fun PlanPanel(
+    state: PlannerUiState,
+    viewModel: PlannerViewModel,
+    compact: Boolean,
+    dragHandleModifier: Modifier,
+    modifier: Modifier = Modifier
+) {
     val plan = state.plan ?: return
     Surface(
         modifier = modifier.navigationBarsPadding(),
@@ -556,13 +634,17 @@ private fun PlanPanel(state: PlannerUiState, viewModel: PlannerViewModel, modifi
         tonalElevation = 12.dp,
         shadowElevation = 20.dp
     ) {
+        if (compact) {
+            CompactPlanBar(state, viewModel, dragHandleModifier)
+            return@Surface
+        }
         Column {
             Box(
-                Modifier
+                dragHandleModifier
                     .fillMaxWidth()
                     .height(26.dp)
                     .clickable(role = Role.Button, onClick = viewModel::togglePanel)
-                    .semantics { contentDescription = if (state.panelExpanded) "收起方案" else "展开完整方案" },
+                    .semantics { contentDescription = "拖动或轻点调整方案高度" },
                 contentAlignment = Alignment.Center
             ) { DragHandle() }
 
@@ -578,7 +660,7 @@ private fun PlanPanel(state: PlannerUiState, viewModel: PlannerViewModel, modifi
                     Icon(Icons.Rounded.Save, contentDescription = "保存这段旅程")
                 }
                 IconButton(onClick = viewModel::togglePanel, modifier = Modifier.size(48.dp)) {
-                    Icon(if (state.panelExpanded) Icons.Rounded.ExpandMore else Icons.Rounded.ExpandLess, contentDescription = if (state.panelExpanded) "收起" else "展开")
+                    Icon(if (state.panelFraction > 0.76f) Icons.Rounded.ExpandMore else Icons.Rounded.ExpandLess, contentDescription = "切换面板高度")
                 }
             }
 
@@ -620,6 +702,44 @@ private fun PlanPanel(state: PlannerUiState, viewModel: PlannerViewModel, modifi
 }
 
 @Composable
+private fun CompactPlanBar(state: PlannerUiState, viewModel: PlannerViewModel, dragHandleModifier: Modifier) {
+    var request by remember { mutableStateOf("") }
+    Column(Modifier.padding(horizontal = 16.dp)) {
+        Box(
+            dragHandleModifier.fillMaxWidth().height(32.dp).clickable(onClick = viewModel::togglePanel),
+            contentAlignment = Alignment.Center
+        ) { DragHandle() }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = request,
+                onValueChange = { request = it },
+                placeholder = { Text("说出想改变的脚步、预算或交通…") },
+                leadingIcon = { Icon(Icons.Rounded.EditLocationAlt, contentDescription = null) },
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(18.dp)
+            )
+            Button(
+                onClick = {
+                    viewModel.applyQuickAdjustment(request)
+                    request = ""
+                },
+                enabled = request.isNotBlank(),
+                modifier = Modifier.size(54.dp),
+                contentPadding = PaddingValues(0.dp),
+                shape = CircleShape
+            ) { Icon(Icons.Rounded.Check, contentDescription = "应用这句话") }
+        }
+        Text(
+            "${state.plan?.draft?.destination.orEmpty()} · 上拉展开完整方案",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 8.dp, top = 3.dp)
+        )
+    }
+}
+
+@Composable
 private fun DaysContent(plan: CompletePlan, selectedDay: Int, onSelectDay: (Int) -> Unit) {
     val day = plan.days.getOrNull(selectedDay) ?: plan.days.firstOrNull()
     LazyColumn(contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -657,8 +777,37 @@ private fun StaysContent(plan: CompletePlan, onSelect: (String) -> Unit) {
         EmptyState(Icons.Rounded.Bed, "这次不需要住宿", "景点、路线和交通仍会继续规划。")
         return
     }
+    var priceCeiling by remember(plan.id) { mutableStateOf<Int?>(null) }
+    var sort by remember(plan.id) { mutableStateOf(StaySort.RECOMMENDED) }
+    val filtered = plan.accommodations.filter { option ->
+        val price = option.quotes.mapNotNull { it.amountCNY }.minOrNull()
+        priceCeiling == null || (price != null && price <= priceCeiling!!)
+    }.sortedWith(when (sort) {
+        StaySort.RECOMMENDED -> compareByDescending<AccommodationOption> { it.id == plan.selectedAccommodationId }
+            .thenBy { it.averageAttractionDistanceMeters }
+        StaySort.PRICE -> compareBy { it.quotes.mapNotNull(PriceQuote::amountCNY).minOrNull() ?: Int.MAX_VALUE }
+        StaySort.DISTANCE -> compareBy { it.averageAttractionDistanceMeters }
+        StaySort.RATING -> compareByDescending { it.guestRating ?: -1.0 }
+    })
     LazyColumn(contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        items(plan.accommodations, key = { it.id }) { option ->
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(null to "全部价格", 400 to "¥400内", 700 to "¥700内", 1000 to "¥1000内").forEach { (price, title) ->
+                        FilterChip(selected = priceCeiling == price, onClick = { priceCeiling = price }, label = { Text(title) })
+                    }
+                }
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StaySort.entries.forEach { option ->
+                        FilterChip(selected = sort == option, onClick = { sort = option }, label = { Text(option.title) })
+                    }
+                }
+            }
+        }
+        if (filtered.isEmpty()) {
+            item { DataBoundaryCard("这个筛选下暂时没有带价住处，放宽价格后再看看。") }
+        }
+        items(filtered, key = { it.id }) { option ->
             AccommodationCard(option, selected = option.id == plan.selectedAccommodationId, onSelect = { onSelect(option.id) })
         }
         item { DataBoundaryCard("实时价格会注明渠道、口径与抓取时间；税费、早餐、取消政策和最终房型以结算页为准。") }
@@ -668,7 +817,7 @@ private fun StaysContent(plan: CompletePlan, onSelect: (String) -> Unit) {
 @Composable
 private fun AccommodationCard(option: AccommodationOption, selected: Boolean, onSelect: () -> Unit) {
     val context = LocalContext.current
-    val best = option.quotes.filter { it.amountCNY != null }.minByOrNull { it.amountCNY ?: Int.MAX_VALUE }
+    val best = option.quotes.filter { it.isCurrentPrice() }.minByOrNull { it.amountCNY ?: Int.MAX_VALUE }
     Surface(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onSelect, role = Role.RadioButton),
         shape = RoundedCornerShape(22.dp),
@@ -687,7 +836,7 @@ private fun AccommodationCard(option: AccommodationOption, selected: Boolean, on
                     }
                     Text(option.address, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
                 }
-                Text(best?.amountCNY?.let { "¥$it/${best.unit.shortTitle()}" } ?: "待核价", color = if (best != null) TravelOrange else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.titleMedium)
+                Text(best?.priceText() ?: "待核价", color = if (best != null) TravelOrange else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.titleMedium)
             }
             Spacer(Modifier.height(11.dp))
             option.recommendationReasons.forEach { reason ->
@@ -701,8 +850,28 @@ private fun AccommodationCard(option: AccommodationOption, selected: Boolean, on
 
 @Composable
 private fun TransportContent(plan: CompletePlan, onSelect: (String) -> Unit) {
+    var direction by remember(plan.id) { mutableStateOf(TransportDirection.OUTBOUND) }
+    var mode by remember(plan.id) { mutableStateOf<LongDistanceMode?>(null) }
+    val visible = plan.transports.filter { option ->
+        option.direction == direction && (mode == null || option.mode == mode)
+    }
     LazyColumn(contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        items(plan.transports, key = { it.id }) { option ->
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TransportDirection.entries.forEach { option ->
+                        FilterChip(selected = direction == option, onClick = { direction = option }, label = { Text(option.title) })
+                    }
+                }
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf<LongDistanceMode?>(null, LongDistanceMode.TRAIN, LongDistanceMode.FLIGHT, LongDistanceMode.DRIVING).forEach { option ->
+                        FilterChip(selected = mode == option, onClick = { mode = option }, label = { Text(option?.title ?: "全部方式") })
+                    }
+                }
+            }
+        }
+        if (visible.isEmpty()) item { DataBoundaryCard("这一程暂时没有匹配班次；可切换交通方式或刷新当日数据。") }
+        items(visible, key = { it.id }) { option ->
             TransportCard(option, selected = option.id == plan.selectedTransportId, onSelect = { onSelect(option.id) })
         }
         item { DataBoundaryCard("交通推荐会在取得实时班次后按门到门耗时、价格、换乘和酒店接驳重新排序。") }
@@ -712,7 +881,7 @@ private fun TransportContent(plan: CompletePlan, onSelect: (String) -> Unit) {
 @Composable
 private fun TransportCard(option: TransportOption, selected: Boolean, onSelect: () -> Unit) {
     val context = LocalContext.current
-    val quote = option.quotes.minByOrNull { it.amountCNY ?: Int.MAX_VALUE }
+    val quote = option.quotes.filter { it.isCurrentPrice() }.minByOrNull { it.amountCNY ?: Int.MAX_VALUE }
     val icon = when (option.mode) {
         LongDistanceMode.TRAIN -> Icons.Rounded.Train
         LongDistanceMode.FLIGHT -> Icons.Rounded.FlightTakeoff
@@ -736,12 +905,12 @@ private fun TransportCard(option: TransportOption, selected: Boolean, onSelect: 
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Text(quote?.amountCNY?.let { "¥$it" } ?: "待核价", color = if (quote?.amountCNY != null) TravelOrange else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.titleMedium)
+                Text(quote?.priceText() ?: "待核价", color = if (quote?.amountCNY != null) TravelOrange else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.titleMedium)
             }
             Spacer(Modifier.height(10.dp))
             option.recommendationReasons.forEach { Text("· $it", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             option.durationMinutes?.let { Text("· 预计总耗时基线 ${it.durationText()}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            quote?.let { QuoteRow(it, onOpen = { it.bookingURL?.let { url -> openURL(context, url) } }) }
+            option.quotes.forEach { item -> QuoteRow(item, onOpen = { item.bookingURL?.let { url -> openURL(context, url) } }) }
         }
     }
 }
@@ -753,7 +922,7 @@ private fun QuoteRow(quote: PriceQuote, onOpen: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
-            Text("${quote.provider} · ${quote.kind.title}", style = MaterialTheme.typography.labelLarge)
+            Text("${quote.sourceLabel ?: quote.provider} · ${quote.kind.title}", style = MaterialTheme.typography.labelLarge)
             Text(
                 buildString {
                     quote.capturedAt?.let { append("${it.take(16).replace('T', ' ')} 抓取 · ") }
@@ -764,6 +933,9 @@ private fun QuoteRow(quote: PriceQuote, onOpen: () -> Unit) {
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
+        }
+        quote.amountCNY?.let {
+            Text(quote.priceText(), color = TravelOrange, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 6.dp))
         }
         if (quote.bookingURL != null) {
             TextButton(onClick = onOpen, modifier = Modifier.heightIn(min = 48.dp)) {
@@ -824,6 +996,75 @@ private fun EmptyState(icon: ImageVector, title: String, body: String) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AttractionSelectionSheet(
+    state: PlannerUiState,
+    onToggle: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onSkip: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.fillMaxHeight(0.92f)) {
+            Column(Modifier.padding(horizontal = 22.dp, vertical = 8.dp)) {
+                Text("先把想去的地方圈出来", style = MaterialTheme.typography.headlineSmall)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "按公开搜索与城市热度由热门到冷门排列。少选会补入相邻地点，多选会保留并提示行程压力。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    if (state.selectedAttractionIDs.isEmpty()) "尚未勾选，可以直接交给 AnyTravel" else "已勾选 ${state.selectedAttractionIDs.size} 处主游览点",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            LazyColumn(
+                modifier = Modifier.weight(1f).testTag("attraction-list"),
+                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(state.attractionCandidates, key = { it.id }) { place ->
+                    val selected = place.id in state.selectedAttractionIDs
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().clickable(role = Role.Checkbox) { onToggle(place.id) },
+                        shape = RoundedCornerShape(20.dp),
+                        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.56f),
+                        border = if (selected) androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null
+                    ) {
+                        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Surface(shape = CircleShape, color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface) {
+                                Box(Modifier.size(38.dp), contentAlignment = Alignment.Center) {
+                                    if (selected) Icon(Icons.Rounded.Check, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
+                                    else Text(place.popularityRank.toString(), style = MaterialTheme.typography.labelLarge)
+                                }
+                            }
+                            Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                                Text(place.name, style = MaterialTheme.typography.titleMedium)
+                                Text(place.introduction, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            }
+                            Text(place.interest.title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+            }
+            Row(
+                Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 18.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedButton(onClick = onSkip, modifier = Modifier.weight(1f).height(54.dp), shape = RoundedCornerShape(18.dp)) {
+                    Text("跳过，交给 AnyTravel")
+                }
+                Button(onClick = onConfirm, modifier = Modifier.weight(1f).height(54.dp), shape = RoundedCornerShape(18.dp)) {
+                    Text(if (state.selectedAttractionIDs.isEmpty()) "按热门生成" else "按所选生成")
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun PlanningOverlay(destination: String) {
     val reduceMotion = LocalReduceMotion.current
@@ -877,7 +1118,7 @@ private fun SettingsSheet(
         ) {
             item {
                 Text("旅途偏好与价格渠道", style = MaterialTheme.typography.headlineSmall)
-                Text("密钥和平台 Cookie 只留在你自行运行的节点中，App 只保存节点地址。", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+                Text("内置公开数据源会直接读取当日酒店价、航班价与 12306 班次；自建节点可继续补充更多渠道。", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
             }
             item {
                 OutlinedTextField(
@@ -904,7 +1145,7 @@ private fun SettingsSheet(
             item { HorizontalDivider() }
             item {
                 Text("平台入口", style = MaterialTheme.typography.titleLarge)
-                Text("浏览器登录由平台自己处理；Android 首版不会读取登录密码，也不会把网页登录状态冒充为实时接口。", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 5.dp))
+                Text("卡片会标明来源和抓取时间；打开渠道后由平台完成登录、锁价与下单。", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 5.dp))
             }
             item { ProviderLink("携程", "酒店与交通", "https://m.ctrip.com/html5/") { openURL(context, it) } }
             item { ProviderLink("去哪儿", "酒店与交通", "https://touch.qunar.com/") { openURL(context, it) } }
@@ -990,9 +1231,24 @@ private fun SavedTripsSheet(
 }
 
 @Composable
-private fun DragHandle() {
-    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+private fun DragHandle(modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         Box(Modifier.size(38.dp, 5.dp).clip(CircleShape).background(MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)))
+    }
+}
+
+private fun Modifier.panelDrag(
+    onStart: () -> Unit,
+    onDelta: (Float) -> Unit,
+    onEnd: () -> Unit
+): Modifier = pointerInput(onStart, onDelta, onEnd) {
+    detectVerticalDragGestures(
+        onDragStart = { onStart() },
+        onDragEnd = onEnd,
+        onDragCancel = onEnd
+    ) { change, amount ->
+        change.consume()
+        onDelta(amount)
     }
 }
 
@@ -1002,6 +1258,25 @@ private fun PlanTab.icon(): ImageVector = when (this) {
     PlanTab.TRANSPORT -> Icons.Rounded.Train
     PlanTab.COSTS -> Icons.Rounded.Payments
 }
+
+private enum class StaySort(val title: String) {
+    RECOMMENDED("推荐"),
+    PRICE("价格"),
+    DISTANCE("离景点近"),
+    RATING("评分")
+}
+
+private fun PriceQuote.priceText(): String {
+    val base = displayPriceText ?: amountCNY?.let { "¥$it" } ?: return "待核价"
+    return if ('/' in base) base else when (unit) {
+        QuoteUnit.PER_NIGHT -> "$base/晚"
+        QuoteUnit.PER_PERSON -> "$base/人"
+        QuoteUnit.TOTAL -> "$base/总价"
+    }
+}
+
+private fun PriceQuote.isCurrentPrice(): Boolean =
+    amountCNY != null && (kind == QuoteKind.LIVE || kind == QuoteKind.INDICATIVE)
 
 private fun QuoteUnit.shortTitle(): String = when (this) {
     QuoteUnit.PER_NIGHT -> "晚"

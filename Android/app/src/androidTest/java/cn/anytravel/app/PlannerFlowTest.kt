@@ -42,6 +42,10 @@ class PlannerFlowTest {
         composeRule.onNodeWithTag("draft-list").performScrollToNode(hasTestTag("generate-plan"))
         composeRule.onNodeWithTag("generate-plan").performClick()
         composeRule.waitUntil(timeoutMillis = 12_000) {
+            composeRule.onAllNodes(hasText("跳过，交给 AnyTravel")).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("跳过，交给 AnyTravel").performClick()
+        composeRule.waitUntil(timeoutMillis = 12_000) {
             composeRule.onAllNodes(hasText("苏州 · 3天")).fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText("苏州 · 3天").assertIsDisplayed()

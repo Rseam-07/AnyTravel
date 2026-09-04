@@ -104,7 +104,8 @@ class PricingClient {
             origin = draft.origin,
             destination = draft.destination,
             departureDate = draft.startDate,
-            returnDate = LocalDate.parse(draft.startDate).plusDays(draft.dayCount.toLong()).toString(),
+            returnDate = LocalDate.parse(draft.startDate)
+                .plusDays((draft.dayCount - 1).coerceAtLeast(0).toLong()).toString(),
             adults = draft.travelers,
             modes = listOf("train", "flight")
         )
@@ -216,7 +217,8 @@ class PricingClient {
 data class PricingRefreshResult(
     val accommodationQuotes: Map<String, List<PriceQuote>>,
     val transports: List<TransportOption>,
-    val message: String
+    val message: String,
+    val discoveredAccommodations: List<AccommodationOption> = emptyList()
 )
 
 class PricingException(message: String) : Exception(message)

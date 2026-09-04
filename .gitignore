@@ -29,6 +29,7 @@ exports/
 Android/.gradle/
 Android/.idea/
 Android/local.properties
+Android/secrets.properties
 Android/**/build/
 Android/.kotlin/
 .gradle-user-home/

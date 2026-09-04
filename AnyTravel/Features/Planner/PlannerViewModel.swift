@@ -12,6 +12,24 @@ final class PlannerViewModel {
         var selectedPlaceID: TravelPlace.ID?
     }
 
+    private enum TransportQuoteSource: Equatable {
+        case backend
+        case railway
+        case fliggy
+        case qunar
+    }
+
+    private struct TransportQuoteOutcome {
+        var source: TransportQuoteSource
+        var result: PricingEnrichmentResult<[TransportOption]>?
+        var issue: PricingProviderIssue?
+    }
+
+    private struct BackgroundTransportOutcome {
+        var result: PricingEnrichmentResult<[TransportOption]>?
+        var failure: String?
+    }
+
     enum RecoveryAction {
         case resolveDestination
         case generatePlan
@@ -119,6 +137,7 @@ final class PlannerViewModel {
     @ObservationIgnored private var didBootstrap = false
     @ObservationIgnored private var plannedAttractionPlaces: [TravelPlace] = []
     @ObservationIgnored private var pendingPlanNoticeMessage: String?
+    @ObservationIgnored private var manuallySelectedAccommodationID: AccommodationOption.ID?
 
     init(
         searchService: MapSearchService = MapSearchService(),
@@ -424,7 +443,14 @@ final class PlannerViewModel {
         }
 
         if ProcessInfo.processInfo.arguments.contains("--ui-test-ready") {
-            seedUITestTrip()
+            if ProcessInfo.processInfo.arguments.contains("--ui-test-live-flight") {
+                seedUITestLiveFlightTrip()
+            } else {
+                seedUITestTrip()
+            }
+            if ProcessInfo.processInfo.arguments.contains("--ui-test-live-pricing") {
+                refreshLogisticsInBackground()
+            }
             return
         }
 
@@ -634,6 +660,49 @@ final class PlannerViewModel {
         phase = .ready
         fitCurrentDay(animated: false)
     }
+
+    private func seedUITestLiveFlightTrip() {
+        seedUITestTrip()
+        draft.destination = "天津市"
+        draft.logistics.origin = "宁波"
+        draft.logistics.preferredLongDistanceMode = .flight
+        let center = Coordinate(latitude: 39.0842, longitude: 117.2009)
+        destination = DestinationResolution(
+            title: "天津市",
+            coordinate: center,
+            region: MKCoordinateRegion(
+                center: center.clLocationCoordinate,
+                span: MKCoordinateSpan(latitudeDelta: 0.16, longitudeDelta: 0.16)
+            )
+        )
+        itineraryDays = [
+            ItineraryDay(
+                index: 0,
+                stops: [
+                    TravelPlace(
+                        name: "天津博物馆",
+                        address: "天津市河西区平江道62号",
+                        coordinate: Coordinate(latitude: 39.0848, longitude: 117.2197),
+                        interest: .culture
+                    )
+                ]
+            )
+        ]
+        accommodations = []
+        selectedAccommodationID = nil
+        accessPoints = [
+            AccessPoint(
+                name: "天津滨海国际机场",
+                coordinate: Coordinate(latitude: 39.1244, longitude: 117.3462),
+                kind: .airport
+            )
+        ]
+        transportOptions = []
+        selectedTransportID = nil
+        returnTransportOptions = []
+        selectedReturnTransportID = nil
+        fitCurrentDay(animated: false)
+    }
     #endif
 
     func resolveDestination() async {
@@ -756,6 +825,7 @@ final class PlannerViewModel {
         noticeMessage = nil
         errorMessage = nil
         quoteRefreshState = .idle
+        manuallySelectedAccommodationID = nil
         returnTransportOptions = []
         selectedReturnTransportID = nil
         clearLocalTransfers()
@@ -1726,6 +1796,7 @@ final class PlannerViewModel {
         if let snapshot = trip.logisticsSnapshot {
             accommodations = snapshot.accommodations
             selectedAccommodationID = snapshot.selectedAccommodationID
+            manuallySelectedAccommodationID = snapshot.selectedAccommodationID
             transportOptions = snapshot.transportOptions
             selectedTransportID = snapshot.selectedTransportID
             returnTransportOptions = snapshot.returnTransportOptions ?? []
@@ -1744,6 +1815,7 @@ final class PlannerViewModel {
         } else {
             accommodations = []
             selectedAccommodationID = nil
+            manuallySelectedAccommodationID = nil
             accessPoints = []
             transportOptions = []
             selectedTransportID = nil
@@ -1998,6 +2070,8 @@ final class PlannerViewModel {
             }
         }
 
+        let previousAccommodationName = selectedAccommodation?.name
+        var accommodationDiscovery: AccommodationDiscoveryResult?
         if draft.logistics.skipAccommodation {
             accommodations = []
             selectedAccommodationID = nil
@@ -2006,17 +2080,72 @@ final class PlannerViewModel {
                 destinationName: draft.destination
             )
         } else {
-            let previousName = selectedAccommodation?.name
-            var discovery = await logisticsSearchService.discoverAccommodations(
+            let discovery = await logisticsSearchService.discoverAccommodations(
                 around: destination,
                 itineraryDays: itineraryDays,
                 draft: draft
             )
             guard !Task.isCancelled else { return }
-            logisticsStatusMessage = draft.logistics.hasDates ? "正在把当天的住宿价格带回来" : "正在沿景点整理合适的落脚处"
+            accommodationDiscovery = discovery
+            publishAccommodationDiscovery(discovery, preserving: previousAccommodationName)
+        }
+
+        // Put the useful unpriced cards and transport skeleton on screen first.
+        // Hotel, rail and flight providers can then work concurrently instead of
+        // making the user wait for every upstream source in sequence.
+        logisticsStatusMessage = "正在把抵达方式与落脚处接在一起"
+        originResolution = nil
+        if !trimmedOrigin.isEmpty {
+            originResolution = try? await searchService.resolveDestination(trimmedOrigin)
+        }
+        guard !Task.isCancelled else { return }
+        rebuildTransportOptions()
+        let transportTask: Task<BackgroundTransportOutcome, Never>? = canRequestTransportQuotes
+            ? Task { [weak self] in
+                guard let self else { return BackgroundTransportOutcome(result: nil, failure: nil) }
+                do {
+                    return BackgroundTransportOutcome(result: try await self.refreshTransportQuotes(), failure: nil)
+                } catch is CancellationError {
+                    return BackgroundTransportOutcome(result: nil, failure: nil)
+                } catch {
+                    return BackgroundTransportOutcome(result: nil, failure: Self.pricingFailureText(error))
+                }
+            }
+            : nil
+        defer { transportTask?.cancel() }
+
+        if var discovery = accommodationDiscovery {
+            logisticsStatusMessage = draft.logistics.hasDates
+                ? "正在同时读取酒店、班次与这一刻的价格"
+                : "正在沿景点整理合适的落脚处"
             if canRequestAccommodationQuotes {
                 let anchors = itineraryDays.compactMap { $0.stops.first?.name }
-                var backendReturnedRollingGoPrice = false
+                // The embedded source is normally the quickest path to a visible
+                // price, so publish it before waiting for an optional companion.
+                if rollingGoDirectClient.isConfigured {
+                    do {
+                        let catalog = try await rollingGoDirectClient.searchAccommodationCatalog(
+                            destination: draft.destination,
+                            logistics: draft.logistics,
+                            anchors: anchors
+                        )
+                        discovery = await logisticsSearchService.mergingCatalog(
+                            catalog.value,
+                            into: discovery,
+                            around: destination,
+                            itineraryDays: itineraryDays,
+                            draft: draft
+                        )
+                        publishAccommodationDiscovery(discovery, preserving: previousAccommodationName)
+                        receivedQuoteCount += catalog.receivedCount
+                        latestCapture = max(latestCapture ?? catalog.capturedAt, catalog.capturedAt)
+                        allResultsCached = allResultsCached && catalog.isCached
+                        pricingIssues.append(contentsOf: catalog.issues.map(\.message))
+                    } catch {
+                        pricingFailures.append(Self.pricingFailureText(error))
+                    }
+                }
+
                 if pricingBackendClient.isConfigured {
                     do {
                         let catalog = try await pricingBackendClient.searchAccommodationCatalog(
@@ -2031,35 +2160,7 @@ final class PlannerViewModel {
                             itineraryDays: itineraryDays,
                             draft: draft
                         )
-                        backendReturnedRollingGoPrice = catalog.value
-                            .flatMap(\.quotes)
-                            .contains { $0.provider == .rollingGo && $0.amountCNY != nil }
-                        receivedQuoteCount += catalog.receivedCount
-                        latestCapture = max(latestCapture ?? catalog.capturedAt, catalog.capturedAt)
-                        allResultsCached = allResultsCached && catalog.isCached
-                        pricingIssues.append(contentsOf: catalog.issues.map(\.message))
-                    } catch {
-                        pricingFailures.append(Self.pricingFailureText(error))
-                    }
-                }
-
-                // A stale or unreachable companion URL must never disable the
-                // embedded hotel source. Skip the second call only when the
-                // companion already delivered a concrete RollingGo price.
-                if rollingGoDirectClient.isConfigured, !backendReturnedRollingGoPrice {
-                    do {
-                        let catalog = try await rollingGoDirectClient.searchAccommodationCatalog(
-                            destination: draft.destination,
-                            logistics: draft.logistics,
-                            anchors: anchors
-                        )
-                        discovery = await logisticsSearchService.mergingCatalog(
-                            catalog.value,
-                            into: discovery,
-                            around: destination,
-                            itineraryDays: itineraryDays,
-                            draft: draft
-                        )
+                        publishAccommodationDiscovery(discovery, preserving: previousAccommodationName)
                         receivedQuoteCount += catalog.receivedCount
                         latestCapture = max(latestCapture ?? catalog.capturedAt, catalog.capturedAt)
                         allResultsCached = allResultsCached && catalog.isCached
@@ -2069,15 +2170,15 @@ final class PlannerViewModel {
                     }
                 }
             }
-            var updatedAccommodations = discovery.options
             if canRequestBackendQuotes {
                 do {
                     let result = try await pricingBackendClient.enrichAccommodationQuotes(
-                        updatedAccommodations,
+                        discovery.options,
                         destination: draft.destination,
                         logistics: draft.logistics
                     )
-                    updatedAccommodations = result.value
+                    discovery.options = result.value
+                    publishAccommodationDiscovery(discovery, preserving: previousAccommodationName)
                     receivedQuoteCount += result.receivedCount
                     latestCapture = max(latestCapture ?? result.capturedAt, result.capturedAt)
                     allResultsCached = allResultsCached && result.isCached
@@ -2086,36 +2187,18 @@ final class PlannerViewModel {
                     pricingFailures.append(Self.pricingFailureText(error))
                 }
             }
-            guard !Task.isCancelled else { return }
-            if UIAccessibility.isReduceMotionEnabled {
-                accommodations = updatedAccommodations
-            } else {
-                withAnimation(.spring(response: 0.48, dampingFraction: 0.86)) {
-                    accommodations = updatedAccommodations
-                }
-            }
-            accessPoints = discovery.accessPoints
-            selectedAccommodationID = accommodations.first(where: { $0.name == previousName })?.id
-                ?? accommodations.first?.id
         }
 
-        logisticsStatusMessage = "正在把抵达方式与落脚处接在一起"
-        originResolution = nil
-        if !trimmedOrigin.isEmpty {
-            originResolution = try? await searchService.resolveDestination(trimmedOrigin)
-        }
         guard !Task.isCancelled else { return }
-        rebuildTransportOptions()
-        if canRequestTransportQuotes {
-            logisticsStatusMessage = "正在读取班次、余票与这一刻的价格"
-            do {
-                let result = try await refreshTransportQuotes()
+        if let transportOutcome = await transportTask?.value {
+            if let result = transportOutcome.result {
                 receivedQuoteCount += result.receivedCount
                 latestCapture = max(latestCapture ?? result.capturedAt, result.capturedAt)
                 allResultsCached = allResultsCached && result.isCached
                 pricingIssues.append(contentsOf: result.issues.map(\.message))
-            } catch {
-                pricingFailures.append(Self.pricingFailureText(error))
+            }
+            if let failure = transportOutcome.failure {
+                pricingFailures.append(failure)
             }
         }
 
@@ -2161,8 +2244,40 @@ final class PlannerViewModel {
         }
     }
 
+    private func publishAccommodationDiscovery(
+        _ discovery: AccommodationDiscoveryResult,
+        preserving previousName: String?
+    ) {
+        if UIAccessibility.isReduceMotionEnabled {
+            accommodations = discovery.options
+        } else {
+            withAnimation(.spring(response: 0.48, dampingFraction: 0.86)) {
+                accommodations = discovery.options
+            }
+        }
+        accessPoints = discovery.accessPoints
+        let manualChoice = manuallySelectedAccommodationID.flatMap { currentID in
+            accommodations.first(where: { $0.id == currentID })
+        }
+        let previousChoice = accommodations.first(where: { $0.name == previousName })
+            ?? selectedAccommodationID.flatMap { currentID in
+                accommodations.first(where: { $0.id == currentID })
+            }
+        let lowestCurrentPrice = accommodations
+            .filter { $0.bestPricedQuote != nil }
+            .min {
+                ($0.bestPricedQuote?.amountCNY ?? .max) < ($1.bestPricedQuote?.amountCNY ?? .max)
+            }
+        selectedAccommodationID = manualChoice?.id
+            ?? (previousChoice?.bestPricedQuote != nil ? previousChoice?.id : nil)
+            ?? lowestCurrentPrice?.id
+            ?? previousChoice?.id
+            ?? accommodations.first?.id
+    }
+
     func selectAccommodation(_ option: AccommodationOption) {
         selectedAccommodationID = option.id
+        manuallySelectedAccommodationID = option.id
         selectedPlaceID = nil
         returnTransportOptions = []
         selectedReturnTransportID = nil
@@ -2423,113 +2538,99 @@ final class PlannerViewModel {
     private func refreshTransportQuotes() async throws -> PricingEnrichmentResult<[TransportOption]> {
         let previousOutboundTitle = selectedTransport?.title
         let previousReturnTitle = selectedReturnTransport?.title
+        let previousOutboundMode = selectedTransport?.mode
+        let previousReturnMode = selectedReturnTransport?.mode
         let currentOptions = transportOptions + returnTransportOptions
+        let origin = draft.logistics.origin
+        let destinationName = draft.destination
+        let logistics = draft.logistics
+        let currentAccessPoints = accessPoints
+        let accommodation = selectedAccommodation
+        async let backendOutcome = transportQuoteOutcome(
+            source: .backend,
+            enabled: pricingBackendClient.isConfigured,
+            currentOptions: currentOptions,
+            origin: origin,
+            destination: destinationName,
+            logistics: logistics,
+            accessPoints: currentAccessPoints,
+            accommodation: accommodation
+        )
+        async let railwayOutcome = transportQuoteOutcome(
+            source: .railway,
+            enabled: true,
+            currentOptions: currentOptions,
+            origin: origin,
+            destination: destinationName,
+            logistics: logistics,
+            accessPoints: currentAccessPoints,
+            accommodation: accommodation
+        )
+        async let fliggyOutcome = transportQuoteOutcome(
+            source: .fliggy,
+            enabled: true,
+            currentOptions: currentOptions,
+            origin: origin,
+            destination: destinationName,
+            logistics: logistics,
+            accessPoints: currentAccessPoints,
+            accommodation: accommodation
+        )
+        async let qunarOutcome = transportQuoteOutcome(
+            source: .qunar,
+            enabled: true,
+            currentOptions: currentOptions,
+            origin: origin,
+            destination: destinationName,
+            logistics: logistics,
+            accessPoints: currentAccessPoints,
+            accommodation: accommodation
+        )
+        let outcomes = await [backendOutcome, railwayOutcome, fliggyOutcome, qunarOutcome]
+        guard !Task.isCancelled else { throw CancellationError() }
+
         var result = PricingEnrichmentResult(
             value: currentOptions,
             receivedCount: 0,
             capturedAt: Date.now,
-            isCached: false,
+            isCached: true,
             issues: []
         )
-        if pricingBackendClient.isConfigured {
-            do {
-                result = try await pricingBackendClient.enrichTransportOptions(
-                    currentOptions,
-                    origin: draft.logistics.origin,
-                    destination: draft.destination,
-                    logistics: draft.logistics,
-                    accessPoints: accessPoints,
-                    accommodation: selectedAccommodation
-                )
-            } catch {
-                result.issues.insert(
-                    PricingProviderIssue(
-                        provider: "报价节点",
-                        status: "failed",
-                        detail: "多渠道节点暂未抵达，已改由应用内实时来源继续：\(Self.pricingFailureText(error))"
-                    ),
-                    at: 0
-                )
+        var activeResultCount = 0
+        for outcome in outcomes {
+            if let issue = outcome.issue { result.issues.append(issue) }
+            guard let enrichment = outcome.result else { continue }
+            activeResultCount += 1
+            result.receivedCount += enrichment.receivedCount
+            result.capturedAt = max(result.capturedAt, enrichment.capturedAt)
+            result.isCached = result.isCached && enrichment.isCached
+            result.issues.append(contentsOf: enrichment.issues)
+            switch outcome.source {
+            case .backend:
+                result.value = enrichment.value
+            case .railway:
+                let incoming = enrichment.value.filter { option in
+                    option.mode == .train && option.quotes.contains { $0.provider == .railway12306 }
+                }
+                result.value = NativeRailwayOptionMerger.merging(incoming, into: result.value)
+            case .fliggy, .qunar:
+                let provider: TravelProvider = outcome.source == .fliggy ? .fliggy : .qunar
+                for direction in [TransportDirection.outbound, .returnTrip] {
+                    let incoming = enrichment.value.filter { option in
+                        option.mode == .flight
+                            && option.journeyDirection == direction
+                            && option.quotes.contains { $0.provider == provider }
+                    }
+                    result.value = NativeFlightOptionMerger.merging(
+                        incoming,
+                        into: result.value,
+                        provider: provider,
+                        direction: direction
+                    )
+                }
             }
         }
-
-        do {
-            let railwayResult = try await railway12306DirectClient.enrichTransportOptions(
-                result.value,
-                origin: draft.logistics.origin,
-                destination: draft.destination,
-                logistics: draft.logistics,
-                accessPoints: accessPoints,
-                accommodation: selectedAccommodation
-            )
-            result.value = railwayResult.value
-            result.receivedCount += railwayResult.receivedCount
-            result.capturedAt = max(result.capturedAt, railwayResult.capturedAt)
-            result.isCached = result.isCached && railwayResult.isCached
-            result.issues.append(contentsOf: railwayResult.issues)
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            result.issues.append(
-                PricingProviderIssue(
-                    provider: "12306",
-                    status: "failed",
-                    detail: Self.pricingFailureText(error)
-                )
-            )
-        }
-
-        do {
-            let fliggyResult = try await fliggyFlightDirectClient.enrichTransportOptions(
-                result.value,
-                origin: draft.logistics.origin,
-                destination: draft.destination,
-                logistics: draft.logistics,
-                accessPoints: accessPoints,
-                accommodation: selectedAccommodation
-            )
-            result.value = fliggyResult.value
-            result.receivedCount += fliggyResult.receivedCount
-            result.capturedAt = max(result.capturedAt, fliggyResult.capturedAt)
-            result.isCached = result.isCached && fliggyResult.isCached
-            result.issues.append(contentsOf: fliggyResult.issues)
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            result.issues.append(
-                PricingProviderIssue(
-                    provider: "fliggy",
-                    status: "failed",
-                    detail: Self.pricingFailureText(error)
-                )
-            )
-        }
-
-        do {
-            let qunarResult = try await qunarFlightDirectClient.enrichTransportOptions(
-                result.value,
-                origin: draft.logistics.origin,
-                destination: draft.destination,
-                logistics: draft.logistics,
-                accessPoints: accessPoints,
-                accommodation: selectedAccommodation
-            )
-            result.value = qunarResult.value
-            result.receivedCount += qunarResult.receivedCount
-            result.capturedAt = max(result.capturedAt, qunarResult.capturedAt)
-            result.isCached = result.isCached && qunarResult.isCached
-            result.issues.append(contentsOf: qunarResult.issues)
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            result.issues.append(
-                PricingProviderIssue(
-                    provider: "qunar",
-                    status: "failed",
-                    detail: Self.pricingFailureText(error)
-                )
-            )
-        }
+        if activeResultCount == 0 { result.isCached = false }
         guard !Task.isCancelled else { throw CancellationError() }
         let outboundOptions = result.value.filter { $0.journeyDirection == .outbound }
         let inboundOptions = result.value.filter { $0.journeyDirection == .returnTrip }
@@ -2542,17 +2643,106 @@ final class PlannerViewModel {
                 returnTransportOptions = inboundOptions
             }
         }
-        if !transportOptions.contains(where: { $0.id == selectedTransportID }) {
-            selectedTransportID = transportOptions.first(where: { $0.title == previousOutboundTitle })?.id
+        let selectedOutbound = transportOptions.first(where: { $0.id == selectedTransportID })
+        if selectedOutbound == nil
+            || (!selectedOutbound!.quotes.contains(where: \.isCurrentPrice)
+                && transportOptions.contains {
+                    $0.mode == previousOutboundMode && $0.quotes.contains(where: \.isCurrentPrice)
+                }) {
+            selectedTransportID = transportOptions.first {
+                $0.mode == previousOutboundMode && $0.quotes.contains(where: \.isCurrentPrice)
+            }?.id
+                ?? transportOptions.first(where: { $0.quotes.contains(where: \.isCurrentPrice) })?.id
+                ?? transportOptions.first(where: { $0.title == previousOutboundTitle })?.id
                 ?? transportOptions.first(where: \.isRecommended)?.id
                 ?? transportOptions.first?.id
         }
-        if !returnTransportOptions.contains(where: { $0.id == selectedReturnTransportID }) {
-            selectedReturnTransportID = returnTransportOptions.first(where: { $0.title == previousReturnTitle })?.id
+        let selectedReturn = returnTransportOptions.first(where: { $0.id == selectedReturnTransportID })
+        if selectedReturn == nil
+            || (!selectedReturn!.quotes.contains(where: \.isCurrentPrice)
+                && returnTransportOptions.contains {
+                    $0.mode == previousReturnMode && $0.quotes.contains(where: \.isCurrentPrice)
+                }) {
+            selectedReturnTransportID = returnTransportOptions.first {
+                $0.mode == previousReturnMode && $0.quotes.contains(where: \.isCurrentPrice)
+            }?.id
+                ?? returnTransportOptions.first(where: { $0.quotes.contains(where: \.isCurrentPrice) })?.id
+                ?? returnTransportOptions.first(where: { $0.title == previousReturnTitle })?.id
                 ?? returnTransportOptions.first(where: \.isRecommended)?.id
                 ?? returnTransportOptions.first?.id
         }
         return result
+    }
+
+    private func transportQuoteOutcome(
+        source: TransportQuoteSource,
+        enabled: Bool,
+        currentOptions: [TransportOption],
+        origin: String,
+        destination: String,
+        logistics: TripLogistics,
+        accessPoints: [AccessPoint],
+        accommodation: AccommodationOption?
+    ) async -> TransportQuoteOutcome {
+        guard enabled else { return TransportQuoteOutcome(source: source, result: nil, issue: nil) }
+        do {
+            let result = switch source {
+            case .backend:
+                try await pricingBackendClient.enrichTransportOptions(
+                    currentOptions,
+                    origin: origin,
+                    destination: destination,
+                    logistics: logistics,
+                    accessPoints: accessPoints,
+                    accommodation: accommodation
+                )
+            case .railway:
+                try await railway12306DirectClient.enrichTransportOptions(
+                    currentOptions,
+                    origin: origin,
+                    destination: destination,
+                    logistics: logistics,
+                    accessPoints: accessPoints,
+                    accommodation: accommodation
+                )
+            case .fliggy:
+                try await fliggyFlightDirectClient.enrichTransportOptions(
+                    currentOptions,
+                    origin: origin,
+                    destination: destination,
+                    logistics: logistics,
+                    accessPoints: accessPoints,
+                    accommodation: accommodation
+                )
+            case .qunar:
+                try await qunarFlightDirectClient.enrichTransportOptions(
+                    currentOptions,
+                    origin: origin,
+                    destination: destination,
+                    logistics: logistics,
+                    accessPoints: accessPoints,
+                    accommodation: accommodation
+                )
+            }
+            return TransportQuoteOutcome(source: source, result: result, issue: nil)
+        } catch is CancellationError {
+            return TransportQuoteOutcome(source: source, result: nil, issue: nil)
+        } catch {
+            let provider = switch source {
+            case .backend: "报价节点"
+            case .railway: "12306"
+            case .fliggy: "fliggy"
+            case .qunar: "qunar"
+            }
+            let detail = source == .backend
+                ? "多渠道节点暂未抵达，已改由应用内实时来源继续：\(Self.pricingFailureText(error))"
+                : Self.pricingFailureText(error)
+            return TransportQuoteOutcome(
+                source: source,
+                result: nil,
+                issue: PricingProviderIssue(provider: provider, status: "failed", detail: detail)
+            )
+        }
     }
 
     private static func pricingFailureText(_ error: Error) -> String {
@@ -2601,6 +2791,7 @@ final class PlannerViewModel {
         planMapFocus = .itinerary
         accommodations = []
         selectedAccommodationID = nil
+        manuallySelectedAccommodationID = nil
         accessPoints = []
         transportOptions = []
         selectedTransportID = nil

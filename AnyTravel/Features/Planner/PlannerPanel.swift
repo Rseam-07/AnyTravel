@@ -1536,9 +1536,10 @@ struct PlannerPanel: View {
                         .foregroundStyle(pricedQuote == nil ? AnyTravelPalette.routeDark : AnyTravelPalette.warm)
                     Spacer()
                     if let pricedQuote {
-                        Text(pricedQuote.kind.title)
+                        Text("\(pricedQuote.provider.title) · \(pricedQuote.kind.title)")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                     if channelCount > 1 {
                         Text("\(channelCount)家比价")
@@ -1562,7 +1563,15 @@ struct PlannerPanel: View {
             .shadow(color: selected ? AnyTravelPalette.route.opacity(0.16) : .clear, radius: 10, y: 5)
         }
         .buttonStyle(AnyTravelPressStyle())
-        .accessibilityLabel("\(option.name)，\(pricedQuote?.priceText ?? "等待报价")")
+        .accessibilityLabel(
+            [
+                option.name,
+                pricedQuote?.priceText ?? "等待报价",
+                pricedQuote.map { "\($0.provider.title)，\($0.kind.title)" }
+            ]
+            .compactMap { $0 }
+            .joined(separator: "，")
+        )
         .accessibilityAddTraits(selected ? .isSelected : [])
         .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: selected)
     }
@@ -1573,7 +1582,7 @@ struct PlannerPanel: View {
             : model.selectedTransportID == option.id
         let duration = option.durationMinutes.map(transportDurationText) ?? "耗时待比较"
         let pricedQuote = option.quotes
-            .filter { $0.amountCNY != nil && $0.kind != .demo }
+            .filter(\.isCurrentPrice)
             .min { ($0.amountCNY ?? .max) < ($1.amountCNY ?? .max) }
         return Button {
             model.selectTransport(option)
@@ -1640,7 +1649,15 @@ struct PlannerPanel: View {
         }
         .buttonStyle(AnyTravelPressStyle())
         .accessibilityIdentifier("transport-option-\(option.journeyDirection.rawValue)-\(option.id.uuidString)")
-        .accessibilityLabel("\(option.title)，\(pricedQuote?.priceText ?? "等待报价")")
+        .accessibilityLabel(
+            [
+                option.title,
+                pricedQuote?.priceText ?? "等待报价",
+                pricedQuote.map { "\($0.provider.title)，\($0.kind.title)" }
+            ]
+            .compactMap { $0 }
+            .joined(separator: "，")
+        )
         .accessibilityAddTraits(selected ? .isSelected : [])
         .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: selected)
     }

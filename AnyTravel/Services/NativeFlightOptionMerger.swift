@@ -12,11 +12,11 @@ enum NativeFlightOptionMerger {
         for index in output.indices where output[index].mode == .flight && output[index].journeyDirection == direction {
             output[index].quotes.removeAll { $0.provider == provider }
         }
-        if !incoming.isEmpty {
+        if incoming.contains(where: hasCurrentPrice) {
             output.removeAll { option in
                 option.mode == .flight
                     && option.journeyDirection == direction
-                    && option.quotes.allSatisfy { $0.amountCNY == nil }
+                    && !hasCurrentPrice(option)
             }
         }
 
@@ -48,6 +48,10 @@ enum NativeFlightOptionMerger {
                 && incoming.contains(where: { matches($0, option) })
         }
         return output.sorted(by: compare)
+    }
+
+    private static func hasCurrentPrice(_ option: TransportOption) -> Bool {
+        option.quotes.contains(where: \.isCurrentPrice)
     }
 
     private static func matches(_ lhs: TransportOption, _ rhs: TransportOption) -> Bool {
@@ -87,6 +91,7 @@ enum NativeFlightOptionMerger {
             }
         }
         return output.sorted {
+            if $0.isCurrentPrice != $1.isCurrentPrice { return $0.isCurrentPrice }
             if ($0.amountCNY != nil) != ($1.amountCNY != nil) { return $0.amountCNY != nil }
             return ($0.amountCNY ?? .max) < ($1.amountCNY ?? .max)
         }
@@ -121,10 +126,11 @@ enum NativeFlightOptionMerger {
 
     private static func compare(_ lhs: TransportOption, _ rhs: TransportOption) -> Bool {
         if lhs.journeyDirection != rhs.journeyDirection { return lhs.journeyDirection == .outbound }
+        if hasCurrentPrice(lhs) != hasCurrentPrice(rhs) { return hasCurrentPrice(lhs) }
         if lhs.isRecommended != rhs.isRecommended { return lhs.isRecommended }
         if lhs.mode != rhs.mode { return lhs.mode.rawValue < rhs.mode.rawValue }
-        let lhsPrice = lhs.quotes.compactMap(\.amountCNY).min() ?? .max
-        let rhsPrice = rhs.quotes.compactMap(\.amountCNY).min() ?? .max
+        let lhsPrice = lhs.quotes.filter(\.isCurrentPrice).compactMap(\.amountCNY).min() ?? .max
+        let rhsPrice = rhs.quotes.filter(\.isCurrentPrice).compactMap(\.amountCNY).min() ?? .max
         if lhsPrice != rhsPrice { return lhsPrice < rhsPrice }
         if lhs.departureTime != rhs.departureTime {
             return (lhs.departureTime ?? .distantFuture) < (rhs.departureTime ?? .distantFuture)
