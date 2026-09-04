@@ -14,7 +14,7 @@ object DestinationCatalog {
         center = Coordinate(31.3050, 120.6200),
         places = listOf(
             place("拙政园", "姑苏区东北街178号", 31.3246, 120.6247, TripInterest.GARDENS, "从水院、长廊与漏窗之间慢慢读懂江南园林。", 1, 150),
-            place("苏州博物馆", "姑苏区东北街204号", 31.3247, 120.6224, TripInterest.CULTURE, "贝聿铭设计的新馆把粉墙黛瓦与现代几何安放在一起。", 2, 150),
+            place("苏州博物馆", "姑苏区东北街204号", 31.3247, 120.6224, TripInterest.CULTURE, "贝聿铭设计的新馆把粉墙黛瓦与现代几何安放在一起。", 2, 150, "Mo off; Tu-Su 09:00-17:00"),
             place("平江路历史街区", "姑苏区平江路", 31.3118, 120.6307, TripInterest.FOOD, "沿河走一段旧城肌理，在桥、巷与小店之间留出闲坐时间。", 3, 120),
             place("虎丘山风景名胜区", "姑苏区虎丘山门内8号", 31.3382, 120.5765, TripInterest.NATURE, "山不高，却把古塔、剑池与吴地传说叠在一条缓坡上。", 4, 150),
             place("留园", "姑苏区留园路338号", 31.3155, 120.5848, TripInterest.GARDENS, "以精巧空间和太湖石闻名，适合避开匆忙的人流细看。", 5, 120),
@@ -51,7 +51,8 @@ object DestinationCatalog {
         interest: TripInterest,
         introduction: String,
         popularityRank: Int,
-        suggestedVisitMinutes: Int
+        suggestedVisitMinutes: Int,
+        openingHoursWeek: String? = null
     ) = TravelPlace(
         name = name,
         address = address,
@@ -60,6 +61,7 @@ object DestinationCatalog {
         introduction = introduction,
         source = "人工核对的公开地理信息",
         popularityRank = popularityRank,
-        suggestedVisitMinutes = suggestedVisitMinutes
+        suggestedVisitMinutes = suggestedVisitMinutes,
+        openingHoursWeek = openingHoursWeek
     )
 }

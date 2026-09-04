@@ -1,77 +1,76 @@
 # AnyTravel 接力交接
 
-> 更新于 2026-09-03，记录 iOS 0.7.0 发布候选的真实工程状态。目标与后续里程碑见 [PLAN_TO_1_0](PLAN_TO_1_0.md)，功能清单见 [FEATURE_ROADMAP](FEATURE_ROADMAP.md)，价格来源见 [DATA_CHANNELS](DATA_CHANNELS.md)。
+> 更新于 2026-09-04，记录 0.8.0 发布候选的真实工程状态。目标见 [PLAN_TO_1_0](PLAN_TO_1_0.md)，功能清单见 [FEATURE_ROADMAP](FEATURE_ROADMAP.md)，价格来源见 [DATA_CHANNELS](DATA_CHANNELS.md)，资料许可见 [THIRD_PARTY_DATA](THIRD_PARTY_DATA.md)。
 
-## 仓库与构建
+## 仓库与版本
 
 - 工作目录：`/Users/conrad/Documents/ChatGPT/AnyTravel`
 - 远端：`https://github.com/Rseam-07/AnyTravel.git`
 - 分支：`main`
 - iOS Bundle Identifier：`com.anytravel.app`
-- 0.7.0：`MARKETING_VERSION = 0.7.0`，`CURRENT_PROJECT_VERSION = 13`
-- 工程以 `project.yml` 为源；提交前运行 `xcodegen generate --spec project.yml`，不要只手改 `project.pbxproj`。
-- `Config/AnyTravel.xcconfig` 只定义公开的空默认值，并以可选方式包含被 Git 忽略的 `Config/Secrets.xcconfig`。后者用于向发布构建注入 RollingGo、高德和智谱默认配置，不得提交。
+- iOS：`MARKETING_VERSION = 0.8.0`，`CURRENT_PROJECT_VERSION = 15`
+- Android：`versionName = 0.8.0`，`versionCode = 15`
+- iOS 工程以 `project.yml` 为源；修改后运行 `xcodegen generate --spec project.yml`。
+- 发布密钥只从被 Git 忽略的 `Config/Secrets.xcconfig` 或运行环境注入，不得提交明文。
 
-## 0.7.0 已实现
+## 0.8.0 已经落地
 
-1. **默认酒店数字价格**
-   - `RollingGoDirectClient` 按实际入住、离店日期、人数和景点锚点查询 RollingGo MCP。
-   - 即使用户以前保存了失效的伴随服务地址，只要节点不可达、无结果或没有 RollingGo 数字报价，iOS 仍会继续走内置直连，不再被节点配置截断。
-   - 同一住宿跨 RollingGo、携程、同程/艺龙、艺龙开放平台与万邦目录按名称、位置和分店语义合并；每个渠道的价格与购买入口单独保留。
+1. **国内旅行知识库**
+   - `Web/src/knowledge/domestic-guide-knowledge.json` 是生成后的主快照，并复制到 iOS 与 Android 资源。
+   - 当前覆盖 162 个目的地，其中 141 个位于中国，含 1,234 个候选地点、12 条规划规则和 867 个去重来源。
+   - 来源包括文化和旅游部及地方文旅公开页面、OpenStreetMap、Wikidata、Audiala、88250 城市中心数据和人工核对的高德坐标链接。
+   - 采集脚本会校验城市归属、坐标、来源、重复项和分类平衡；不要手工分别改三端 JSON。
 
-2. **默认航班数字价格**
-   - `FliggyFlightDirectClient` 使用飞猪公开 H5 MTOP 页面契约。普通匿名请求取得 `_m_h5_tk` Cookie 后完成页面签名；不使用账号令牌、设备指纹修改或私有客户端凭据。
-   - 去程与返程各自按日期搜索，返回航司、航班号、机场、发到时刻、耗时、数字起价、抓取时间和购买页。
-   - `QunarFlightDirectClient` 仅在用户明确保存过去哪儿网页会话后运行，避免默认后台触发验证码。
-   - `NativeFlightOptionMerger` 按方向、航班号，或相近时刻与机场合并同一航班；飞猪、去哪儿、携程等渠道报价仍分别显示。
+2. **更贴近真实日期的规划**
+   - iOS、Android 与 Web 均把用户勾选、热门度、兴趣、空间聚类、停留时长、用餐、移动成本和每天容量纳入排程。
+   - iOS 会按具体出发日期解析每周开放信息，识别常见周一闭馆，并在可行时调换日期或候选。
+   - 同名同址、名称变体和相近坐标在排程前合并；相距较远的同名分店保留。
 
-3. **生成与地图交互**
-   - 生成前先列出按在线名次、评分和空间分布排序的景点；可勾选或跳过。主游览点停留更久，选少则顺路补齐，选多则保留并给压力提示。
-   - 自动规划在空间聚类前合并跨来源重复地点，同时保留相距较远的同名分店。
-   - 底部面板可连续拖到“只留输入框”或“几乎全屏”；每次业务操作后根据当前内容自动回到合适高度，不留固定空白。
-   - 人数、抵达日、返程日均可用左右按钮增减；全局重置、设置、旅册、定位、地图样式与北向按钮都有真实操作闭环。
+3. **实时住宿和大交通**
+   - iOS 与 Android 均可在 App 内直连 RollingGo 酒店、铁路 12306 去返程班次/席别价和飞猪航班起价。
+   - 同一酒店或班次的多渠道报价聚合到一张卡；真实结果会移除数值占位，用户手选后不被刷新覆盖。
+   - Backend 继续承载携程/同程登录会话、艺龙开放平台、万邦目录、去哪儿门票和托管智能向导。
 
-4. **其他直连与节点能力**
-   - iOS 可直连铁路 12306 去返程班次、余票与席别价格。
-   - 托管智能向导可优先走伴随服务，节点缺失时使用构建注入的 GLM 配置；用户也可填写自己的 OpenAI 兼容 Base URL、模型和 Key。
-   - 高德 Web 服务可由节点或构建配置补充地点，坐标按 GCJ-02 → WGS84 语义转换。
-   - Backend 已有艺龙开放平台、万邦携程目录、携程/同程浏览器会话与携程航班适配器；未配置商家凭据的通道会显示 `disabled`。
+4. **Android 与 Web 完成度**
+   - Android 已有生成前景点挑选、三档连续底部面板、开放式自然语言调整、住宿/交通筛选、地图聚焦、费用和本地保存；自定义模型 Key 使用 Keystore 加密。
+   - Web 已完成地图优先四页流程、三档移动面板、资料选点、路线/天气/价格、自然语言调整、旅册、分享恢复、打印和可安装 PWA 外壳。
 
-## 本轮实测
+## 本轮可复核结果
 
-- iOS 单元测试：**68/68**，0 失败。
-- iOS XCUITest：**16/16**，0 失败。覆盖三档拖拽、操作后自动适配、人数/日期按钮、完整方案编辑、保存、分享和全局地图按钮。
-- Backend：**46/46**，0 失败。
-- 飞猪真实网络：原生 `URLSession` 查询宁波（NGB）→天津（TSN）、2026-09-09，得到具体航班与大于零的数字起价。
-- RollingGo 真实网络：iOS 构建注入的配置查询天津、2026-09-09 至 2026-09-11，得到至少一家带 `.live` 数字每晚价的酒店。
-- 模拟器构建后的 `Info.plist` 已断言三个默认配置字段均非空；检查过程未输出其值。
+- iOS 常规单元套件：执行 79 项，其中 3 项实时网络测试按设计跳过；0 失败。
+- iOS 实时价格套件：3/3 实际联网、0 跳过、0 失败；分别验证 RollingGo 酒店、飞猪航班和 12306 铁路数字价格。
+- iOS 价格首屏 XCUITest：2/2；设备 Release 构建通过。
+- Android 常规单元套件：11 项中 2 项实时用例按设计跳过，其余通过；单独启用的三源价格聚合测试 1/1 通过；lint 与 `assembleDebug` 通过。
+- Backend：48/48；Web：7/7，生产构建通过；知识库一致性校验通过。
 
-## 仍需如实标注的边界
+## 当前边界
 
-- 发布 IPA 无签名，需要用户自签后侧载。客户端内置 Key 可以从 IPA 中提取，应只使用可轮换、可限额的发布凭据。
-- 飞猪和 RollingGo 都是查询当刻的展示起价；舱位、房型、库存、税费、早餐和退改以提交订单前的渠道页面为准。
-- 去哪儿登录航班、携程航班、携程酒店与同程酒店仍受用户会话和页面验证影响。艺龙开放平台与万邦目录没有本机商家凭据，因此尚未做生产联网验收。
-- 当前高德 Key 若仍为非“Web 服务”类型会返回 `USERKEY_PLAT_NOMATCH (10009)`；此时 App 使用 Apple Maps，不把高德写成成功。
-- 本轮没有完成真机、弱网、大字体和长期 Cookie 稳定性测试；模拟器自动化通过不能替代这些验收。
-- Android 0.4 尚未追平 iOS 0.7 的景点挑选、自然语言向导、原生价格直连、面板交互、编辑、门票和 PDF/ICS。
+- IPA 无签名，需自签侧载；Android 为调试签名通用 APK。客户端内置服务密钥可以被提取，只应使用可轮换、有限额的发布凭据。
+- 实时数字是查询时的展示价或起价，不等于锁价；库存、房型、舱位、税费、早餐和退改以购买页为准。
+- 当前提供的默认 GLM 凭据在最新联网复核中返回 HTTP 401。三端仍可用本机规则理解常见中文调整；托管模型需更换有效凭据再验收。
+- 去哪儿、携程和同程的登录型来源仍会受用户会话与页面验证影响；艺龙、万邦等商家接口未配置凭据时明确显示 `disabled`。
+- Android 地图路线仍是游览顺序示意；编辑、门票、PDF/ICS、跨天复制和版本历史尚未追平 iOS。
+- 本轮没有 Android 真机/模拟器 Compose 回归，也没有完成三端弱网、大字体、横屏和平板验收。
 
 ## 下一步顺序
 
-1. Android 先补共享价格契约、飞猪/12306/RollingGo 直连和景点挑选，再补地图面板与编辑，避免只复制 UI。
-2. iOS 增加儿童年龄、房间数、床型/早餐/取消政策归一，以及酒店与交通联合评分权重。
-3. 完成去哪儿/携程登录会话的真实数字验收、价格历史和变价提醒。
-4. 把规划决策逐步下沉到 Backend 共享契约，让 iOS、Android 与 Web 使用同一份可解释方案。
-5. 补多城市、中途换住处、天气/闭馆风险、方案对比、文本/链接导入、分享协作和足迹。
+1. 把共享规划契约下沉到 Backend，减少 iOS、Android、Web 三套规则漂移，并加入固定城市金样本回归。
+2. 补多城市、跨城大交通、中途换住处和按夜拆分酒店；加入儿童年龄、房间数、床型、早餐和取消政策归一。
+3. Android 补方案增删/拖动/撤销、门票、PDF/ICS、会话型渠道和逐路段路线。
+4. 加入天气、季节、节庆、预约和临时闭馆的动态风险层；静态知识只作为候选，不冒充当天状态。
+5. 完成价格历史、变价提醒、同房型归一、更多酒店官网直连和真实登录会话长期稳定性测试。
 
 ## 常用验证命令
 
 ```sh
-xcodegen generate --spec project.yml
+node Web/scripts/assemble-knowledge.mjs
+node Web/scripts/validate-knowledge.mjs
 
 DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer xcodebuild test \
   -project AnyTravel.xcodeproj -scheme AnyTravel \
-  -destination 'platform=iOS Simulator,id=989F27BF-D650-4580-8AC5-D681FA908DBC' \
-  -derivedDataPath /tmp/AnyTravel-0.7-FullTests
+  -destination 'platform=iOS Simulator,id=989F27BF-D650-4580-8AC5-D681FA908DBC'
 
 cd Backend && npm test
+cd ../Web && npm test && npm run build
+cd ../Android && ./gradlew testDebugUnitTest lintDebug assembleDebug
 ```

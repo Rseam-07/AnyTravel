@@ -22,9 +22,9 @@ AnyTravel 是一款地图优先的开源 iOS 与 Android 旅行规划应用。�
 
 动效实录：[首次启动与初始化](Documentation/Demo/onboarding-motion.mp4) · [地图、住宿、交通与费用联动](Documentation/Demo/map-plan-motion.mp4)
 
-下载：[iOS 0.7.1 无签名 IPA](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.7.1) · [Android 0.7.1 通用 APK](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.7.1)
+下载：[iOS 0.8.0 无签名 IPA](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.8.0) · [Android 0.8.0 通用 APK](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.8.0)
 
-Web 版（开发中）：位于 [Web/](Web/README.md)，React + TypeScript + MapLibre GL，桌面为 Apple Maps 式大屏横排（左面板 + 全屏地图 + 底部轨道），移动端为三档底部面板；`cd Web && npm install && npm run dev` 后访问 `http://127.0.0.1:5182`。已跑通：目的地/条件输入、OSM 景点与营业时间、空间聚类方案、OSRM 耗时、天气、住宿比价（RollingGo 实测真价）、12306 去返程、去哪儿门票、DeepSeek 内置对话（白名单动作）、费用对比、旅册与分享链接。
+Web 版（开发中）：位于 [Web/](Web/README.md)，React + TypeScript + MapLibre GL，桌面为 Apple Maps 式大屏横排（左面板 + 全屏地图 + 底部轨道），移动端为三档底部面板；`cd Web && npm install && npm run dev` 后访问 `http://127.0.0.1:5182`。已跑通：目的地/条件输入、141 个国内目的地离线攻略、OSM 景点与营业时间、空间聚类方案、OSRM 耗时、天气、住宿比价、12306 去返程、去哪儿门票、自然语言白名单动作、费用对比、旅册、分享链接与可安装 PWA 外壳。
 
 <p align="center">
   <img src="Documentation/Screenshots/android-welcome.png" width="30%" alt="Android 欢迎页">
@@ -35,7 +35,7 @@ Web 版（开发中）：位于 [Web/](Web/README.md)，React + TypeScript + Map
 ## 一段旅程如何展开
 
 - 第一次打开应用时，先看四页简短介绍，再留下常用出发地、人数和预算。行程默认保持轻松节奏。
-- iOS 可在应用内登录携程、去哪儿、飞猪、同程、Trip.com 和铁路 12306；Android 0.4 先提供平台页面入口。密码只提交给平台网页，AnyTravel 不读取或保存密码。
+- iOS 可在应用内登录携程、去哪儿、飞猪、同程、Trip.com 和铁路 12306；Android 当前提供平台购买与登录页面入口。密码只提交给平台网页，AnyTravel 不读取或保存密码。
 - 日期、预算、兴趣、住宿和交通没有固定填写顺序，每一项都可以暂时留白。
 - `MKLocalSearch` 会寻找真实景点、酒店、民宿和交通枢纽；`MKDirections` 会逐段绘制当前日路线。
 - 方案生成后仍可继续搜索 Apple Maps 地点、添加或删除停靠、拖动顺序、跨天移动或复制，并可撤销与重做；也能修改日期、出发地、人数、预算与交通偏好。地图路线和受影响的住宿、交通会重新计算。
@@ -53,7 +53,7 @@ Web 版（开发中）：位于 [Web/](Web/README.md)，React + TypeScript + Map
 
 | 内容 | 当前实现 | 结果如何展示 |
 | --- | --- | --- |
-| 地点与市内路线 | iOS 以 Apple MapKit 为主，并可通过伴随服务或 App 内置高德 Web 服务 Key 补充候选（含营业时间、评分）；Android 使用人工核对目的地包与系统 Geocoder，并提供生成前热门景点勾选 | 高德候选保留来源与 GCJ-02→WGS84 坐标语义；渠道失败时继续使用 Apple Maps，Android 明确标注尚未取得路网几何的路线为示意 |
+| 地点与市内路线 | Web、iOS、Android 共用覆盖 162 个目的地（含 141 个国内目的地）、1,234 个地点和 867 个来源的内置资料；iOS 以 Apple MapKit 为主，并可由高德补充，Android 再以系统 Geocoder 扩展 | 公开热度、空间分布、兴趣与文化和旅游部 5A 名录校验共同参与排序；用户先选的地点获得更长停留；在线渠道失败仍可离线生成，Android 的游览连线明确标为示意 |
 | 酒店与民宿位置 | iOS 并行搜索多类住宿，Android 使用目的地目录与 RollingGo 返回目录；两端都会合并 RollingGo 城市及景点锚点结果并去重 | 地图卡片显示品牌、星级、设施、标签、景点均距、交通枢纽距离与多渠道报价；两端支持低价、距离与实时价筛选 |
 | 酒店实时价格 | 两端支持 RollingGo MCP（节点或 App 内置密钥）；iOS 伴随服务另支持用户自行登录后的携程与同程/艺龙持久化浏览器会话；节点新增艺龙开放平台与万邦携程目录适配器（未配置凭据时如实显示 disabled） | 渠道、每晚/总价口径、房型/床型/早餐/取消政策、抓取时间、缓存过期、部分成功、登录/验证状态、品牌官网与购买入口 |
 | 景点门票 | iOS 伴随服务读取去哪儿门票公开列表，并按景点名称严格匹配 | 地点卡、时间轴与费用表显示当前公开起价、抓取时间和购买页；计划日期、票种、优惠与库存仍需在平台复核 |
@@ -125,7 +125,7 @@ xcodebuild \
 cd Backend && npm test
 ```
 
-0.7.1 验证结果：常规 iOS 套件中 70 个单元测试与 16 个 XCUITest 通过；另启用真实网络开关后，3 个数据源测试与 2 个首屏可见性测试通过，91 个不同测试用例均取得通过结果。可见性测试确认 RollingGo 酒店每晚价、铁路 12306 车次/席别价和飞猪航班起价进入可点击卡片并成为默认选择。Android 6/6 规划单元测试、1/1 RollingGo/12306/飞猪实时源联网测试和 lint 通过。Android 0.7.1 已把地图面板、自然语言、景点勾选、住宿与交通筛选和真实价格优先选择按 iOS 的流程同步；发布 APK 为调试签名通用包。当前构建机没有 Android 设备或 emulator/system image，本轮未执行 connected Compose 界面测试。发布与真机验收边界见 [接力交接](Documentation/HANDOFF.md)。
+0.8.0 验证结果：iOS 常规单元套件执行 79 项，其中 3 项联网用例按设计跳过，其余全部通过；再以编译开关实际运行 3 项联网价格测试，RollingGo 酒店、飞猪航班和铁路 12306 均取得大于零的当前数字价格，0 跳过、0 失败。2 项价格首屏可见性 XCUITest 与 arm64 设备 Release 构建通过。Android 常规单元套件 11 项中 2 项联网用例按设计跳过，其余通过；单独启用的 1 项价格聚合联网测试实际覆盖三类数据源并通过，lint 和通用 APK 构建通过。Backend 48/48、Web 7/7、Web 生产构建和 141 个国内目的地知识库校验均通过。当前构建机没有 Android 设备或 emulator/system image，因此本轮未执行 connected Compose 界面测试。发布与真机验收边界见 [接力交接](Documentation/HANDOFF.md)。
 
 0.6.3 发布前验证结果：57/57 iOS 单元测试、16/16 XCUITest、29/29 Node 测试通过。iPhone 17 Pro / iOS 26.5 模拟器覆盖 Apple 地图式三档面板拖拽、最小档自然语言输入、最大档内容浏览、人数和往返日期双向调整、自动规划地点去重，以及重置、设置、旅册、定位、地图样式和北向按钮的真实点击闭环；浅色偏好页和浅色/深色完整方案均完成截图检查。设备 Release 构建产物为 0.6.3（12）。所有服务端密钥只保存在被 Git 忽略的节点环境文件中。
 

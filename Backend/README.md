@@ -1,6 +1,6 @@
 # AnyTravel 伴随服务
 
-这个伴随服务把 App 的候选酒店统一交给多个价格源，也负责托管自然语言行程控制器。浏览器 Cookie 与需要商家身份的凭据留在自建节点。iOS 0.7 的发布构建另可从 Git 忽略的本机配置注入 RollingGo、高德与智谱默认 Key，让用户不运行节点也能使用基础价格与智能向导；公开仓库不保存这些明文值。
+这个伴随服务把 App 的候选酒店统一交给多个价格源，也负责托管自然语言行程控制器。浏览器 Cookie 与需要商家身份的凭据留在自建节点。iOS 与 Android 0.8.0 的发布构建另可从 Git 忽略的本机配置注入 RollingGo、高德与智谱默认 Key，让用户不运行节点也能使用基础价格与智能向导；公开仓库不保存这些明文值。
 
 ## 启动
 
@@ -29,8 +29,8 @@ npm start
 - `ONEBOUND_API_KEY` 与 `ONEBOUND_API_SECRET`：万邦（OneBound）携程目录通道 `item_search_hotel`，只用于补充携程酒店目录与参考价。该接口不保证按指定入住日期报价，因此只有明确数字且口径一致时才标为参考价，绝不冒充实时价；未配置凭据时健康检查显示 `disabled`。
 - Playwright 自带浏览器不可用时，可用 `PLAYWRIGHT_CHANNEL=chrome` 或 `PLAYWRIGHT_EXECUTABLE_PATH=/绝对路径` 指向本机浏览器；这只是选择浏览器程序，不关闭或规避平台验证。
 - `/v1/quotes/transport` 会通过铁路 12306 的公开查询页面分别读取去程与返程的可购车次、发到时间、余票和展示票价。两边并行查询，单边失败不会遮住另一边；它只查询，不提交订单，购买链接始终指向铁路 12306。结果默认缓存 5 分钟。
-- `/v1/quotes/tickets` 会按 App 已选景点查询去哪儿门票公开列表，只回填名称强匹配的当前展示起价、抓取时间与详情购买页。公开列表不锁定指定日期、票种或库存，因此返回说明会要求在购买页复核。
-- `ZAI_API_KEY`、`ZAI_BASE_URL` 与 `ZAI_MODEL`：为 `POST /v1/assistant/interpret` 提供默认智能向导。当前默认模型为 `glm-5.3-flash`；模型只能返回白名单内的路线动作，服务端还会再次校验地点名、预算和枚举值。
+- `/v1/quotes/tickets` 会按 App 已选的主要游览点查询去哪儿门票公开列表，只回填名称强匹配的当前展示起价、抓取时间与详情购买页。付费街区、道路、书店、商场、公园、开放湖区、博物馆、广场、普通地标、餐饮与夜间活动会被拒绝，避免把导览、餐食或观景套餐误写成入场费。公开列表不锁定指定日期、票种或库存，因此返回说明会要求在购买页复核。
+- `DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL` 与 `DEEPSEEK_MODEL`：为 `POST /v1/assistant/interpret` 提供首选智能向导；默认模型是 `deepseek-chat`。未配置 DeepSeek 时可用 `ZAI_API_KEY`、`ZAI_BASE_URL` 与 `ZAI_MODEL` 作为兼容回退。两条路径都只允许返回白名单内的路线动作，服务端会再次校验地点名、预算和枚举值。
 - `AMAP_API_KEY`：供高德 Web 服务 v5 地点适配器使用。它必须是在高德控制台创建的“Web 服务”Key；节点请求 `show_fields=business` 以取得可用的营业时间、评分与消费字段。iOS SDK Key 会返回平台不匹配，不能混用。
 
 住宿目录接口是 `POST /v1/accommodations/search`，逐店报价接口是 `POST /v1/quotes/accommodations`，交通接口是 `POST /v1/quotes/transport`，景点门票接口是 `POST /v1/quotes/tickets`。接口都会返回 `diagnostics`，某个渠道失败时其他数据仍能继续返回。
@@ -119,5 +119,5 @@ curl -sS http://127.0.0.1:8787/v1/quotes/tickets \
 - 当前收到的高德 Key 在官方 Web 服务请求中返回 `USERKEY_PLAT_NOMATCH (10009)`。地点端点会以 422 返回清楚诊断，iOS 随后继续使用 Apple Maps；换成“Web 服务”Key 后无需修改客户端。
 - RollingGo 未配置密钥时会返回 `disabled` 诊断，不会生成占位价格。
 - 去哪儿景点门票适配器已经落地；去哪儿酒店与航班仍只提供明确的渠道查询入口。同程酒店适配器已落地，但是否返回数字价格取决于本地登录会话和平台验证状态。
-- 2026-09-03 艺龙开放平台、万邦携程目录与携程航班适配器已完成解析级单元测试（Backend `npm test` 46/46），但本机未配置 `ELONG_*`、`ONEBOUND_*` 凭据，也未运行携程航班采集，因此还没有联网数字报价验收；健康检查会如实显示 `disabled`。
+- 2026-09-04 后端单元测试为 48/48；艺龙开放平台、万邦携程目录与携程航班适配器已有解析级覆盖，但本机未配置 `ELONG_*`、`ONEBOUND_*` 凭据，也未运行携程航班采集，因此还没有联网数字报价验收；健康检查会如实显示 `disabled`。
 - 2026-09-03 iOS 的应用内直连通道包括 12306、RollingGo、默认飞猪 H5 航班价，以及用户明确保存会话后的去哪儿航班价；它们可独立于本节点工作。本节点仍是携程、同程、艺龙、万邦与托管智能向导的承载方。

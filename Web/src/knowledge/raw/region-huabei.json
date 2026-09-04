@@ -1,0 +1,634 @@
+{
+  "cities": [
+    {
+      "city": "北京",
+      "province": "北京",
+      "region": "华北",
+      "country": "中国",
+      "coord": { "lat": 39.9, "lng": 116.4 },
+      "tripDays": "3-5天",
+      "sense": "皇城根下的古都与市井并存：中轴线纵贯千年皇权，胡同里藏着最地道的人间烟火。",
+      "places": [
+        { "name": "故宫博物院", "coord": { "lat": 39.916, "lng": 116.397 }, "category": "古迹", "stayMinutes": 180, "tier": "必去", "ticket": "旺季60元/淡季40元，需提前7天在官方渠道预约，周一闭馆", "best": "上午", "tags": ["明清皇宫", "世界遗产", "中轴线"] },
+        { "name": "八达岭长城", "coord": { "lat": 40.354, "lng": 116.017 }, "category": "古迹", "stayMinutes": 150, "tier": "必去", "ticket": "约40元，需提前预约", "best": "上午", "tags": ["世界遗产", "不到长城非好汉"] },
+        { "name": "颐和园", "coord": { "lat": 39.999, "lng": 116.275 }, "category": "园林", "stayMinutes": 150, "tier": "推荐", "ticket": "旺季30元（联票60元），需预约", "best": "全天", "tags": ["皇家园林", "昆明湖", "长廊"] },
+        { "name": "天坛公园", "coord": { "lat": 39.882, "lng": 116.406 }, "category": "古迹", "stayMinutes": 120, "tier": "推荐", "ticket": "联票约34元，需预约", "best": "上午", "tags": ["祈年殿", "祭天建筑"] },
+        { "name": "天安门广场", "coord": { "lat": 39.905, "lng": 116.397 }, "category": "城市", "stayMinutes": 60, "tier": "推荐", "ticket": "免费（城楼另收费）", "best": "上午", "tags": ["升旗仪式", "国庆"] },
+        { "name": "国家博物馆", "coord": { "lat": 39.904, "lng": 116.334 }, "category": "博物馆", "stayMinutes": 180, "tier": "推荐", "ticket": "免费，需提前预约，周一闭馆", "best": "全天", "tags": ["古代中国", "镇馆之宝"] },
+        { "name": "南锣鼓巷", "coord": { "lat": 39.938, "lng": 116.403 }, "category": "美食街", "stayMinutes": 90, "tier": "顺路", "ticket": "免费", "best": "下午", "tags": ["胡同", "小吃"] },
+        { "name": "什刹海-后海", "coord": { "lat": 39.94, "lng": 116.383 }, "category": "公园", "stayMinutes": 90, "tier": "顺路", "ticket": "免费", "best": "晚上", "tags": ["酒吧街", "冬季冰场"] },
+        { "name": "雍和宫", "coord": { "lat": 39.947, "lng": 116.417 }, "category": "宗教", "stayMinutes": 60, "tier": "顺路", "ticket": "约25元", "best": "上午", "tags": ["藏传佛教", "香火旺"] },
+        { "name": "798艺术区", "coord": { "lat": 39.984, "lng": 116.497 }, "category": "美术馆", "stayMinutes": 120, "tier": "顺路", "ticket": "免费（部分展览收费）", "best": "下午", "tags": ["工业风", "当代艺术"] }
+      ],
+      "patterns": [
+        "D1 天安门升旗→故宫→景山→什刹海夜",
+        "D2 八达岭长城→奥林匹克公园夜景",
+        "D3 颐和园→圆明园→中关村/五道口",
+        "D4 国博→天坛→前门大街夜"
+      ],
+      "rules": [
+        "故宫、国博均需提前预约，旺季门票紧张，故宫周一闭馆",
+        "八达岭可乘高铁/市郊铁路S2线前往，节假日人流大建议早出发"
+      ],
+      "sources": [
+        "https://tw.trip.com/moments/detail/beijing-1-151000928/",
+        "https://www.visitbeijing.com.cn/article/4OevIFFokWy",
+        "https://www.toutiao.com/w/1859955294150858/"
+      ]
+    },
+    {
+      "city": "天津",
+      "province": "天津",
+      "region": "华北",
+      "country": "中国",
+      "coord": { "lat": 39.13, "lng": 117.2 },
+      "tripDays": "1-2天",
+      "sense": "一半万国洋楼，一半市井烟火，离北京最近的魔幻之城。",
+      "places": [
+        { "name": "五大道", "coord": { "lat": 39.114, "lng": 117.207 }, "category": "城市", "stayMinutes": 120, "tier": "必去", "ticket": "免费（部分名人故居收费）", "best": "下午", "tags": ["万国建筑", "马车观光"] },
+        { "name": "天津之眼（永乐桥摩天轮）", "coord": { "lat": 39.153, "lng": 117.183 }, "category": "夜景", "stayMinutes": 60, "tier": "推荐", "ticket": "未知（2026年票价调整，以官方公告为准，需线上预约）", "best": "晚上", "tags": ["海河", "城市夜景"] },
+        { "name": "瓷房子", "coord": { "lat": 39.127, "lng": 117.204 }, "category": "城市", "stayMinutes": 45, "tier": "推荐", "ticket": "约50元", "best": "下午", "tags": ["瓷艺建筑", "赤峰道"] },
+        { "name": "海河游船", "coord": { "lat": 39.126, "lng": 117.202 }, "category": "夜游", "stayMinutes": 60, "tier": "推荐", "ticket": "约80-100元", "best": "晚上", "tags": ["海河夜景", "解放桥"] },
+        { "name": "意式风情区", "coord": { "lat": 39.135, "lng": 117.205 }, "category": "城市", "stayMinutes": 90, "tier": "顺路", "ticket": "免费", "best": "下午", "tags": ["意式洋楼", "咖啡街区"] },
+        { "name": "西开教堂", "coord": { "lat": 39.119, "lng": 117.193 }, "category": "宗教", "stayMinutes": 30, "tier": "顺路", "ticket": "免费", "best": "上午", "tags": ["法式教堂"] },
+        { "name": "古文化街", "coord": { "lat": 39.137, "lng": 117.19 }, "category": "美食街", "stayMinutes": 60, "tier": "推荐", "ticket": "免费", "best": "下午", "tags": ["泥人张", "煎饼果子"] },
+        { "name": "国家海洋博物馆", "category": "博物馆", "stayMinutes": 180, "tier": "推荐", "ticket": "免费，需预约，周一闭馆", "best": "全天", "tags": ["海洋科普", "亲子"] }
+      ],
+      "patterns": [
+        "D1 五大道→瓷房子→意式风情区→海河游船夜",
+        "D2 古文化街→西开教堂→天津之眼夜景"
+      ],
+      "rules": [
+        "天津之眼需提前线上预约，节假日票源紧张",
+        "国家海洋博物馆在滨海新区，距市区约1小时车程，建议单独安排半天以上"
+      ],
+      "sources": [
+        "https://tw.trip.com/moments/detail/tianjin-154-150282567/",
+        "https://news.enorth.com.cn/system/2026/04/17/059327095.shtml",
+        "https://piao.qunar.com/daytrip/detail_3735422.html"
+      ]
+    },
+    {
+      "city": "石家庄",
+      "province": "河北",
+      "region": "华北",
+      "country": "中国",
+      "coord": { "lat": 38.04, "lng": 114.51 },
+      "tripDays": "1-2天",
+      "sense": "低调的省会，却藏着正定古建与赵州桥两大国宝级IP。",
+      "places": [
+        { "name": "河北博物院", "coord": { "lat": 38.041, "lng": 114.536 }, "category": "博物馆", "stayMinutes": 150, "tier": "必去", "ticket": "免费，需预约，周一闭馆", "best": "全天", "tags": ["金缕玉衣", "满城汉墓"] },
+        { "name": "正定古城", "coord": { "lat": 38.145, "lng": 114.572 }, "category": "古镇", "stayMinutes": 180, "tier": "必去", "ticket": "古城免费，隆兴寺等景点单独收费", "best": "全天", "tags": ["千年古县", "古建宝库"] },
+        { "name": "隆兴寺", "coord": { "lat": 38.143, "lng": 114.567 }, "category": "宗教", "stayMinutes": 90, "tier": "推荐", "ticket": "未知", "best": "上午", "tags": ["正定大佛", "宋代建筑"] },
+        { "name": "赵州桥", "coord": { "lat": 37.737, "lng": 114.767 }, "category": "古迹", "stayMinutes": 60, "tier": "推荐", "ticket": "未知", "best": "上午", "tags": ["世界桥梁奇迹", "赵县"] },
+        { "name": "西柏坡纪念馆", "coord": { "lat": 38.317, "lng": 114.12 }, "category": "古迹", "stayMinutes": 120, "tier": "推荐", "ticket": "免费，需预约", "best": "全天", "tags": ["革命圣地", "红色教育"] },
+        { "name": "抱犊寨", "coord": { "lat": 38.083, "lng": 114.324 }, "category": "山水", "stayMinutes": 120, "tier": "顺路", "ticket": "未知", "best": "全天", "tags": ["太行山", "登山"] }
+      ],
+      "patterns": [
+        "D1 河北博物院→正定古城（隆兴寺、阳和楼夜景）",
+        "D2 赵州桥→柏林禅寺→返程",
+        "D3 西柏坡红色一日游（可选）"
+      ],
+      "rules": [
+        "正定古城与市区间有公交/地铁接驳，晚间古城灯光秀值得留宿",
+        "赵州桥在赵县，距市区约40公里；西柏坡在平山县，建议包车或跟团"
+      ],
+      "sources": [
+        "https://tw.trip.com/moments/detail/shijiazhuang-199-146747903/",
+        "https://www.visitbeijing.com.cn/article/4M0bRlCtf3W",
+        "https://www.visitbeijing.com.cn/article/4NKShULJWsG"
+      ]
+    },
+    {
+      "city": "承德",
+      "province": "河北",
+      "region": "华北",
+      "country": "中国",
+      "coord": { "lat": 40.95, "lng": 117.94 },
+      "tripDays": "1-2天",
+      "sense": "避暑山庄一座园，浓缩半部清史；夏可避暑，冬可赏雪。",
+      "places": [
+        { "name": "避暑山庄", "coord": { "lat": 40.985, "lng": 117.939 }, "category": "园林", "stayMinutes": 240, "tier": "必去", "ticket": "未知（旺季需预约，含园内博物馆）", "best": "全天", "tags": ["世界遗产", "皇家园林", "塞外江南"] },
+        { "name": "普宁寺", "coord": { "lat": 41.018, "lng": 117.933 }, "category": "宗教", "stayMinutes": 90, "tier": "推荐", "ticket": "未知", "best": "上午", "tags": ["外八庙", "千手观音"] },
+        { "name": "普陀宗乘之庙（小布达拉宫）", "coord": { "lat": 41.013, "lng": 117.918 }, "category": "宗教", "stayMinutes": 90, "tier": "推荐", "ticket": "未知", "best": "下午", "tags": ["外八庙", "藏式建筑"] },
+        { "name": "磬锤峰", "coord": { "lat": 40.998, "lng": 117.955 }, "category": "自然", "stayMinutes": 120, "tier": "顺路", "ticket": "未知", "best": "下午", "tags": ["棒槌山", "丹霞地貌"] },
+        { "name": "承德博物馆", "category": "博物馆", "stayMinutes": 90, "tier": "顺路", "ticket": "免费，需预约，周一闭馆", "best": "上午", "tags": ["清史", "热河行宫"] }
+      ],
+      "patterns": [
+        "D1 避暑山庄（湖区→平原区→山峦区）全天",
+        "D2 普宁寺→普陀宗乘之庙→磬锤峰"
+      ],
+      "rules": [
+        "避暑山庄面积巨大，山峦区建议乘环山车，留足一整日",
+        "外八庙各庙需单独购票，与避暑山庄不联票；7-8月旺季住宿紧张"
+      ],
+      "sources": [
+        "http://bishushanzhuang.com.cn/index.php/Activity/ac_view/id/42.html",
+        "http://bishushanzhuang.com.cn/index.php/Activity/ac_view/id/135.html",
+        "https://tw.trip.com/moments/detail/chengde-135-149691074/"
+      ]
+    },
+    {
+      "city": "秦皇岛",
+      "province": "河北",
+      "region": "华北",
+      "country": "中国",
+      "coord": { "lat": 39.94, "lng": 119.6 },
+      "tripDays": "2-3天",
+      "sense": "长城入海处与北戴河沙滩相接，一条滨海路上的历史与海风。",
+      "places": [
+        { "name": "山海关（天下第一关）", "coord": { "lat": 40.01, "lng": 119.753 }, "category": "古迹", "stayMinutes": 120, "tier": "必去", "ticket": "古城门票约40元，联票另计", "best": "上午", "tags": ["万里长城", "天下第一关"] },
+        { "name": "老龙头", "coord": { "lat": 39.986, "lng": 119.795 }, "category": "古迹", "stayMinutes": 90, "tier": "推荐", "ticket": "约50元", "best": "上午", "tags": ["长城入海", "海边长城"] },
+        { "name": "鸽子窝公园", "coord": { "lat": 39.802, "lng": 119.523 }, "category": "海滨", "stayMinutes": 90, "tier": "推荐", "ticket": "约35元", "best": "上午", "tags": ["观日出", "赶海"] },
+        { "name": "北戴河海滨浴场", "coord": { "lat": 39.825, "lng": 119.495 }, "category": "海滨", "stayMinutes": 120, "tier": "推荐", "ticket": "免费", "best": "全天", "tags": ["沙滩", "避暑"] },
+        { "name": "秦皇岛野生动物园", "coord": { "lat": 39.848, "lng": 119.495 }, "category": "动物园", "stayMinutes": 120, "tier": "顺路", "ticket": "未知", "best": "下午", "tags": ["亲子", "自驾观赏"] },
+        { "name": "秦皇小巷", "coord": { "lat": 39.94, "lng": 119.6 }, "category": "美食街", "stayMinutes": 60, "tier": "顺路", "ticket": "免费", "best": "晚上", "tags": ["小吃", "夜市"] }
+      ],
+      "patterns": [
+        "D1 山海关古城→老龙头→秦皇小巷夜",
+        "D2 北戴河：鸽子窝看日出→滨海栈道→野生动物园",
+        "D3 昌黎黄金海岸/阿那亚，傍晚返程"
+      ],
+      "rules": [
+        "7-8月避暑旺季住宿价格翻倍且紧俏，需提前预订",
+        "赶海与看日出要查当天潮汐表，鸽子窝公园夏季旺季需早到占位"
+      ],
+      "sources": [
+        "https://www.toutiao.com/article/7475346635682300470/",
+        "https://tw.trip.com/moments/detail/qinhuangdao-132-142591310/",
+        "https://sina.cn/news/detail/5332657220093402.html"
+      ]
+    },
+    {
+      "city": "太原",
+      "province": "山西",
+      "region": "华北",
+      "country": "中国",
+      "coord": { "lat": 37.87, "lng": 112.55 },
+      "tripDays": "1-2天",
+      "sense": "不到晋祠枉到太原，龙城的大唐余韵与面食香气交织。",
+      "places": [
+        { "name": "晋祠", "coord": { "lat": 37.708, "lng": 112.433 }, "category": "园林", "stayMinutes": 180, "tier": "必去", "ticket": "约80元", "best": "全天", "tags": ["宋代彩塑", "难老泉", "圣母殿"] },
+        { "name": "山西博物院", "coord": { "lat": 37.874, "lng": 112.527 }, "category": "博物馆", "stayMinutes": 180, "tier": "必去", "ticket": "免费，需预约，周一闭馆", "best": "全天", "tags": ["晋魂", "青铜器"] },
+        { "name": "双塔寺（永祚寺）", "coord": { "lat": 37.868, "lng": 112.583 }, "category": "古迹", "stayMinutes": 90, "tier": "推荐", "ticket": "约30元", "best": "下午", "tags": ["凌霄双塔", "太原标志"] },
+        { "name": "太原古县城", "coord": { "lat": 37.69, "lng": 112.465 }, "category": "古镇", "stayMinutes": 120, "tier": "推荐", "ticket": "入城免费（部分场馆收费）", "best": "晚上", "tags": ["满江红取景地", "灯光秀"] },
+        { "name": "钟楼街", "coord": { "lat": 37.862, "lng": 112.559 }, "category": "美食街", "stayMinutes": 60, "tier": "顺路", "ticket": "免费", "best": "晚上", "tags": ["老字号", "柳巷商圈"] },
+        { "name": "天龙山石窟", "category": "古迹", "stayMinutes": 120, "tier": "顺路", "ticket": "未知", "best": "全天", "tags": ["石窟", "回归佛首"] }
+      ],
+      "patterns": [
+        "D1 山西博物院→双塔寺→钟楼街夜",
+        "D2 晋祠→太原古县城（夜观灯光）",
+        "D3 天龙山/蒙山大佛（可选）"
+      ],
+      "rules": [
+        "山西博物院免费但需提前在官方公众号预约，周一闭馆",
+        "晋祠距市区约25公里，可乘公交或打车；太原古县城夜场灯光秀周末较热闹"
+      ],
+      "sources": [
+        "https://tw.trip.com/moments/detail/taiyuan-167-148539840/",
+        "https://tw.trip.com/moments/detail/taiyuan-167-150155594/",
+        "https://www.wingontravel.com/discovery/scenic-dalateqi-7749/list/scenic-jia-county-126/scenic-jia-county-126/scenic-taiyuan-105/scenic-taiyuan-105/scenic-jinci-scenic-70531576"
+      ]
+    },
+    {
+      "city": "大同",
+      "province": "山西",
+      "region": "华北",
+      "country": "中国",
+      "coord": { "lat": 40.08, "lng": 113.3 },
+      "tripDays": "2-3天",
+      "sense": "北魏古都的千年微笑——云冈石窟与悬空寺让山西古建圈封神。",
+      "places": [
+        { "name": "云冈石窟", "coord": { "lat": 40.109, "lng": 113.126 }, "category": "古迹", "stayMinutes": 240, "tier": "必去", "ticket": "约120元（旺季），需预约", "best": "上午", "tags": ["北魏石窟", "世界遗产"] },
+        { "name": "悬空寺", "coord": { "lat": 39.665, "lng": 113.705 }, "category": "古迹", "stayMinutes": 120, "tier": "必去", "ticket": "首道票约15元，登临另收费（约100元）", "best": "上午", "tags": ["悬崖寺庙", "千年古建"] },
+        { "name": "恒山", "coord": { "lat": 39.673, "lng": 113.7 }, "category": "山水", "stayMinutes": 180, "tier": "推荐", "ticket": "未知", "best": "全天", "tags": ["五岳", "登山"] },
+        { "name": "华严寺", "coord": { "lat": 40.093, "lng": 113.299 }, "category": "宗教", "stayMinutes": 90, "tier": "推荐", "ticket": "未知", "best": "上午", "tags": ["辽金古刹", "薄伽教藏殿"] },
+        { "name": "大同古城墙", "coord": { "lat": 40.083, "lng": 113.296 }, "category": "古迹", "stayMinutes": 90, "tier": "推荐", "ticket": "免费（登城墙需预约）", "best": "晚上", "tags": ["夜景", "北魏都城"] },
+        { "name": "九龙壁", "coord": { "lat": 40.089, "lng": 113.304 }, "category": "古迹", "stayMinutes": 30, "tier": "顺路", "ticket": "免费", "best": "上午", "tags": ["明代琉璃", "单龙壁之最"] },
+        { "name": "大同市博物馆", "coord": { "lat": 40.033, "lng": 113.372 }, "category": "博物馆", "stayMinutes": 120, "tier": "顺路", "ticket": "免费，需预约，周一闭馆", "best": "下午", "tags": ["北魏平城", "馆藏丰富"] }
+      ],
+      "patterns": [
+        "D1 云冈石窟→大同市博物馆→古城墙夜景",
+        "D2 悬空寺→恒山→九龙壁/华严寺",
+        "D3 大同古城慢逛→返程"
+      ],
+      "rules": [
+        "云冈石窟旺季游客多，建议开园即入并请讲解",
+        "悬空寺登临限流，旺季需早到或提前购票；悬空寺/恒山在浑源县，距市区约1.5小时车程"
+      ],
+      "sources": [
+        "https://tw.trip.com/moments/detail/datong-275-150379853/",
+        "https://m.qyer.com/feeds/p/7Q9O2zOQ-8NgSEulJmoF4g.html",
+        "https://tw.trip.com/moments/detail/datong-275-149802654/"
+      ]
+    },
+    {
+      "city": "平遥",
+      "province": "山西",
+      "region": "华北",
+      "country": "中国",
+      "coord": { "lat": 37.19, "lng": 112.18 },
+      "tripDays": "1-2天",
+      "sense": "一座活着的明清县城，晋商票号的故乡与《又见平遥》的沉浸式夜。",
+      "places": [
+        { "name": "平遥古城墙", "coord": { "lat": 37.203, "lng": 112.176 }, "category": "古迹", "stayMinutes": 120, "tier": "必去", "ticket": "古城免费，景点通票约125元", "best": "全天", "tags": ["明清城墙", "世界遗产"] },
+        { "name": "日升昌票号", "coord": { "lat": 37.205, "lng": 112.172 }, "category": "博物馆", "stayMinutes": 60, "tier": "必去", "ticket": "含在通票内", "best": "上午", "tags": ["中国第一家票号", "晋商"] },
+        { "name": "平遥县衙", "coord": { "lat": 37.199, "lng": 112.175 }, "category": "古迹", "stayMinutes": 60, "tier": "推荐", "ticket": "含在通票内", "best": "上午", "tags": ["古县衙", "升堂表演"] },
+        { "name": "明清一条街（南大街）", "coord": { "lat": 37.201, "lng": 112.176 }, "category": "美食街", "stayMinutes": 90, "tier": "推荐", "ticket": "免费", "best": "晚上", "tags": ["老字号", "醋坊"] },
+        { "name": "文庙学宫", "coord": { "lat": 37.199, "lng": 112.181 }, "category": "古迹", "stayMinutes": 45, "tier": "顺路", "ticket": "含在通票内", "best": "下午", "tags": ["孔庙", "科举文化"] },
+        { "name": "双林寺", "coord": { "lat": 37.15, "lng": 112.164 }, "category": "宗教", "stayMinutes": 90, "tier": "推荐", "ticket": "未知（单独购票）", "best": "上午", "tags": ["彩塑艺术", "国保"] },
+        { "name": "《又见平遥》剧场", "category": "剧院", "stayMinutes": 90, "tier": "推荐", "ticket": "未知，需提前订票", "best": "晚上", "tags": ["沉浸式演出", "晋商文化"] }
+      ],
+      "patterns": [
+        "D1 古城墙→文庙→县衙→日升昌→南大街夜",
+        "D2 双林寺→镇国寺→《又见平遥》晚场"
+      ],
+      "rules": [
+        "通票约125元含城内各景点，扫码购票并预约；《又见平遥》票价较高且场次紧俏，建议提前订",
+        "古城内住宿多为四合院客栈，旺季价格浮动大；城内禁行机动车，拉行李可用电瓶车"
+      ],
+      "sources": [
+        "https://tw.trip.com/moments/detail/pingyao-county-365-151261678/",
+        "https://hk.trip.com/moments/detail/pingyao-county-365-151346392/",
+        "https://touch.travel.qunar.com/youji/7904373"
+      ]
+    },
+    {
+      "city": "济南",
+      "province": "山东",
+      "region": "华北",
+      "country": "中国",
+      "coord": { "lat": 36.65, "lng": 117.12 },
+      "tripDays": "1-2天",
+      "sense": "一城山色半城湖，被泉水养大的城，喝完直饮泉水才懂济南。",
+      "places": [
+        { "name": "趵突泉", "coord": { "lat": 36.664, "lng": 117.012 }, "category": "公园", "stayMinutes": 90, "tier": "必去", "ticket": "40元", "best": "上午", "tags": ["天下第一泉", "三股水"] },
+        { "name": "大明湖", "coord": { "lat": 36.675, "lng": 117.024 }, "category": "公园", "stayMinutes": 120, "tier": "必去", "ticket": "免费", "best": "全天", "tags": ["超然楼", "夏雨荷"] },
+        { "name": "千佛山", "coord": { "lat": 36.643, "lng": 117.033 }, "category": "自然", "stayMinutes": 120, "tier": "推荐", "ticket": "约30元", "best": "下午", "tags": ["登高", "万佛洞"] },
+        { "name": "芙蓉街/宽厚里", "coord": { "lat": 36.665, "lng": 117.021 }, "category": "美食街", "stayMinutes": 60, "tier": "推荐", "ticket": "免费", "best": "晚上", "tags": ["小吃", "油旋"] },
+        { "name": "曲水亭街", "coord": { "lat": 36.668, "lng": 117.016 }, "category": "城市", "stayMinutes": 60, "tier": "顺路", "ticket": "免费", "best": "下午", "tags": ["家家泉水", "慢生活"] },
+        { "name": "黑虎泉", "coord": { "lat": 36.659, "lng": 117.025 }, "category": "公园", "stayMinutes": 45, "tier": "顺路", "ticket": "免费", "best": "上午", "tags": ["泉水直饮", "护城河"] },
+        { "name": "山东博物馆", "coord": { "lat": 36.653, "lng": 117.15 }, "category": "博物馆", "stayMinutes": 150, "tier": "推荐", "ticket": "免费，需预约，周一闭馆", "best": "全天", "tags": ["十大镇馆之宝", "齐鲁文化"] }
+      ],
+      "patterns": [
+        "D1 大明湖→曲水亭街→趵突泉→芙蓉街夜",
+        "D2 千佛山→山东博物馆→黑虎泉",
+        "D3 护城河游船→九如山（秋色，可选）"
+      ],
+      "rules": [
+        "泉水水量以夏秋丰水期（7-9月）为佳，冬春部分泉眼水弱",
+        "趵突泉公园联游大明湖可乘护城河游船，晚间灯光别有意境"
+      ],
+      "sources": [
+        "https://www.sina.cn/news/detail/5225326718486845.html",
+        "https://tw.trip.com/moments/detail/jinan-128-148634235/",
+        "https://www.toojd.com/article_1693.html"
+      ]
+    },
+    {
+      "city": "青岛",
+      "province": "山东",
+      "region": "华北",
+      "country": "中国",
+      "coord": { "lat": 36.07, "lng": 120.38 },
+      "tripDays": "3-4天",
+      "sense": "红瓦绿树、碧海蓝天，啤酒与海风腌出的一座松弛感之城。",
+      "places": [
+        { "name": "栈桥", "coord": { "lat": 36.056, "lng": 120.318 }, "category": "海滨", "stayMinutes": 60, "tier": "必去", "ticket": "免费", "best": "上午", "tags": ["回澜阁", "冬季喂海鸥"] },
+        { "name": "八大关", "coord": { "lat": 36.048, "lng": 120.352 }, "category": "城市", "stayMinutes": 120, "tier": "必去", "ticket": "免费（花石楼等单独收费）", "best": "下午", "tags": ["万国建筑", "海滨散步"] },
+        { "name": "青岛啤酒博物馆", "coord": { "lat": 36.09, "lng": 120.388 }, "category": "博物馆", "stayMinutes": 90, "tier": "推荐", "ticket": "约60元", "best": "下午", "tags": ["百年酒厂", "原浆啤酒"] },
+        { "name": "崂山风景区", "coord": { "lat": 36.192, "lng": 120.622 }, "category": "自然", "stayMinutes": 300, "tier": "推荐", "ticket": "未知（旺季另收观光车费，需预约）", "best": "全天", "tags": ["海上第一名山", "太清宫"] },
+        { "name": "五四广场-奥帆中心", "coord": { "lat": 36.06, "lng": 120.385 }, "category": "海滨", "stayMinutes": 90, "tier": "推荐", "ticket": "免费", "best": "晚上", "tags": ["灯光秀", "帆船"] },
+        { "name": "信号山公园", "coord": { "lat": 36.063, "lng": 120.332 }, "category": "公园", "stayMinutes": 60, "tier": "顺路", "ticket": "约10元（旋转观景台另收费）", "best": "下午", "tags": ["俯瞰老城", "红瓦绿树"] },
+        { "name": "圣弥厄尔大教堂", "coord": { "lat": 36.065, "lng": 120.316 }, "category": "宗教", "stayMinutes": 30, "tier": "顺路", "ticket": "免费（外景）", "best": "上午", "tags": ["德式建筑", "婚纱圣地"] },
+        { "name": "第一海水浴场-鲁迅公园", "coord": { "lat": 36.056, "lng": 120.339 }, "category": "海滨", "stayMinutes": 90, "tier": "顺路", "ticket": "免费", "best": "上午", "tags": ["沙滩", "礁石"] }
+      ],
+      "patterns": [
+        "D1 栈桥→中山路→圣弥厄尔教堂→信号山→八大关",
+        "D2 崂山一日（太清线或仰口线）",
+        "D3 啤酒博物馆→啤酒街→五四广场/奥帆中心夜"
+      ],
+      "rules": [
+        "崂山分多条游览线（流清、太清、仰口、巨峰），攻略需先选线再购票",
+        "冬季（11-3月）栈桥海鸥成景；啤酒节（7-8月）期间住宿上涨明显"
+      ],
+      "sources": [
+        "https://tw.trip.com/moments/detail/qingdao-5-146809076/",
+        "https://tw.trip.com/moments/detail/qingdao-5-150072350/",
+        "http://ls.qdlaoshan.cn/New-News-info-nid-6285.html"
+      ]
+    },
+    {
+      "city": "烟台",
+      "province": "山东",
+      "region": "华北",
+      "country": "中国",
+      "coord": { "lat": 37.46, "lng": 121.45 },
+      "tripDays": "2-3天",
+      "sense": "八仙过海的起点，蓬莱仙境加长岛海韵，一座被低估的海滨宝藏城市。",
+      "places": [
+        { "name": "蓬莱阁", "coord": { "lat": 37.825, "lng": 120.752 }, "category": "古迹", "stayMinutes": 150, "tier": "必去", "ticket": "未知（含水城等景区）", "best": "全天", "tags": ["人间仙境", "八仙过海"] },
+        { "name": "长岛（长山列岛）", "coord": { "lat": 37.925, "lng": 120.735 }, "category": "海滨", "stayMinutes": 300, "tier": "必去", "ticket": "未知（船票+岛上景点另计）", "best": "全天", "tags": ["九丈崖", "月牙湾", "渔家乐"] },
+        { "name": "烟台山", "coord": { "lat": 37.547, "lng": 121.396 }, "category": "城市", "stayMinutes": 90, "tier": "推荐", "ticket": "免费（灯塔/部分场馆收费）", "best": "上午", "tags": ["烟台开埠", "领事馆旧址"] },
+        { "name": "养马岛", "coord": { "lat": 37.447, "lng": 121.605 }, "category": "海滨", "stayMinutes": 180, "tier": "推荐", "ticket": "免费", "best": "全天", "tags": ["环岛骑行", "后海日落"] },
+        { "name": "张裕酒文化博物馆", "coord": { "lat": 37.539, "lng": 121.397 }, "category": "博物馆", "stayMinutes": 90, "tier": "顺路", "ticket": "未知", "best": "下午", "tags": ["百年酒庄", "品酒"] }
+      ],
+      "patterns": [
+        "D1 烟台山→滨海广场→张裕博物馆→所城里",
+        "D2 蓬莱阁→田横山",
+        "D3 长岛一日（九丈崖、月牙湾）"
+      ],
+      "rules": [
+        "长岛需从蓬莱乘船登岛，冬季常停航，旺季船票与渔家乐需提前订",
+        "养马岛后海滩礁石区适合看日落；5-10月为海滨最佳季节"
+      ],
+      "sources": [
+        "https://whlyj.yantai.gov.cn/col/col42216/art/2026/art_4c2e382bbc2e46f8a36c9b467a4eef6a.html",
+        "http://m.029558.com/content/detail/18442",
+        "https://www.toutiao.com/article/7660726776871617078/"
+      ]
+    },
+    {
+      "city": "威海",
+      "province": "山东",
+      "region": "华北",
+      "country": "中国",
+      "coord": { "lat": 37.51, "lng": 122.12 },
+      "tripDays": "2-3天",
+      "sense": "北方小镰仓，环海路串起果冻海与橘子海日落，干净又松弛。",
+      "places": [
+        { "name": "刘公岛", "coord": { "lat": 37.503, "lng": 122.192 }, "category": "古迹", "stayMinutes": 240, "tier": "必去", "ticket": "约122元（含船票），需预约", "best": "全天", "tags": ["甲午战争", "海鸥", "退役潜艇"] },
+        { "name": "成山头", "coord": { "lat": 37.397, "lng": 122.701 }, "category": "自然", "stayMinutes": 120, "tier": "推荐", "ticket": "未知", "best": "上午", "tags": ["天尽头", "中国大陆海岸最东端"] },
+        { "name": "火炬八街", "coord": { "lat": 37.531, "lng": 122.12 }, "category": "城市", "stayMinutes": 60, "tier": "推荐", "ticket": "免费", "best": "上午", "tags": ["网红打卡", "彩色房子"] },
+        { "name": "猫头山", "coord": { "lat": 37.556, "lng": 122.143 }, "category": "自然", "stayMinutes": 90, "tier": "推荐", "ticket": "免费", "best": "下午", "tags": ["环海路", "日出日落"] },
+        { "name": "威海国际海水浴场", "coord": { "lat": 37.558, "lng": 122.078 }, "category": "海滨", "stayMinutes": 120, "tier": "顺路", "ticket": "免费", "best": "全天", "tags": ["沙质细", "游泳"] },
+        { "name": "幸福门", "coord": { "lat": 37.516, "lng": 122.123 }, "category": "城市", "stayMinutes": 30, "tier": "顺路", "ticket": "免费", "best": "晚上", "tags": ["滨海地标", "看海"] }
+      ],
+      "patterns": [
+        "D1 环海路：火炬八街→猫头山→国际海水浴场日落",
+        "D2 刘公岛（半天）→幸福门→韩乐坊夜市",
+        "D3 成山头→西霞口（神雕山野生动物园，可选）"
+      ],
+      "rules": [
+        "环海路风景段适合自驾或租电动车骑行，注意上下坡安全",
+        "刘公岛船票需提前网上购票并选乘船时段；成山头距市区约50公里，建议与西霞口同程"
+      ],
+      "sources": [
+        "https://hk.trip.com/moments/detail/weihai-169-149471344/",
+        "https://www.toutiao.com/w/1823504288900163/",
+        "https://view.inews.qq.com/k/20250925A05N5300"
+      ]
+    },
+    {
+      "city": "曲阜",
+      "province": "山东",
+      "region": "华北",
+      "country": "中国",
+      "coord": { "lat": 35.58, "lng": 116.99 },
+      "tripDays": "1-2天",
+      "sense": "儒家文化的心脏，三孔千年一脉，在古柏晨钟里读论语。",
+      "places": [
+        { "name": "孔庙", "coord": { "lat": 35.594, "lng": 116.986 }, "category": "古迹", "stayMinutes": 120, "tier": "必去", "ticket": "三孔联票约140元", "best": "上午", "tags": ["世界遗产", "大成殿"] },
+        { "name": "孔府", "coord": { "lat": 35.595, "lng": 116.983 }, "category": "古迹", "stayMinutes": 90, "tier": "必去", "ticket": "含在三孔联票内", "best": "上午", "tags": ["衍圣公府", "天下第一家"] },
+        { "name": "孔林", "coord": { "lat": 35.622, "lng": 116.985 }, "category": "古迹", "stayMinutes": 90, "tier": "推荐", "ticket": "含在三孔联票内", "best": "下午", "tags": ["孔子墓", "古柏"] },
+        { "name": "尼山圣境", "coord": { "lat": 35.684, "lng": 117.028 }, "category": "山水", "stayMinutes": 180, "tier": "推荐", "ticket": "未知（含《金声玉振》演出另计）", "best": "晚上", "tags": ["孔子诞生地", "金声玉振"] },
+        { "name": "孔子博物馆", "category": "博物馆", "stayMinutes": 120, "tier": "推荐", "ticket": "免费，需预约，周一闭馆", "best": "全天", "tags": ["儒家文物", "镇馆之宝"] },
+        { "name": "颜庙", "coord": { "lat": 35.601, "lng": 116.985 }, "category": "古迹", "stayMinutes": 45, "tier": "顺路", "ticket": "未知", "best": "上午", "tags": ["复圣庙"] }
+      ],
+      "patterns": [
+        "D1 孔庙→孔府→孔林→孔子博物馆",
+        "D2 尼山圣境+《金声玉振》演出"
+      ],
+      "rules": [
+        "三孔联票约140元（孔庙孔府孔林），建议提前网上购票，凭身份证入园",
+        "孔林距孔庙约2公里，可乘景区电瓶车/马车；尼山圣境距市区约20公里"
+      ],
+      "sources": [
+        "https://tw.trip.com/moments/detail/qufu-129-150838073/",
+        "https://piao.qunar.com/daytrip/detail_3997908.html",
+        "https://m.toutiao.com/article/7546024313497846312/"
+      ]
+    },
+    {
+      "city": "沈阳",
+      "province": "辽宁",
+      "region": "华北",
+      "country": "中国",
+      "coord": { "lat": 41.8, "lng": 123.43 },
+      "tripDays": "2-3天",
+      "sense": "一朝发祥地、两代帝王都，清宫殿与民国帅府同城对望。",
+      "places": [
+        { "name": "沈阳故宫", "coord": { "lat": 41.797, "lng": 123.452 }, "category": "古迹", "stayMinutes": 150, "tier": "必去", "ticket": "约50元，需预约", "best": "上午", "tags": ["清早期宫殿", "大政殿"] },
+        { "name": "张氏帅府", "coord": { "lat": 41.791, "lng": 123.452 }, "category": "古迹", "stayMinutes": 90, "tier": "推荐", "ticket": "未知", "best": "上午", "tags": ["大帅府", "赵四小姐楼"] },
+        { "name": "清昭陵（北陵公园）", "coord": { "lat": 41.849, "lng": 123.428 }, "category": "古迹", "stayMinutes": 120, "tier": "推荐", "ticket": "未知（公园+陵区分段收费）", "best": "上午", "tags": ["皇太极陵", "世界遗产"] },
+        { "name": "九一八历史博物馆", "coord": { "lat": 41.833, "lng": 123.449 }, "category": "博物馆", "stayMinutes": 120, "tier": "推荐", "ticket": "免费，需预约，周一闭馆", "best": "下午", "tags": ["爱国主义", "国防教育"] },
+        { "name": "中街", "coord": { "lat": 41.799, "lng": 123.458 }, "category": "美食街", "stayMinutes": 90, "tier": "推荐", "ticket": "免费", "best": "晚上", "tags": ["老字号", "四百年商业街"] },
+        { "name": "西塔朝鲜族风情街", "coord": { "lat": 41.797, "lng": 123.415 }, "category": "美食", "stayMinutes": 60, "tier": "顺路", "ticket": "免费", "best": "晚上", "tags": ["朝鲜族美食", "烤肉"] }
+      ],
+      "patterns": [
+        "D1 沈阳故宫→张氏帅府→中街夜",
+        "D2 北陵公园→九一八博物馆→西塔美食",
+        "D3 棋盘山/方特欢乐世界（亲子，可选）"
+      ],
+      "rules": [
+        "沈阳故宫与张氏帅府相邻，可安排同一上午；故宫需提前预约购票",
+        "九一八博物馆周一闭馆、需预约；冬季沈阳寒冷，注意保暖"
+      ],
+      "sources": [
+        "https://tw.trip.com/moments/detail/shenyang-155-151027983/",
+        "https://tw.trip.com/moments/detail/shenyang-155-142538250/",
+        "https://www.toojd.com/article_1969.html"
+      ]
+    },
+    {
+      "city": "大连",
+      "province": "辽宁",
+      "region": "华北",
+      "country": "中国",
+      "coord": { "lat": 38.91, "lng": 121.61 },
+      "tripDays": "3-4天",
+      "sense": "北方最文艺的海滨城市，广场与山海的浪漫制造机。",
+      "places": [
+        { "name": "星海广场", "coord": { "lat": 38.875, "lng": 121.596 }, "category": "城市", "stayMinutes": 90, "tier": "必去", "ticket": "免费", "best": "下午", "tags": ["亚洲最大广场", "跨海大桥"] },
+        { "name": "老虎滩海洋公园", "coord": { "lat": 38.872, "lng": 121.684 }, "category": "乐园", "stayMinutes": 240, "tier": "推荐", "ticket": "未知", "best": "全天", "tags": ["极地馆", "海洋动物", "亲子"] },
+        { "name": "金石滩国家旅游度假区", "coord": { "lat": 39.081, "lng": 121.945 }, "category": "海滨", "stayMinutes": 300, "tier": "推荐", "ticket": "未知（地质公园等分区收费）", "best": "全天", "tags": ["黄金海岸", "地质奇观"] },
+        { "name": "东方威尼斯水城", "coord": { "lat": 38.925, "lng": 121.663 }, "category": "城市", "stayMinutes": 90, "tier": "推荐", "ticket": "免费", "best": "晚上", "tags": ["欧式建筑", "夜景"] },
+        { "name": "俄罗斯风情街", "coord": { "lat": 38.918, "lng": 121.629 }, "category": "城市", "stayMinutes": 60, "tier": "顺路", "ticket": "免费", "best": "上午", "tags": ["俄式老街"] },
+        { "name": "滨海路", "coord": { "lat": 38.876, "lng": 121.66 }, "category": "自然", "stayMinutes": 90, "tier": "顺路", "ticket": "免费", "best": "下午", "tags": ["海岸公路", "北大桥"] },
+        { "name": "大连森林动物园", "category": "动物园", "stayMinutes": 180, "tier": "顺路", "ticket": "未知", "best": "全天", "tags": ["亲子", "依山傍海"] }
+      ],
+      "patterns": [
+        "D1 俄罗斯风情街→星海广场→滨海路",
+        "D2 老虎滩海洋公园全天",
+        "D3 金石滩（黄金海岸+地质公园）"
+      ],
+      "rules": [
+        "滨海路风景段适合自驾/骑行，旺季栈道人多注意避让",
+        "金石滩在地铁3号线终点，交通便利；海滨项目冬季多停运"
+      ],
+      "sources": [
+        "https://tw.trip.com/moments/detail/dalian-4-143222339/",
+        "https://tw.trip.com/moments/detail/dalian-4-149583827/",
+        "https://www.toutiao.com/article/7638181529113330203/"
+      ]
+    },
+    {
+      "city": "丹东",
+      "province": "辽宁",
+      "region": "华北",
+      "country": "中国",
+      "coord": { "lat": 40.13, "lng": 124.35 },
+      "tripDays": "2-3天",
+      "sense": "中朝边境的英雄之城，断桥无言、江水浩荡，一岸之隔两个世界。",
+      "places": [
+        { "name": "鸭绿江断桥", "coord": { "lat": 40.116, "lng": 124.386 }, "category": "古迹", "stayMinutes": 60, "tier": "必去", "ticket": "约30元", "best": "上午", "tags": ["抗美援朝", "中朝边境"] },
+        { "name": "虎山长城", "coord": { "lat": 40.228, "lng": 124.558 }, "category": "古迹", "stayMinutes": 150, "tier": "推荐", "ticket": "未知", "best": "上午", "tags": ["明长城东端起点", "一步跨"] },
+        { "name": "抗美援朝纪念馆", "coord": { "lat": 40.095, "lng": 124.363 }, "category": "博物馆", "stayMinutes": 120, "tier": "推荐", "ticket": "免费，需预约，周一闭馆", "best": "上午", "tags": ["红色教育", "国防"] },
+        { "name": "安东老街", "coord": { "lat": 40.118, "lng": 124.363 }, "category": "美食街", "stayMinutes": 60, "tier": "推荐", "ticket": "免费", "best": "晚上", "tags": ["民国风情", "小吃"] },
+        { "name": "鸭绿江游船", "coord": { "lat": 40.117, "lng": 124.386 }, "category": "夜游", "stayMinutes": 60, "tier": "顺路", "ticket": "未知", "best": "下午", "tags": ["看朝鲜", "边境风情"] },
+        { "name": "凤凰山", "coord": { "lat": 40.481, "lng": 124.062 }, "category": "山水", "stayMinutes": 240, "tier": "推荐", "ticket": "未知", "best": "全天", "tags": ["辽东第一名山", "玻璃栈道"] }
+      ],
+      "patterns": [
+        "D1 鸭绿江断桥→抗美援朝纪念馆→安东老街",
+        "D2 虎山长城→乘船游鸭绿江",
+        "D3 凤凰山（凤城市，高铁约20分钟）"
+      ],
+      "rules": [
+        "边境城市注意随身携带身份证，部分游船/边境观察点需核验",
+        "断桥夜景灯光与江边步道值得夜游；凤凰山登山强度较大，预留一整天"
+      ],
+      "sources": [
+        "https://tw.trip.com/moments/detail/dandong-315-150802870/",
+        "https://mp.weixin.qq.com/s?__biz=Mzg2Nzk3MDMxNw==&idx=1&mid=2247581072",
+        "https://www.toutiao.com/article/7557152362478010890/"
+      ]
+    },
+    {
+      "city": "哈尔滨",
+      "province": "黑龙江",
+      "region": "华北",
+      "country": "中国",
+      "coord": { "lat": 45.8, "lng": 126.53 },
+      "tripDays": "3-4天",
+      "sense": "冰城冬季封神：冰雪大世界的流光与中央大街的面包石交响。",
+      "places": [
+        { "name": "哈尔滨冰雪大世界", "coord": { "lat": 45.81, "lng": 126.605 }, "category": "乐园", "stayMinutes": 240, "tier": "必去", "ticket": "约328元（标准成人票，以当年公告为准），需预约", "best": "晚上", "tags": ["冰雕", "雪雕", "冬季限定"] },
+        { "name": "圣索菲亚大教堂", "coord": { "lat": 45.772, "lng": 126.617 }, "category": "宗教", "stayMinutes": 45, "tier": "推荐", "ticket": "约20元（内部参观，外观免费）", "best": "晚上", "tags": ["拜占庭建筑", "鸽群"] },
+        { "name": "中央大街", "coord": { "lat": 45.772, "lng": 126.613 }, "category": "美食街", "stayMinutes": 120, "tier": "必去", "ticket": "免费", "best": "晚上", "tags": ["马迭尔冰棍", "俄式建筑", "面包石"] },
+        { "name": "防洪纪念塔-松花江", "coord": { "lat": 45.78, "lng": 126.609 }, "category": "公园", "stayMinutes": 60, "tier": "顺路", "ticket": "免费", "best": "下午", "tags": ["松花江", "冬季冰雪嘉年华"] },
+        { "name": "太阳岛风景区", "coord": { "lat": 45.794, "lng": 126.586 }, "category": "公园", "stayMinutes": 180, "tier": "推荐", "ticket": "景区免费，冬季雪博会另收费", "best": "全天", "tags": ["雪博会", "湿地"] },
+        { "name": "中华巴洛克历史文化街区", "coord": { "lat": 45.787, "lng": 126.634 }, "category": "城市", "stayMinutes": 90, "tier": "推荐", "ticket": "免费", "best": "下午", "tags": ["老道外", "中华巴洛克建筑"] },
+        { "name": "哈药六厂版画博物馆", "category": "美术馆", "stayMinutes": 90, "tier": "顺路", "ticket": "未知", "best": "下午", "tags": ["东北卢浮宫", "网红打卡"] }
+      ],
+      "patterns": [
+        "D1 中央大街→防洪纪念塔→松花江→索菲亚教堂夜",
+        "D2 冰雪大世界（下午入园玩至夜场亮灯）",
+        "D3 太阳岛雪博会→中华巴洛克街区"
+      ],
+      "rules": [
+        "冰雪大世界12月底-2月开园，票价与开园日期以当年官方公告为准，夜场冰灯最美",
+        "冬季气温可低至零下20℃，需厚羽绒+雪地靴；手机户外易冻关机，备暖宝宝",
+        "中央大街与索菲亚教堂均近市中心，步行可达"
+      ],
+      "sources": [
+        "https://www.sina.cn/news/detail/5196782823015871.html",
+        "http://df.youth.cn/dfzl/202512/t20251215_16408176.htm",
+        "https://tw.trip.com/moments/detail/harbin-151-151091683/"
+      ]
+    },
+    {
+      "city": "长春",
+      "province": "吉林",
+      "region": "华北",
+      "country": "中国",
+      "coord": { "lat": 43.88, "lng": 125.32 },
+      "tripDays": "2-3天",
+      "sense": "北国春城、电影之城，伪满皇宫与长影旧址里藏着半部近代史。",
+      "places": [
+        { "name": "伪满皇宫博物院", "coord": { "lat": 43.905, "lng": 125.35 }, "category": "博物馆", "stayMinutes": 180, "tier": "必去", "ticket": "未知，需预约", "best": "全天", "tags": ["溥仪", "末代皇帝", "同德殿"] },
+        { "name": "净月潭国家森林公园", "coord": { "lat": 43.78, "lng": 125.44 }, "category": "自然", "stayMinutes": 240, "tier": "推荐", "ticket": "约30元", "best": "全天", "tags": ["森林氧吧", "冬季滑雪"] },
+        { "name": "长影旧址博物馆", "coord": { "lat": 43.878, "lng": 125.291 }, "category": "博物馆", "stayMinutes": 120, "tier": "推荐", "ticket": "未知", "best": "下午", "tags": ["新中国电影摇篮", "老厂房"] },
+        { "name": "长春冰雪新天地", "category": "乐园", "stayMinutes": 240, "tier": "推荐", "ticket": "未知（冬季开放，以当年公告为准）", "best": "晚上", "tags": ["冰雪世界", "冬季限定"] },
+        { "name": "这有山", "coord": { "lat": 43.885, "lng": 125.303 }, "category": "购物", "stayMinutes": 90, "tier": "推荐", "ticket": "免费", "best": "晚上", "tags": ["室内山景", "网红商业体"] },
+        { "name": "南湖公园", "coord": { "lat": 43.857, "lng": 125.282 }, "category": "公园", "stayMinutes": 90, "tier": "顺路", "ticket": "免费", "best": "下午", "tags": ["城市绿肺", "冬季冰场"] }
+      ],
+      "patterns": [
+        "D1 伪满皇宫→长影旧址博物馆→这有山",
+        "D2 净月潭（森林徒步/冬季滑雪）",
+        "D3 冰雪新天地（冬季）"
+      ],
+      "rules": [
+        "伪满皇宫博物院需提前网上购票/预约，旺季建议留3小时",
+        "冰雪新天地为冬季（12-2月）开放；净月潭冬季有滑雪场，可一日滑雪+雪景"
+      ],
+      "sources": [
+        "http://wglj.changchun.gov.cn/gdzl_44844/ccbx/202512/t20251206_3445346.html",
+        "https://my.trip.com/moments/detail/changchun-216-146116069/",
+        "https://m.cc.bendibao.com/tour/63878_3.shtm"
+      ]
+    },
+    {
+      "city": "呼伦贝尔",
+      "province": "内蒙古",
+      "region": "华北",
+      "country": "中国",
+      "coord": { "lat": 49.21, "lng": 119.77 },
+      "tripDays": "4-7天",
+      "sense": "天苍苍野茫茫，天下第一曲水与中俄边城的草原环线。",
+      "places": [
+        { "name": "呼伦湖", "coord": { "lat": 48.98, "lng": 117.42 }, "category": "自然", "stayMinutes": 180, "tier": "必去", "ticket": "未知", "best": "全天", "tags": ["北方第一大湖", "草原湖泊"] },
+        { "name": "莫日格勒河", "category": "自然", "stayMinutes": 120, "tier": "必去", "ticket": "免费", "best": "全天", "tags": ["天下第一曲水", "草原腹地"] },
+        { "name": "满洲里套娃广场", "coord": { "lat": 49.607, "lng": 117.331 }, "category": "乐园", "stayMinutes": 120, "tier": "推荐", "ticket": "未知", "best": "下午", "tags": ["俄式风情", "边城"] },
+        { "name": "满洲里国门景区", "coord": { "lat": 49.617, "lng": 117.337 }, "category": "城市", "stayMinutes": 60, "tier": "推荐", "ticket": "未知", "best": "上午", "tags": ["中俄边境", "41号界碑"] },
+        { "name": "额尔古纳湿地", "coord": { "lat": 50.253, "lng": 120.187 }, "category": "自然", "stayMinutes": 150, "tier": "推荐", "ticket": "未知", "best": "全天", "tags": ["亚洲第一湿地", "白桦林"] },
+        { "name": "黑山头", "coord": { "lat": 50.204, "lng": 119.428 }, "category": "自然", "stayMinutes": 120, "tier": "推荐", "ticket": "免费（骑马等项目另收费）", "best": "傍晚", "tags": ["草原日落", "骑马"] },
+        { "name": "室韦俄罗斯民族乡", "category": "古镇", "stayMinutes": 120, "tier": "顺路", "ticket": "未知", "best": "全天", "tags": ["中俄界河", "木刻楞"] }
+      ],
+      "patterns": [
+        "D1 海拉尔→莫日格勒河→额尔古纳",
+        "D2 额尔古纳湿地→黑山头日落",
+        "D3 黑山头→满洲里（国门、套娃广场）",
+        "D4 满洲里→呼伦湖→返程"
+      ],
+      "rules": [
+        "草原景区分散、无公共交通，建议包车或自驾（推荐4-5天环线）",
+        "7-8月为草原最佳季节，蚊虫多、昼夜温差大，备长袖与外套；冬季别有一番雪原风光"
+      ],
+      "sources": [
+        "https://hk.trip.com/moments/detail/ergun-2026-138285736",
+        "https://www.toutiao.com/article/7529740171768939034/",
+        "https://www.gtylx.com/news/n/386144"
+      ]
+    },
+    {
+      "city": "呼和浩特",
+      "province": "内蒙古",
+      "region": "华北",
+      "country": "中国",
+      "coord": { "lat": 40.84, "lng": 111.75 },
+      "tripDays": "1-2天",
+      "sense": "塞外青城，召庙佛音与烧麦香气并存，草原文明的北疆之门。",
+      "places": [
+        { "name": "内蒙古博物院", "coord": { "lat": 40.831, "lng": 111.707 }, "category": "博物馆", "stayMinutes": 150, "tier": "必去", "ticket": "免费，需预约，周一闭馆", "best": "全天", "tags": ["草原文明", "匈奴金冠"] },
+        { "name": "大召寺", "coord": { "lat": 40.806, "lng": 111.664 }, "category": "宗教", "stayMinutes": 90, "tier": "必去", "ticket": "未知", "best": "上午", "tags": ["银佛", "藏传佛教"] },
+        { "name": "塞上老街", "coord": { "lat": 40.807, "lng": 111.662 }, "category": "美食街", "stayMinutes": 90, "tier": "推荐", "ticket": "免费", "best": "晚上", "tags": ["烧麦", "老字号"] },
+        { "name": "昭君博物院", "coord": { "lat": 40.706, "lng": 111.647 }, "category": "博物馆", "stayMinutes": 120, "tier": "推荐", "ticket": "未知", "best": "上午", "tags": ["昭君墓", "和亲文化"] },
+        { "name": "五塔寺", "coord": { "lat": 40.803, "lng": 111.668 }, "category": "宗教", "stayMinutes": 60, "tier": "顺路", "ticket": "未知", "best": "上午", "tags": ["金刚座舍利塔", "蒙文天文图"] },
+        { "name": "敕勒川草原", "category": "自然", "stayMinutes": 120, "tier": "推荐", "ticket": "免费", "best": "下午", "tags": ["敕勒歌", "草原体验"] }
+      ],
+      "patterns": [
+        "D1 内蒙古博物院→大召寺→塞上老街夜",
+        "D2 昭君博物院→敕勒川草原→返程"
+      ],
+      "rules": [
+        "内蒙古博物院免费但需提前预约，周一闭馆",
+        "市区清真大寺、大召一带为老城核心，步行串联即可；希拉穆仁草原为周边一日游常选"
+      ],
+      "sources": [
+        "https://tw.trip.com/moments/detail/hohhot-156-147421387/",
+        "https://m.hu.bendibao.com/tour/64322.shtm",
+        "https://tw.trip.com/moments/detail/hohhot-156-151038217/"
+      ]
+    }
+  ]
+}

@@ -1,22 +1,55 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  BookOpen,
+  Clock3,
+  Cloud,
+  CloudFog,
+  CloudLightning,
+  CloudRain,
+  CloudSun,
+  Hotel,
+  Leaf,
+  MapPin,
+  Printer,
+  Save,
+  Send,
+  Share2,
+  Sparkles,
+  SunMedium,
+  Ticket,
+  Trash2,
+  TrainFront,
+  UtensilsCrossed
+} from "lucide-react";
 import { useApp } from "../store";
 import { formatCNY, meterText } from "../types";
 import { bestQuote, distanceMeters } from "../planner";
 import type { AccommodationOption } from "../types";
+import { KNOWLEDGE_STATS, lookupCity } from "../knowledge";
 
 export function WeatherStrip() {
   const { state } = useApp();
   if (!state.weather?.length) return null;
   return (
-    <div className="weather-strip">
+    <div className="weather-strip" aria-label="行程天气">
       {state.weather.slice(0, 8).map((day) => {
         const code = day.code;
-        const symbol = code === 0 ? "☀️" : code === 1 ? "🌤️" : code === 2 ? "⛅" : code === 3 ? "☁️" : code <= 48 ? "🌫️" : code <= 67 ? "🌧️" : code <= 82 ? "🌦️" : "⛈️";
+        const WeatherIcon = code === 0
+          ? SunMedium
+          : code <= 2
+            ? CloudSun
+            : code === 3
+              ? Cloud
+              : code <= 48
+                ? CloudFog
+                : code <= 82
+                  ? CloudRain
+                  : CloudLightning;
         const rain = day.precipitationProbability >= 50;
         return (
           <div key={day.date} className={`weather-card${rain ? " rain" : ""}`}>
             <div className="w-date">{day.date.slice(5).replace("-", "/")}</div>
-            <div className="w-symbol">{symbol}</div>
+            <div className="w-symbol"><WeatherIcon size={18} strokeWidth={1.8} aria-hidden="true" /></div>
             <div>
               {Math.round(day.maxTemp)}° / {Math.round(day.minTemp)}°
             </div>
@@ -29,9 +62,19 @@ export function WeatherStrip() {
 }
 
 export function PlanPanel({ compact = false }: { compact?: boolean }) {
-  const { state, setFocus, removeStop, relaxPlan, shareURL, saveTrip } = useApp();
+  const { state, setFocus, removeStop, relaxPlan, shareURL, saveTrip, sendChat } = useApp();
   const plan = state.plan;
   const [notice, setNotice] = useState<string | null>(null);
+  const [adjustment, setAdjustment] = useState("");
+  const [assistantReply, setAssistantReply] = useState<string | null>(null);
+  const [assistantBusy, setAssistantBusy] = useState(false);
+
+  useEffect(() => {
+    if (!notice) return undefined;
+    const timer = window.setTimeout(() => setNotice(null), 3200);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
   if (!plan) {
     return (
       <div style={{ paddingTop: 6 }}>
@@ -45,151 +88,206 @@ export function PlanPanel({ compact = false }: { compact?: boolean }) {
     );
   }
 
-  const totalStops = plan.days.reduce((sum, day) => sum + day.stops.length, 0);
+  const dayIndex = Math.min(state.selectedDay, Math.max(plan.days.length - 1, 0));
+  const day = plan.days[dayIndex];
+  if (!day) return <div className="empty-note">这份行程还没有可显示的天数。</div>;
+
+  const guide = lookupCity(state.draft.destination);
+  const routeMeters = day.route.reduce((sum, segment) => sum + distanceMeters(segment.from, segment.to), 0);
+  const dayColor = ["#126E66", "#E87424", "#6157B8", "#B34B68", "#2777A8", "#7B6C35"][dayIndex % 6];
+  const dayStyle = { "--day-color": dayColor } as CSSProperties;
+
+  const submitAdjustment = async () => {
+    const text = adjustment.trim();
+    if (!text || assistantBusy) return;
+    setAssistantBusy(true);
+    setAssistantReply(null);
+    try {
+      const reply = await sendChat(text);
+      setAssistantReply(reply);
+      setAdjustment("");
+    } catch (error) {
+      setAssistantReply(error instanceof Error ? error.message : "暂时没能理解这次调整。");
+    } finally {
+      setAssistantBusy(false);
+    }
+  };
 
   return (
-    <div>
-      <div className="section-title">
-        {state.draft.destination} · {state.draft.dayCount} 天{state.draft.travelers}人 · {totalStops} 处停留
+    <div className="plan-panel" style={dayStyle}>
+      <div className="plan-overview">
+        <div>
+          <span className="plan-kicker">{state.draft.destination} · 第 {dayIndex + 1} 天</span>
+          <h2>{day.title}</h2>
+          <p>{day.stops.length} 处停留 · {meterText(routeMeters)} · 移动约 {Math.round(day.travelMinutes)} 分钟</p>
+        </div>
+        <div className="plan-icon-actions" aria-label="行程操作">
+          <button
+            className="icon-action"
+            title="存进旅册"
+            aria-label="存进旅册"
+            onClick={() => {
+              saveTrip();
+              setNotice("行程已收进旅册。");
+            }}
+          >
+            <Save size={17} aria-hidden="true" />
+          </button>
+          <button
+            className="icon-action"
+            title="复制分享链接"
+            aria-label="复制分享链接"
+            onClick={() => {
+              navigator.clipboard.writeText(shareURL()).catch(() => undefined);
+              setNotice("分享链接已复制，对方打开后会还原这次条件。");
+            }}
+          >
+            <Share2 size={17} aria-hidden="true" />
+          </button>
+          <button className="icon-action" title="打印或存成 PDF" aria-label="打印或存成 PDF" onClick={() => window.print()}>
+            <Printer size={17} aria-hidden="true" />
+          </button>
+        </div>
       </div>
+
+      <div className="day-switcher" role="tablist" aria-label="选择行程日期">
+        {plan.days.map((item, index) => (
+          <button
+            key={`${item.dateLabel}-${index}`}
+            role="tab"
+            aria-selected={index === dayIndex}
+            className={index === dayIndex ? "active" : ""}
+            style={{ "--tab-color": ["#126E66", "#E87424", "#6157B8", "#B34B68", "#2777A8", "#7B6C35"][index % 6] } as CSSProperties}
+            onClick={() => setFocus({ kind: "day", id: String(index), coordinate: item.route[0]?.from ?? item.stops[0]?.place.coordinate })}
+          >
+            <span>第 {index + 1} 天</span>
+            <small>{item.dateLabel}</small>
+          </button>
+        ))}
+      </div>
+
       {state.notice && (
-        <div className="issue-note" style={{ background: "var(--route-soft)", color: "var(--route-dark)", borderColor: "rgba(15,118,110,0.2)" }}>
+        <div className="issue-note success-note">
           {state.notice}
         </div>
       )}
+      {notice && <div className="issue-note success-note">{notice}</div>}
       <WeatherStrip />
-      {plan.notes.map((note, index) => (
-        <div key={index} className="sub-text" style={{ margin: "4px 0 8px" }}>
-          {note}
-        </div>
-      ))}
-      {notice && <div className="issue-note">{notice}</div>}
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        <button
-          className="chip-btn route-flavored"
-          onClick={() => {
-            void saveTrip();
-            setNotice("已收进旅册。");
-          }}
-        >
-          💾 存进旅册
-        </button>
-        <button
-          className="chip-btn route-flavored"
-          onClick={() => {
-            navigator.clipboard.writeText(shareURL()).catch(() => undefined);
-            setNotice("分享链接已复制：对方打开后会自动还原本次条件。");
-          }}
-        >
-          🔗 分享
-        </button>
-        <button
-          className="chip-btn route-flavored"
-          onClick={() => {
-            window.print();
-          }}
-        >
-          🖨️ 打印/PDF
-        </button>
-        <button className="chip-btn" title="保留全部地点，按空间关系重新铺松" onClick={() => void relaxPlan()}>
-          🌿 铺松一点
-        </button>
-      </div>
-      {plan.days.map((day, dayIndex) => (
-        <section
-          key={dayIndex}
-          className={`day-card${state.selectedDay === dayIndex ? " selected" : ""}`}
-          onClick={() => {
-            setFocus({ kind: "day", id: String(dayIndex) });
-          }}
-        >
-          <div className="day-head">
-            <span className="d-title">{day.title}</span>
-            <span className="d-badges">
-              {day.badges.map((badge, i) => (
-                <span key={i} className={`badge${day.overCapacity ? " warn" : ""}`}>
-                  {badge}
-                </span>
-              ))}
-            </span>
-          </div>
-          {day.stops.map((stop, stopIndex) => (
+
+      <div className="itinerary-list">
+        {day.stops.map((stop, stopIndex) => {
+          const ticket = state.tickets[stop.place.id] ?? stop.ticket;
+          return (
             <div key={`${stop.place.id}-${stopIndex}`}>
-              <div className="stop-route">
-                <span>
-                  {stop.moveMinutes && stopIndex > 0
-                    ? `← 上一站约 ${stop.moveMinutes} 分钟`
-                    : stopIndex === 0
-                      ? "从住处/中心出发"
-                      : ""}
-                </span>
-                {stop.moveFrom && (
-                  <span style={{ marginLeft: "auto", opacity: 0.7 }}>
-                    {meterText(distanceMeters(stop.moveFrom, stop.place.coordinate))}
-                  </span>
-                )}
-              </div>
-              <div className="stop-row">
+              {stopIndex > 0 && (
+                <div className="travel-leg">
+                  <span>移动约 {stop.moveMinutes ?? "—"} 分钟</span>
+                  {stop.moveFrom && <span>{meterText(distanceMeters(stop.moveFrom, stop.place.coordinate))}</span>}
+                </div>
+              )}
+              <article
+                className={`itinerary-stop${state.focus?.kind === "place" && state.focus.id === stop.place.id ? " selected" : ""}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => setFocus({ kind: "place", id: stop.place.id, coordinate: stop.place.coordinate })}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setFocus({ kind: "place", id: stop.place.id, coordinate: stop.place.coordinate });
+                  }
+                }}
+              >
+                <span className="stop-index">{stopIndex + 1}</span>
                 <div className="stop-time">
-                  {stop.arrivalText}
-                  <br />
-                  <span style={{ opacity: 0.55 }}>{stop.departureText}</span>
+                  <strong>{stop.arrivalText}</strong>
+                  <span>{stop.departureText}</span>
                 </div>
                 <div className="stop-body">
                   <div className="stop-name">
-                    {stop.place.source === "user" ? "📍 " : ""}
-                    {stop.place.name}
+                    {stop.place.source === "user" && <MapPin size={14} aria-label="手动添加" />}
+                    <strong>{stop.place.name}</strong>
                     {stop.isPrimary && <span className="prio">主游览</span>}
-                    <span className="badge" style={{ marginLeft: 6 }}>{stop.visitMinutes} 分钟</span>
                   </div>
                   <div className="stop-meta">
-                    {stop.place.address && <div>{stop.place.address.slice(0, 60)}</div>}
-                    {stop.opening && <div>🕘 {stop.opening}</div>}
-                    {stop.ticket?.amountCNY != null && (
-                      <div>
-                        🎟️ 门票起价 <b>{formatCNY(stop.ticket.amountCNY)}</b>
-                        {stop.ticket.bookingURL && (
-                          <a
-                            className="link-btn"
-                            style={{ marginLeft: 6 }}
-                            href={stop.ticket.bookingURL}
-                            target="_blank"
-                            rel="noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            购买页
+                    <span><Clock3 size={13} aria-hidden="true" />停留约 {stop.visitMinutes} 分钟</span>
+                    {stop.opening && <span>{stop.opening}</span>}
+                    {ticket?.amountCNY != null && (
+                      <span>
+                        <Ticket size={13} aria-hidden="true" />门票起价 <b>{formatCNY(ticket.amountCNY)}</b>
+                        {ticket.bookingURL && (
+                          <a className="link-btn" href={ticket.bookingURL} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
+                            查看来源
                           </a>
                         )}
-                      </div>
+                      </span>
                     )}
-                    {stop.note && <div>🍽️ {stop.note}</div>}
-                  </div>
-                  <div className="stop-actions">
-                    <button
-                      className="mini-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void removeStop(dayIndex, stopIndex);
-                      }}
-                    >
-                      移除
-                    </button>
+                    {stop.note && <span><UtensilsCrossed size={13} aria-hidden="true" />{stop.note}</span>}
                   </div>
                 </div>
-              </div>
+                <button
+                  className="remove-stop"
+                  aria-label={`移除${stop.place.name}`}
+                  title="从当天移除"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void removeStop(dayIndex, stopIndex);
+                  }}
+                >
+                  <Trash2 size={15} aria-hidden="true" />
+                </button>
+              </article>
             </div>
-          ))}
-          <div className="day-assessment">{day.assessment}</div>
-          <div className="day-foot">
-            <span>停留 {Math.round(day.visitMinutes)} 分钟</span>
-            <span>移动 {Math.round(day.travelMinutes)} 分钟</span>
-            {day.overCapacity && <span className="badge warn">偏满：建议减一站或增加一天</span>}
-          </div>
-        </section>
-      ))}
-      <div className="sub-text" style={{ marginTop: 8 }}>
-        图上线段为依次连接的真实地点示意；取得 OSRM 路网后会自动换成道路几何。营业时间与闭馆日请在出发前复核。
+          );
+        })}
       </div>
+
+      <div className="day-summary">
+        <div>
+          <strong>{day.assessment}</strong>
+          <span>游览 {Math.round(day.visitMinutes)} 分钟 · 移动 {Math.round(day.travelMinutes)} 分钟</span>
+        </div>
+        <button className="chip-btn" title="保留地点并把节奏重新铺松" onClick={() => void relaxPlan()}>
+          <Leaf size={15} aria-hidden="true" /> 铺松一点
+        </button>
+      </div>
+
+      <div className="inline-assistant">
+        <div className="assistant-label"><Sparkles size={15} aria-hidden="true" />一句话调整整段行程</div>
+        <div className="assistant-input-row">
+          <input
+            value={adjustment}
+            aria-label="一句话调整行程"
+            placeholder="比如：轻松一点，多安排美食"
+            onChange={(event) => setAdjustment(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void submitAdjustment();
+            }}
+          />
+          <button disabled={!adjustment.trim() || assistantBusy} onClick={() => void submitAdjustment()} aria-label="发送调整">
+            <Send size={17} aria-hidden="true" />
+          </button>
+        </div>
+        {assistantBusy && <p>正在把调整落回地图…</p>}
+        {assistantReply && <p>{assistantReply}</p>}
+      </div>
+
+      {guide && (
+        <>
+          <details className="plan-context">
+            <summary><BookOpen size={15} aria-hidden="true" />为什么这样排</summary>
+            <p>
+              {guide.sense || `${guide.city}目的地资料`}。本次从 {guide.places.length} 个本地候选点中筛选；离线资料共覆盖 {KNOWLEDGE_STATS.cities} 个目的地、{KNOWLEDGE_STATS.sources} 个去重来源。
+            </p>
+            {plan.notes.map((note, index) => <p key={index}>{note}</p>)}
+            <p>路线会优先请求道路几何，无法连接时才用直连估算。营业时间与闭馆日请在出发前复核。</p>
+          </details>
+          <p className="data-attribution">
+            地点资料：<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>
+            · <a href="https://www.wikidata.org/" target="_blank" rel="noreferrer">Wikidata</a>
+            · <a href="https://audiala.com/" target="_blank" rel="noreferrer">Data by Audiala</a>
+          </p>
+        </>
+      )}
       {!compact && <div style={{ height: 8 }} />}
     </div>
   );
@@ -221,6 +319,15 @@ export function AccommodationPanel() {
     () => new Set(items.flatMap((a) => a.quotes.filter((q) => q.amountCNY != null).map((q) => q.providerTitle))),
     [items]
   );
+  const areaSuggestions = useMemo(() => {
+    const seen = new Set<string>();
+    return (state.plan?.days ?? []).flatMap((day, index) => {
+      const anchor = day.stops[0]?.place;
+      if (!anchor || seen.has(anchor.id)) return [];
+      seen.add(anchor.id);
+      return [{ anchor, day: index + 1 }];
+    });
+  }, [state.plan]);
 
   return (
     <div>
@@ -263,6 +370,31 @@ export function AccommodationPanel() {
           </div>
         </details>
       )}
+      {items.length === 0 && areaSuggestions.length > 0 && (
+        <div className="area-suggestions">
+          <div className="area-suggestion-head">
+            <strong>先定落脚片区</strong>
+            <span>按每天主线就近推荐，不冒充具体酒店</span>
+          </div>
+          {areaSuggestions.map(({ anchor, day }) => {
+            const id = `area-${anchor.id}`;
+            const selected = state.focus?.kind === "accommodation" && state.focus.id === id;
+            return (
+              <button
+                key={id}
+                className={`area-card${selected ? " selected" : ""}`}
+                onClick={() => setFocus({ kind: "accommodation", id, coordinate: anchor.coordinate })}
+              >
+                <span className="area-icon"><MapPin size={17} aria-hidden="true" /></span>
+                <span>
+                  <strong>{anchor.name}一带</strong>
+                  <small>靠近第 {day} 天主线，减少早晚折返</small>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
       {items.length === 0 && state.accommodationIssues.length === 0 && (
         <div className="empty-note">正在等待住宿目录…如果一直没有结果，请检查设置的节点地址与渠道配置。</div>
       )}
@@ -295,7 +427,7 @@ function StayCard({
   return (
     <div className={`stay-card${selected ? " selected" : ""}`} onClick={onSelect}>
       <div className="stay-thumb" style={item.imageURL ? { backgroundImage: `url(${item.imageURL})` } : undefined}>
-        {item.imageURL ? "" : "🏨"}
+        {item.imageURL ? "" : <Hotel size={24} aria-label="住宿" />}
       </div>
       <div className="stay-main">
         <div className="stay-name">
@@ -351,6 +483,7 @@ export function TransportPanel({ onGoConditions }: { onGoConditions?: () => void
   const outbound = state.transports.filter((t) => t.direction === "outbound");
   const retur = state.transports.filter((t) => t.direction === "return");
   const list = direction === "outbound" ? outbound : retur;
+  const actualIssues = state.transportIssues.filter((issue) => !["ok", "configured", "disabled"].includes(issue.status));
 
   return (
     <div>
@@ -369,7 +502,13 @@ export function TransportPanel({ onGoConditions }: { onGoConditions?: () => void
           )}
         </div>
       )}
-      {state.transportIssues.map((issue, i) => (
+      {state.transports.length > 0 && (
+        <div className="transport-source-note">
+          <TrainFront size={15} aria-hidden="true" />
+          铁路 12306 公开查询 · 去程 {outbound.length} 列 · 返程 {retur.length} 列
+        </div>
+      )}
+      {actualIssues.map((issue, i) => (
         <div key={i} className="issue-note">
           {issue.providerTitle}：{issue.detail ?? issue.status}
         </div>
@@ -414,7 +553,11 @@ export function TransportPanel({ onGoConditions }: { onGoConditions?: () => void
         );
       })}
       {list.length === 0 && state.draft.origin && (
-        <div className="empty-note">当前没有可展示的班次：请打开“设置”确认报价节点可达（12306 无需密钥；航班需会话通道）。</div>
+        <div className="empty-note">
+          {state.transportIssues.length === 0
+            ? "正在获取往返班次…"
+            : "当前没有返回可购买班次；可以调整日期后再试，或到设置查看渠道状态。"}
+        </div>
       )}
     </div>
   );

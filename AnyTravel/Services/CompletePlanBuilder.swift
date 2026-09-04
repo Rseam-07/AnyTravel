@@ -304,7 +304,8 @@ struct ScheduleBuilder {
         pace: TripPace,
         accommodation: AccommodationOption?,
         travelMode: TravelMode = .walking,
-        constraints: TourismDayConstraints = .none
+        constraints: TourismDayConstraints = .none,
+        plannedDate: Date? = nil
     ) -> [ScheduleItem] {
         let rhythm = policy.rhythm(for: pace)
         var result: [ScheduleItem] = []
@@ -401,7 +402,12 @@ struct ScheduleBuilder {
             }
 
             let visitMinutes = policy.visitMinutes(for: stop, pace: pace)
-            let openingWindow = policy.primaryOpeningWindow(for: stop)
+            let openingState = policy.openingState(for: stop, on: plannedDate)
+            let openingWindow: TourismPlanningPolicy.OpeningWindow? = if case let .open(window) = openingState {
+                window
+            } else {
+                nil
+            }
             if let openingWindow, currentMinute < openingWindow.startMinute {
                 let pauseStart = currentMinute
                 currentMinute = openingWindow.startMinute
@@ -422,10 +428,13 @@ struct ScheduleBuilder {
                 " · \($0.provider.title)\($0.priceText)（\($0.kind.title)）"
             } ?? ""
             let openingNote: String
-            if let openingWindow {
+            if case let .normallyClosed(note) = openingState {
+                openingNote = " · \(note)"
+            } else if let openingWindow {
+                let dayLabel = plannedDate == nil ? "今日" : "计划日"
                 openingNote = currentMinute > openingWindow.endMinute
-                    ? " · 预计可能越过今日营业时段，请调整或复核"
-                    : " · 今日营业\(policy.clock(openingWindow.startMinute))–\(policy.clock(openingWindow.endMinute))，仍需复核"
+                    ? " · 预计可能越过\(dayLabel)营业时段，请调整或复核"
+                    : " · \(dayLabel)营业\(policy.clock(openingWindow.startMinute))–\(policy.clock(openingWindow.endMinute))，仍需复核"
             } else {
                 openingNote = " · 开放与预约请复核"
             }

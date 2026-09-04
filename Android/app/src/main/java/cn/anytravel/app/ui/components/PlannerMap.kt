@@ -36,6 +36,7 @@ fun PlannerMap(
     selectedDay: Int,
     selectedTab: PlanTab,
     autoCamera: Boolean,
+    focusedPlaceID: String?,
     onUserGesture: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -63,7 +64,7 @@ fun PlannerMap(
                 }
                 map.setStyle(BuildConfig.MAP_STYLE_URL) {
                     holder.styleReady = true
-                    holder.render(plan, draftCenter, selectedDay, selectedTab, autoCamera, routeDuration)
+                    holder.render(plan, draftCenter, selectedDay, selectedTab, autoCamera, focusedPlaceID, routeDuration)
                 }
             }
         }
@@ -91,7 +92,7 @@ fun PlannerMap(
             factory = { mapView },
             update = {
                 holder.onUserGesture = onUserGesture
-                holder.render(plan, draftCenter, selectedDay, selectedTab, autoCamera, routeDuration)
+                holder.render(plan, draftCenter, selectedDay, selectedTab, autoCamera, focusedPlaceID, routeDuration)
             },
             modifier = Modifier.fillMaxSize()
         )
@@ -120,6 +121,7 @@ private class MapHolder(var onUserGesture: () -> Unit) {
         selectedDay: Int,
         selectedTab: PlanTab,
         autoCamera: Boolean,
+        focusedPlaceID: String?,
         duration: Int
     ) {
         val currentMap = map ?: return
@@ -131,7 +133,8 @@ private class MapHolder(var onUserGesture: () -> Unit) {
             draftCenter?.latitude,
             draftCenter?.longitude,
             selectedDay,
-            selectedTab
+            selectedTab,
+            focusedPlaceID
         ).joinToString("-")
         if (renderedKey != renderKey) {
             currentMap.clear()
@@ -187,7 +190,7 @@ private class MapHolder(var onUserGesture: () -> Unit) {
 
         val requestedCameraKey = "$renderKey-$autoCamera"
         if (plan != null && autoCamera && cameraKey != requestedCameraKey) {
-            val points = cameraPoints(plan, selectedDay, selectedTab)
+            val points = cameraPoints(plan, selectedDay, selectedTab, focusedPlaceID)
             val center = if (points.isEmpty()) {
                 LatLng(plan.destinationCenter.latitude, plan.destinationCenter.longitude)
             } else {
@@ -196,6 +199,7 @@ private class MapHolder(var onUserGesture: () -> Unit) {
             val zoom = when {
                 selectedTab == PlanTab.TRANSPORT && plan.selectedTransport?.arrivalAccessPoint != null -> 10.8
                 selectedTab == PlanTab.STAYS -> 12.2
+                focusedPlaceID != null -> 15.2
                 points.size <= 2 -> 13.5
                 else -> 12.5
             }
@@ -207,7 +211,11 @@ private class MapHolder(var onUserGesture: () -> Unit) {
         }
     }
 
-    private fun cameraPoints(plan: CompletePlan, selectedDay: Int, tab: PlanTab): List<LatLng> = when (tab) {
+    private fun cameraPoints(plan: CompletePlan, selectedDay: Int, tab: PlanTab, focusedPlaceID: String?): List<LatLng> {
+        plan.days.flatMap { it.stops }.firstOrNull { it.id == focusedPlaceID }?.let {
+            return listOf(LatLng(it.coordinate.latitude, it.coordinate.longitude))
+        }
+        return when (tab) {
         PlanTab.DAYS -> plan.days.getOrNull(selectedDay)?.stops.orEmpty().map {
             LatLng(it.coordinate.latitude, it.coordinate.longitude)
         }
@@ -220,6 +228,7 @@ private class MapHolder(var onUserGesture: () -> Unit) {
             plan.selectedAccommodation?.coordinate?.let { add(LatLng(it.latitude, it.longitude)) }
         }
         PlanTab.COSTS -> plan.days.flatMap { it.stops }.map { LatLng(it.coordinate.latitude, it.coordinate.longitude) }
+        }
     }
 }
 

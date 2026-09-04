@@ -48,6 +48,18 @@ struct PlannerPreferencesStore {
         result.logistics.travelers = preferences.travelers
         result.budgetPerPerson = preferences.budgetPerPerson
         result.pace = preferences.pace
+        if !result.logistics.hasDates {
+            let calendar = Calendar.current
+            let start = calendar.startOfDay(
+                for: calendar.date(byAdding: .day, value: 7, to: .now) ?? .now
+            )
+            result.logistics.startDate = start
+            result.logistics.endDate = calendar.date(
+                byAdding: .day,
+                value: max(result.dayCount - 1, 1),
+                to: start
+            )
+        }
         return result
     }
 }

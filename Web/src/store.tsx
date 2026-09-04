@@ -13,6 +13,7 @@ import {
   DEFAULT_BACKEND_URL,
   channelStatusFromHealth,
   deepseekChat,
+  interpretAssistant,
   fetchAccommodationCatalog,
   fetchHealth,
   fetchPlacesAround,
@@ -29,7 +30,7 @@ import {
   type ChatMessage,
   type WebSettings
 } from "./api";
-import { bestQuote, dayBuckets, distanceMeters, addDays, planItinerary } from "./planner";
+import { bestQuote, distanceMeters, addDays, planItinerary } from "./planner";
 import {
   PACE_META,
   type AccommodationOption,
@@ -47,6 +48,8 @@ import {
 } from "./types";
 import { INTERESTS } from "./types";
 import { catalogPlaces } from "./catalog";
+import { knowledgeCitiesRef, knowledgePlaces, lookupCity, lookupCityCoordinate } from "./knowledge";
+import { normalizeActionType, parseAssistantEnvelope, partialAssistantReply, type AssistantAction } from "./chat";
 
 export type Phase = "welcome" | "compose" | "planning" | "ready" | "failure";
 
@@ -276,7 +279,6 @@ function normalizeInterest(value: string): Interest {
 
 function orderByPreferences(places: TravelPlace[], preferred: Interest[]): TravelPlace[] {
   // Keep the mix: preferred interests first, but never all one category at the top.
-  const scoreMap = new Map<Interest, Interest[]>();
   const primary = preferred.slice(0, 2);
   const secondary = preferred.filter((i) => !primary.includes(i));
   return [...places].sort((a, b) => {
@@ -295,10 +297,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [chatStream, setChatStream] = useState<string | null>(null);
 
   const updateDraft = useCallback((patch: Partial<TripDraft>) => {
+    stateRef.current.draft = { ...stateRef.current.draft, ...patch };
     dispatch({ type: "patchDraft", patch });
   }, []);
 
   const setFocus = useCallback((focus: Focus | null) => {
+    if (focus?.kind === "day") {
+      const selectedDay = Number(focus.id);
+      if (Number.isInteger(selectedDay) && selectedDay >= 0) {
+        stateRef.current.selectedDay = selectedDay;
+        dispatch({ type: "patch", patch: { focus, selectedDay } });
+        return;
+      }
+    }
     dispatch({ type: "patch", patch: { focus } });
   }, []);
 
@@ -312,12 +323,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const resolveDestination = useCallback(async (query: string): Promise<Coord | null> => {
-    const results = await nominatimSearch(stateRef.current.settings.backendURL, query, 5);
-    const city = results.find((r) => r.type === "administrative" || r.addresstype === "city") ?? results[0];
-    if (!city || !Number.isFinite(city.latitude) || !Number.isFinite(city.longitude)) return null;
-    const coord: Coord = { lat: city.latitude, lng: city.longitude };
-    updateDraft({ destination: city.name, destinationCoord: coord });
-    return coord;
+    const commitDestination = (destination: string, coordinate: Coord) => {
+      const current = stateRef.current.draft;
+      const changed = current.destination !== destination || !current.destinationCoord || distanceMeters(current.destinationCoord, coordinate) > 1000;
+      if (changed) {
+        const cleared: Partial<AppState> = {
+          places: [],
+          plan: null,
+          accommodations: [],
+          accommodationIssues: [],
+          transports: [],
+          transportIssues: [],
+          tickets: {},
+          ticketIssues: [],
+          weather: null,
+          focus: null,
+          selectedDay: 0,
+          selectedAccommodationID: null,
+          selectedOutboundID: null,
+          selectedReturnID: null,
+          notice: null,
+          failureDetail: null,
+          phase: "compose"
+        };
+        Object.assign(stateRef.current, cleared);
+        dispatch({ type: "patch", patch: cleared });
+      }
+      updateDraft({ destination, destinationCoord: coordinate });
+    };
+
+    const localCity = lookupCity(query);
+    const localCoordinate = lookupCityCoordinate(query);
+    if (localCity && localCoordinate) {
+      commitDestination(localCity.city, localCoordinate);
+      return localCoordinate;
+    }
+    try {
+      const results = await nominatimSearch(stateRef.current.settings.backendURL, query, 5);
+      const city = results.find((r) => r.type === "administrative" || r.addresstype === "city") ?? results[0];
+      if (!city || !Number.isFinite(city.latitude) || !Number.isFinite(city.longitude)) return null;
+      const coord: Coord = { lat: city.latitude, lng: city.longitude };
+      commitDestination(city.name, coord);
+      return coord;
+    } catch {
+      return null;
+    }
   }, [updateDraft]);
 
   const searchPlaces = useCallback(async (query: string, coord?: Coord): Promise<TravelPlace[]> => {
@@ -346,6 +396,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const center = draft.destinationCoord;
     const base = stateRef.current.settings.backendURL;
 
+    // Stable local packs come first. The planner should not wait for a remote
+    // POI service when the destination is already covered on-device.
+    const builtIn = catalogPlaces(draft.destination);
+    if (builtIn.length >= 2) {
+      dispatch({ type: "setPlaces", places: builtIn });
+      return builtIn;
+    }
+    const guidePlaces = knowledgePlaces(draft.destination, draft.interests);
+    if (guidePlaces.length >= 4) {
+      dispatch({ type: "setPlaces", places: guidePlaces });
+      return guidePlaces;
+    }
+
     // Primary source: OpenStreetMap POIs (tourism/historic/leisure/amenity)
     // fetched through the companion node; no provider key required.
     try {
@@ -370,7 +433,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }));
         const preferred = draft.interests;
         const ranked = orderByPreferences(buckets, preferred);
-        const final = ranked.slice(0, 26).map((place, index) => ({
+        const final = ranked.slice(0, 20).map((place, index) => ({
           ...place,
           planningPriority: index < Math.max(PACE_META[draft.pace].stopsPerDay, 2)
             ? ("primary" as const)
@@ -381,13 +444,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     } catch {
       // Fall through to the Nominatim path below.
-    }
-
-    // Built-in starter pack for popular destinations (never fails, honest source).
-    const builtIn = catalogPlaces(draft.destination);
-    if (builtIn.length >= 2) {
-      dispatch({ type: "setPlaces", places: builtIn });
-      return builtIn;
     }
 
     // Last resort: keyword search on Nominatim (weaker for Chinese POI names).
@@ -432,16 +488,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       if (places.length < 2) throw new Error("地图与在线资料暂时没有找到足够的地点，请换个目的地或兴趣再试。");
 
-      // OSRM real route segments for the planned day routes.
-      const buckets = dayBuckets(places, draft);
-      const pairs: { from: Coord; to: Coord }[] = [];
-      for (const bucket of buckets) {
-        let cursor = draft.destinationCoord ?? places[0].coordinate;
-        for (const stop of bucket.dayStops) {
-          pairs.push({ from: cursor, to: stop.coordinate });
-          cursor = stop.coordinate;
-        }
-      }
+      // Build a usable result immediately, then replace matching estimates
+      // with real road durations when the public router responds in time.
+      const estimatedPlan = planItinerary(places, draft);
+      const pairs = estimatedPlan.days.flatMap((day) => day.route).slice(0, 18);
       const realRoutes: { from: Coord; to: Coord; minutes: number }[] = [];
       const mode = draft.transportMode === "walking" ? "walking" : "driving";
       let cursor2 = 0;
@@ -460,7 +510,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       };
       await Promise.all(Array.from({ length: 6 }, () => worker()));
 
-      const plan = planItinerary(places, draft, realRoutes.length > 0 ? realRoutes : undefined);
+      const plan = realRoutes.length > 0
+        ? planItinerary(places, draft, realRoutes)
+        : estimatedPlan;
+      stateRef.current.plan = plan;
+      stateRef.current.phase = "ready";
+      stateRef.current.selectedDay = 0;
+      stateRef.current.failureDetail = null;
       dispatch({ type: "setPlan", plan });
       dispatch({ type: "patch", patch: { phase: "ready", notice: null, selectedDay: 0, failureDetail: null } });
       void refreshQuotes();
@@ -480,6 +536,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     let catalogItems: AccommodationOption[] = [];
     let transportItems: TransportOption[] = [];
+    let backendSucceeded = false;
 
     if (!draft.startDate) {
       dispatch({
@@ -506,6 +563,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         size: 20,
         anchors: plan?.days.flatMap((d) => d.stops.map((s) => s.place.name)).slice(0, 6) ?? []
       });
+      backendSucceeded = true;
       const items: AccommodationOption[] = catalog.hotels.map((hotel) => ({
         id: hotel.providerHotelID,
         name: hotel.name,
@@ -545,6 +603,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           adults: draft.travelers,
           modes: ["train", "flight"]
         });
+        backendSucceeded = true;
         const items = transport.options.map(toTransportOption);
         transportItems = items;
         dispatch({
@@ -562,7 +621,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     // Tickets for planned stops.
-    const stopNames = plan?.days.flatMap((d) => d.stops.map((s) => ({ id: s.place.id, name: s.place.name, address: s.place.address }))) ?? [];
+    const stopNames = plan?.days.flatMap((day) => day.stops
+      .filter((stop) => stop.isPrimary && !["food", "night"].includes(stop.place.interest))
+      .map((stop) => ({
+        id: stop.place.id,
+        name: stop.place.name,
+        address: stop.place.address,
+        interest: stop.place.interest
+      }))) ?? [];
     if (stopNames.length > 0) {
       try {
         const tickets = await fetchTickets(base, {
@@ -570,6 +636,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           visitDate: draft.startDate,
           attractions: stopNames
         });
+        backendSucceeded = true;
         const map: Record<string, TicketQuote> = {};
         for (const q of tickets.quotes) {
           const place = stopNames.find((s) => s.id === q.attractionID || s.name === q.name);
@@ -621,7 +688,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         selectedAccommodationID,
         selectedOutboundID,
         selectedReturnID,
-        backendReachable: true,
+        backendReachable: backendSucceeded,
         notice: picks.length > 0 ? `已帮你预选：${picks.join("；")}。都可以在对应页更换。` : null
       }
     });
@@ -689,6 +756,7 @@ function summarizeTransport<T extends { title: string; quotes: { amountCNY?: num
       const stop = plan.days[dayIndex]?.stops[stopIndex];
       if (!stop) return;
       const nextPlaces = places.filter((p) => p.id !== stop.place.id);
+      stateRef.current.places = nextPlaces;
       dispatch({ type: "setPlaces", places: nextPlaces });
       await rePlanFromPlaces();
     },
@@ -698,13 +766,14 @@ function summarizeTransport<T extends { title: string; quotes: { amountCNY?: num
   const relaxPlan = useCallback(async () => {
     const draft = stateRef.current.draft;
     const places = stateRef.current.places;
-    const neededDays = Math.max(Math.ceil(places.length / 2), 1);
+    const neededDays = Math.max(Math.ceil(places.length / 3), 1);
     updateDraft({ pace: "relaxed", dayCount: Math.max(draft.dayCount, Math.min(neededDays, 10)) });
     await generatePlan();
   }, [generatePlan, updateDraft]);
 
   const persistSettings = useCallback((settings: WebSettings) => {
     saveSettings(settings);
+    stateRef.current.settings = settings;
     dispatch({ type: "patch", patch: { settings } });
   }, []);
 
@@ -735,91 +804,153 @@ function summarizeTransport<T extends { title: string; quotes: { amountCNY?: num
         },
         { role: "user", content: `当前行程：目的地${draft.destination || "未定"}，${draft.dayCount}天，${draft.travelers}人，预算${draft.budgetPerPerson ?? "未定"}元/人，节奏${PACE_META[draft.pace].title}。\n用户说：${text}` }
       ];
+      let replyText: string | null = null;
+      let actions: AssistantAction[] = [];
+
       try {
-        const answer = await deepseekChat(settings, messages, (partial) => setChatStream(partial));
-        setChatStream(null);
-        dispatch({ type: "patch", patch: { chatBusy: false } });
-        stateRef.current.lastChatReply = answer;
-        // Local fallback parse plus white-list actions.
-        const actions = extractActions(answer);
-        const replyText = extractReply(answer) ?? answer;
-        stateRef.current.lastChatReply = replyText;
-        let changed = false;
-        for (const action of actions) {
-          switch (action.type) {
-            case "setDestination": {
-              if (typeof action.value === "string" && action.value.trim() && action.value !== draft.destination) {
-                await resolveDestination(action.value);
-                changed = true;
-              }
-              break;
-            }
-            case "setOrigin":
-              updateDraft({ origin: String(action.value ?? "").trim() });
-              changed = true;
-              break;
-            case "setStartDate":
-              updateDraft({
-                startDate:
-                  typeof action.value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(action.value)
-                    ? action.value
-                    : undefined
-              });
-              changed = true;
-              break;
-            case "setDayCount":
-              updateDraft({ dayCount: clampInt(action.value, 1, 14, draft.dayCount) });
-              changed = true;
-              break;
-            case "setTravelers":
-              updateDraft({ travelers: clampInt(action.value, 1, 10, draft.travelers) });
-              changed = true;
-              break;
-            case "setBudget":
-              updateDraft({ budgetPerPerson: clampInt(action.value, 100, 100000, draft.budgetPerPerson ?? 3000) });
-              changed = true;
-              break;
-            case "setPace":
-              if (["relaxed", "balanced", "full"].includes(String(action.value))) {
-                updateDraft({ pace: action.value as TripDraft["pace"] });
-                changed = true;
-              }
-              break;
-            case "addInterest": {
-              const interest = String(action.value) as Interest;
-              if (INTERESTS.some((i) => i.id === interest) && !draft.interests.includes(interest)) {
-                updateDraft({ interests: [...draft.interests, interest] });
-                changed = true;
-              }
-              break;
-            }
-            case "setTransportMode":
-              if (["walking", "transit", "driving"].includes(String(action.value))) {
-                updateDraft({ transportMode: action.value as TripDraft["transportMode"] });
-                changed = true;
-              }
-              break;
+        const result = await interpretAssistant(settings, text, {
+          destination: draft.destination,
+          origin: draft.origin,
+          dayCount: draft.dayCount,
+          travelers: draft.travelers,
+          budgetPerPerson: draft.budgetPerPerson,
+          pace: draft.pace,
+          travelMode: draft.transportMode,
+          interests: draft.interests,
+          startDate: draft.startDate,
+          selectedDayIndex: stateRef.current.selectedDay,
+          places: (stateRef.current.plan?.days ?? []).flatMap((day, dayIndex) =>
+            day.stops.map((stop) => ({ name: stop.place.name, dayIndex, interest: stop.place.interest }))
+          )
+        });
+        replyText = result.reply;
+        actions = result.actions;
+      } catch {
+        if (settings.deepseekKey.trim()) {
+          try {
+            const answer = await deepseekChat(settings, messages, (partial) => {
+              setChatStream(partialAssistantReply(partial) ?? "正在整理你的行程条件…");
+            });
+            const parsed = parseAssistantEnvelope(answer);
+            const plainAnswer = answer.trim();
+            replyText = parsed.reply ?? (plainAnswer.startsWith("{") || plainAnswer.startsWith("```") ? null : plainAnswer);
+            actions = parsed.actions;
+          } catch {
+            // The deterministic local parser below still handles common edits.
           }
         }
-        // Local fallback for numbers/pace when the model returned no actions.
-        if (actions.length === 0) {
-          const local = localParse(text, draft);
-          if (Object.keys(local).length > 0) {
-            updateDraft(local);
-            changed = true;
-          }
-        }
-        dispatch({ type: "patch", patch: { notice: changed ? "已经照这句话调整，地图会沿新的条件重新展开。" : answer ? undefined : undefined } });
-        if (changed) void generatePlan();
-      } catch (error) {
-        setChatStream(null);
-        const message = error instanceof Error ? error.message : String(error);
-        stateRef.current.lastChatReply = `（暂时没能连上 DeepSeek：${message}）\n\n可以在“设置”里粘贴你自己的 API Key，或确认节点地址可达。`;
-        dispatch({ type: "patch", patch: { chatBusy: false, notice: message } });
       }
+
+      let nextDraft: TripDraft = { ...draft, interests: [...draft.interests] };
+      let requestedPlan = false;
+      for (const action of actions) {
+        switch (normalizeActionType(action.type)) {
+          case "setDestination": {
+            const value = String(action.value ?? "").trim();
+            if (!value) break;
+            const coordinate = await resolveDestination(value);
+            if (coordinate) {
+              nextDraft = {
+                ...nextDraft,
+                destination: lookupCity(value)?.city ?? value,
+                destinationCoord: coordinate
+              };
+            }
+            break;
+          }
+          case "setOrigin":
+            nextDraft.origin = String(action.value ?? "").trim();
+            break;
+          case "setStartDate":
+            if (typeof action.value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(action.value)) {
+              nextDraft.startDate = action.value;
+            }
+            break;
+          case "setDayCount":
+            nextDraft.dayCount = clampInt(action.value, 1, 14, nextDraft.dayCount);
+            break;
+          case "setTravelers":
+            nextDraft.travelers = clampInt(action.value, 1, 10, nextDraft.travelers);
+            break;
+          case "setBudget":
+            nextDraft.budgetPerPerson = clampInt(action.value, 100, 100000, nextDraft.budgetPerPerson ?? 3000);
+            break;
+          case "setPace":
+            if (["relaxed", "balanced", "full"].includes(String(action.value))) {
+              nextDraft.pace = action.value as TripDraft["pace"];
+            }
+            break;
+          case "addInterest": {
+            const interest = String(action.value) as Interest;
+            if (INTERESTS.some((item) => item.id === interest) && !nextDraft.interests.includes(interest)) {
+              nextDraft.interests = [...nextDraft.interests, interest];
+            }
+            break;
+          }
+          case "removeInterest": {
+            const interest = String(action.value) as Interest;
+            nextDraft.interests = nextDraft.interests.filter((item) => item !== interest);
+            if (nextDraft.interests.length === 0) nextDraft.interests = ["gardens"];
+            break;
+          }
+          case "setTransportMode":
+            if (["walking", "transit", "driving"].includes(String(action.value))) {
+              nextDraft.transportMode = action.value as TripDraft["transportMode"];
+            }
+            break;
+          case "setLongDistanceMode": {
+            const value = String(action.value);
+            const mapped = value === "driving" ? "self-driving" : value === "coach" ? "bus" : value;
+            if (["train", "flight", "bus", "self-driving"].includes(mapped)) {
+              nextDraft.longDistanceMode = mapped as TripDraft["longDistanceMode"];
+            }
+            break;
+          }
+          case "generatePlan":
+            requestedPlan = String(action.value).toLowerCase() !== "false";
+            break;
+        }
+      }
+
+      if (actions.length === 0) {
+        nextDraft = { ...nextDraft, ...localParse(text, nextDraft) };
+        const mentioned = knowledgeCitiesRef().find((city) =>
+          (!draft.destination && text.includes(city.city)) ||
+          text.includes(`去${city.city}`) ||
+          text.includes(`到${city.city}`) ||
+          text.includes(`目的地${city.city}`) ||
+          text.includes(`改成${city.city}`)
+        );
+        if (mentioned?.coord) {
+          await resolveDestination(mentioned.city);
+          nextDraft.destination = mentioned.city;
+          nextDraft.destinationCoord = mentioned.coord;
+        }
+        const origin = text.match(/从\s*([\u4e00-\u9fa5]{2,10}?)(?:出发|启程|走)/)?.[1];
+        if (origin) nextDraft.origin = origin;
+      }
+
+      const changed = JSON.stringify(nextDraft) !== JSON.stringify(draft);
+      if (changed) {
+        stateRef.current.draft = nextDraft;
+        dispatch({ type: "patchDraft", patch: nextDraft });
+      }
+      replyText ??= changed
+        ? "已经把这句话里的条件改好了，我会按新的节奏重新排路线。"
+        : "我还没抓到要改的条件。可以直接说目的地、天数、人数、预算或旅行节奏。";
+      stateRef.current.lastChatReply = replyText;
+      setChatStream(null);
+      dispatch({
+        type: "patch",
+        patch: {
+          chatBusy: false,
+          notice: changed ? "条件已更新，正在重新整理路线。" : null
+        }
+      });
+      if ((changed || requestedPlan) && nextDraft.destination) void generatePlan();
       return stateRef.current.lastChatReply ?? "";
     },
-    [generatePlan, resolveDestination, updateDraft]
+    [generatePlan, resolveDestination]
   );
 
   const saveTrip = useCallback(() => {
@@ -835,13 +966,33 @@ function summarizeTransport<T extends { title: string; quotes: { amountCNY?: num
     const next = [trip, ...trips].slice(0, 20);
     localStorage.setItem(TRIP_KEY, JSON.stringify(next));
     localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-    dispatch({ type: "patch", patch: { savedTrips: next, notice: "行程已收进旅册。" } });
+    dispatch({ type: "patch", patch: { savedTrips: next, notice: null } });
   }, []);
 
   const loadTrip = useCallback((id: string) => {
     const trip = stateRef.current.savedTrips.find((t) => t.id === id);
     if (!trip) return;
-    dispatch({ type: "patch", patch: { draft: trip.draft, phase: "compose" } });
+    const patch: Partial<AppState> = {
+      draft: trip.draft,
+      phase: "compose",
+      places: [],
+      plan: null,
+      accommodations: [],
+      accommodationIssues: [],
+      transports: [],
+      transportIssues: [],
+      tickets: {},
+      ticketIssues: [],
+      weather: null,
+      focus: null,
+      selectedDay: 0,
+      selectedAccommodationID: null,
+      selectedOutboundID: null,
+      selectedReturnID: null,
+      notice: "已载入行程条件，重新生成后会取得对应城市的地点与报价。"
+    };
+    Object.assign(stateRef.current, patch);
+    dispatch({ type: "patch", patch });
     localStorage.setItem(DRAFT_KEY, JSON.stringify(trip.draft));
   }, []);
 
@@ -858,6 +1009,10 @@ function summarizeTransport<T extends { title: string; quotes: { amountCNY?: num
   }, []);
 
   const resetAll = useCallback(() => {
+    Object.assign(stateRef.current, initialState(), {
+      settings: stateRef.current.settings,
+      savedTrips: stateRef.current.savedTrips
+    });
     dispatch({ type: "reset" });
   }, []);
 
@@ -1056,30 +1211,6 @@ function clampInt(value: unknown, min: number, max: number, fallback: number): n
   return Math.min(Math.max(Math.round(n), min), max);
 }
 
-function extractReply(text: string): string | null {
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) return null;
-  try {
-    const payload = JSON.parse(match[0]);
-    if (typeof payload.reply === "string" && payload.reply.trim()) return payload.reply.trim();
-  } catch {
-    /* fall through */
-  }
-  return null;
-}
-
-function extractActions(text: string): { type: string; value?: unknown }[] {
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) return [];
-  try {
-    const payload = JSON.parse(match[0]);
-    if (payload && Array.isArray(payload.actions)) return payload.actions;
-  } catch {
-    /* fall through */
-  }
-  return [];
-}
-
 function localParse(
   text: string,
   draft: TripDraft
@@ -1101,6 +1232,13 @@ function localParse(
   if (/(地铁|公交|公共交通)/.test(text)) patch.transportMode = "transit";
   else if (/(走路|步行)/.test(text)) patch.transportMode = "walking";
   else if (/(打车|自驾|开车|租车)/.test(text)) patch.transportMode = "driving";
+  const interests = new Set(draft.interests);
+  if (/(带娃|孩子|亲子|儿童)/.test(text)) interests.add("family");
+  if (/(博物馆|美术馆|人文|历史)/.test(text)) interests.add("culture");
+  if (/(吃|美食|小吃|夜市)/.test(text)) interests.add("food");
+  if (/(自然|公园|山水|徒步|海边)/.test(text)) interests.add("nature");
+  if (/(夜景|夜游|演出)/.test(text)) interests.add("night");
+  if (interests.size !== draft.interests.length) patch.interests = [...interests];
   return patch;
 }
 

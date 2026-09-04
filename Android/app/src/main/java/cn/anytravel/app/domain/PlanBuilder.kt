@@ -7,6 +7,7 @@ import cn.anytravel.app.model.DestinationPack
 import cn.anytravel.app.model.ExpenseLine
 import cn.anytravel.app.model.ExpenseSource
 import cn.anytravel.app.model.ItineraryDay
+import cn.anytravel.app.model.LocalTravelMode
 import cn.anytravel.app.model.LongDistanceMode
 import cn.anytravel.app.model.PriceQuote
 import cn.anytravel.app.model.QuoteKind
@@ -15,9 +16,12 @@ import cn.anytravel.app.model.ScheduleItem
 import cn.anytravel.app.model.TransportOption
 import cn.anytravel.app.model.TravelPlace
 import cn.anytravel.app.model.TripDraft
+import cn.anytravel.app.model.TripInterest
 import cn.anytravel.app.model.TripPace
 import cn.anytravel.app.model.distanceText
 import java.net.URLEncoder
+import java.time.DayOfWeek
+import java.time.LocalDate
 import kotlin.math.roundToInt
 
 class PlanBuilder {
@@ -28,7 +32,7 @@ class PlanBuilder {
         selectionWasSkipped: Boolean = selectedPlaceIDs.isEmpty()
     ): CompletePlan {
         val orderedPlaces = orderPlaces(draft, pack, selectedPlaceIDs)
-        val days = buildDays(draft, orderedPlaces, selectedPlaceIDs)
+        val days = buildDays(draft, orderedPlaces, selectedPlaceIDs, pack.center)
         val accommodations = buildAccommodations(draft, pack, days)
         val selectedAccommodation = accommodations.firstOrNull()
         val transports = buildTransports(draft, pack.accessPoints, selectedAccommodation)
@@ -146,40 +150,146 @@ class PlanBuilder {
             compareBy<TravelPlace> { if (it.id in selectedPlaceIDs) 0 else 1 }
                 .thenBy { selectedOrder[it.id] ?: it.popularityRank }
         )
-        val remaining = weighted.toMutableList()
-        val result = mutableListOf<TravelPlace>()
-        var cursor = pack.center
-        while (remaining.isNotEmpty() && result.size < targetCount) {
-            val next = remaining.minBy { cursor.distanceTo(it.coordinate) }
-            result += next
-            remaining -= next
-            cursor = next.coordinate
-        }
-        return result
+        return weighted
     }
 
     private fun buildDays(
         draft: TripDraft,
         orderedPlaces: List<TravelPlace>,
-        selectedPlaceIDs: Set<String>
+        selectedPlaceIDs: Set<String>,
+        center: cn.anytravel.app.model.Coordinate
     ): List<ItineraryDay> {
-        val base = orderedPlaces.size / draft.dayCount.coerceAtLeast(1)
-        val remainder = orderedPlaces.size % draft.dayCount.coerceAtLeast(1)
-        var offset = 0
+        val groups = avoidRegularClosures(
+            spatiallyBalancedGroups(orderedPlaces, draft.dayCount.coerceAtLeast(1), center),
+            draft
+        )
+        val tripStart = runCatching { LocalDate.parse(draft.startDate) }.getOrNull()
         return (0 until draft.dayCount).map { dayIndex ->
-            val count = base + if (dayIndex < remainder) 1 else 0
-            val stops = orderedPlaces.drop(offset).take(count)
-            offset += count
-            ItineraryDay(dayIndex, stops, buildSchedule(dayIndex, stops, draft.pace, !draft.skipAccommodation, selectedPlaceIDs))
+            val stops = groups.getOrNull(dayIndex).orEmpty()
+            val orderedStops = orderWithinDay(stops, center)
+            ItineraryDay(
+                dayIndex,
+                orderedStops,
+                buildSchedule(
+                    dayIndex = dayIndex,
+                    stops = orderedStops,
+                    pace = draft.pace,
+                    localTravelMode = draft.localTravelMode,
+                    hasAccommodation = !draft.skipAccommodation,
+                    selectedPlaceIDs = selectedPlaceIDs,
+                    plannedDate = tripStart?.plusDays(dayIndex.toLong())
+                )
+            )
         }
+    }
+
+    private fun spatiallyBalancedGroups(
+        places: List<TravelPlace>,
+        requestedDayCount: Int,
+        center: cn.anytravel.app.model.Coordinate
+    ): List<List<TravelPlace>> {
+        if (places.isEmpty()) return List(requestedDayCount) { emptyList() }
+        val activeDayCount = minOf(requestedDayCount, places.size)
+        val base = places.size / activeDayCount
+        val remainder = places.size % activeDayCount
+        val capacities = (0 until activeDayCount).map { base + if (it < remainder) 1 else 0 }
+        val seedPool = places.filter { it.interest != TripInterest.FOOD && it.interest != TripInterest.NIGHT }
+            .ifEmpty { places }
+        val seeds = mutableListOf(seedPool.minBy { it.popularityRank })
+        while (seeds.size < activeDayCount) {
+            val next = seedPool.filterNot { candidate -> seeds.any { it.id == candidate.id } }
+                .maxByOrNull { candidate -> seeds.minOf { it.coordinate.distanceTo(candidate.coordinate) } }
+                ?: break
+            seeds += next
+        }
+        val groups = seeds.map { mutableListOf(it) }.toMutableList()
+        val remaining = places.filterNot { candidate -> seeds.any { it.id == candidate.id } }
+            .sortedBy { it.popularityRank }
+        for (place in remaining) {
+            val available = groups.indices.filter { groups[it].size < capacities[it] }.ifEmpty { groups.indices.toList() }
+            val target = available.minBy { index ->
+                val centroid = centroid(groups[index])
+                val duplicateSpecialPenalty = when (place.interest) {
+                    TripInterest.FOOD, TripInterest.NIGHT -> if (groups[index].any { it.interest == place.interest }) 20_000.0 else 0.0
+                    else -> 0.0
+                }
+                centroid.distanceTo(place.coordinate) + duplicateSpecialPenalty
+            }
+            groups[target] += place
+        }
+        val sorted = groups.sortedBy { centroid(it).distanceTo(center) }
+        return sorted + List((requestedDayCount - sorted.size).coerceAtLeast(0)) { emptyList() }
+    }
+
+    private fun orderWithinDay(
+        places: List<TravelPlace>,
+        center: cn.anytravel.app.model.Coordinate
+    ): List<TravelPlace> {
+        val ordinary = places.filter { it.interest != TripInterest.FOOD && it.interest != TripInterest.NIGHT }.toMutableList()
+        val food = places.filter { it.interest == TripInterest.FOOD }.toMutableList()
+        val night = places.filter { it.interest == TripInterest.NIGHT }.toMutableList()
+        val result = mutableListOf<TravelPlace>()
+        var cursor = if (ordinary.isEmpty()) center else centroid(ordinary)
+        fun takeNearest(pool: MutableList<TravelPlace>) {
+            if (pool.isEmpty()) return
+            val next = pool.minBy { cursor.distanceTo(it.coordinate) }
+            pool -= next
+            result += next
+            cursor = next.coordinate
+        }
+        takeNearest(ordinary)
+        takeNearest(food)
+        while (ordinary.isNotEmpty()) takeNearest(ordinary)
+        while (food.isNotEmpty()) takeNearest(food)
+        while (night.isNotEmpty()) takeNearest(night)
+        return result
+    }
+
+    private fun avoidRegularClosures(groups: List<List<TravelPlace>>, draft: TripDraft): List<List<TravelPlace>> {
+        val start = runCatching { LocalDate.parse(draft.startDate) }.getOrNull() ?: return groups
+        val result = groups.map { it.toMutableList() }.toMutableList()
+        for (dayIndex in result.indices) {
+            val date = start.plusDays(dayIndex.toLong())
+            for (stopIndex in result[dayIndex].indices) {
+                val closed = result[dayIndex][stopIndex]
+                if (!isRegularlyClosed(closed, date)) continue
+                val swap = result.indices.asSequence().filter { it != dayIndex }.flatMap { otherDay ->
+                    result[otherDay].indices.asSequence().map { otherStop -> otherDay to otherStop }
+                }.filter { (otherDay, otherStop) ->
+                    !isRegularlyClosed(closed, start.plusDays(otherDay.toLong())) &&
+                        !isRegularlyClosed(result[otherDay][otherStop], date)
+                }.minByOrNull { (otherDay, otherStop) ->
+                    val replacement = result[otherDay][otherStop]
+                    replacement.coordinate.distanceTo(centroid(result[dayIndex])) +
+                        closed.coordinate.distanceTo(centroid(result[otherDay])) +
+                        if (replacement.interest == closed.interest) 0.0 else 4_000.0
+                }
+                if (swap != null) {
+                    val (otherDay, otherStop) = swap
+                    result[dayIndex][stopIndex] = result[otherDay][otherStop]
+                    result[otherDay][otherStop] = closed
+                }
+            }
+        }
+        return result
+    }
+
+    private fun centroid(places: List<TravelPlace>): cn.anytravel.app.model.Coordinate {
+        if (places.isEmpty()) return cn.anytravel.app.model.Coordinate(0.0, 0.0)
+        return cn.anytravel.app.model.Coordinate(
+            places.map { it.coordinate.latitude }.average(),
+            places.map { it.coordinate.longitude }.average()
+        )
     }
 
     private fun buildSchedule(
         dayIndex: Int,
         stops: List<TravelPlace>,
         pace: TripPace,
+        localTravelMode: LocalTravelMode,
         hasAccommodation: Boolean,
-        selectedPlaceIDs: Set<String>
+        selectedPlaceIDs: Set<String>,
+        plannedDate: LocalDate?
     ): List<ScheduleItem> {
         val schedule = mutableListOf<ScheduleItem>()
         var minute = when (pace) {
@@ -191,11 +301,7 @@ class PlanBuilder {
         stops.forEachIndexed { index, stop ->
             if (index > 0) {
                 val transferStart = minute
-                minute += when (pace) {
-                    TripPace.RELAXED -> 35
-                    TripPace.BALANCED -> 30
-                    TripPace.FULL -> 25
-                }
+                minute += estimatedTransferMinutes(stops[index - 1], stop, localTravelMode)
                 schedule += ScheduleItem(
                     id = "$dayIndex-transfer-$index",
                     timeText = timeRange(transferStart, minute),
@@ -203,7 +309,10 @@ class PlanBuilder {
                     detail = "已留出换乘、找路与进场缓冲，实际以地图路线为准"
                 )
             }
-            if (!lunchAdded && minute >= 11 * 60 + 40) {
+            if (stop.interest == TripInterest.FOOD && !lunchAdded) {
+                minute = maxOf(minute, 11 * 60 + 30)
+                lunchAdded = true
+            } else if (!lunchAdded && minute >= 11 * 60 + 40) {
                 val lunchStart = minute.coerceAtLeast(12 * 60)
                 minute = lunchStart + if (pace == TripPace.RELAXED) 90 else 70
                 schedule += ScheduleItem(
@@ -232,6 +341,8 @@ class PlanBuilder {
                     if (stop.id in selectedPlaceIDs) append("主游览点 · ")
                     append(stop.introduction)
                     append(" · 建议停留${durationText(visitMinutes)}")
+                    if (stop.interest == TripInterest.FOOD && lunchAdded) append(" · 这一站兼作正餐")
+                    if (plannedDate != null && isRegularlyClosed(stop, plannedDate)) append(" · 计划日为常规休息日，请复核节假日安排")
                 },
                 placeId = stop.id
             )
@@ -245,6 +356,39 @@ class PlanBuilder {
             )
         }
         return schedule
+    }
+
+    private fun estimatedTransferMinutes(
+        from: TravelPlace,
+        to: TravelPlace,
+        mode: LocalTravelMode
+    ): Int {
+        val kilometres = from.coordinate.distanceTo(to.coordinate) / 1_000.0
+        val (speed, overhead) = when (mode) {
+            LocalTravelMode.WALKING -> 4.5 to 4.0
+            LocalTravelMode.TRANSIT -> 18.0 to 12.0
+            LocalTravelMode.DRIVING -> 27.0 to 9.0
+        }
+        return ((kilometres / speed * 60 + overhead) / 5).roundToInt().coerceIn(1, 24) * 5
+    }
+
+    private fun isRegularlyClosed(place: TravelPlace, date: LocalDate): Boolean {
+        if (date.dayOfWeek == DayOfWeek.MONDAY && listOf("故宫博物院", "中国国家博物馆", "国家博物馆", "苏州博物馆").any(place.name::contains)) {
+            return true
+        }
+        val weekly = place.openingHoursWeek ?: return false
+        val token = when (date.dayOfWeek) {
+            DayOfWeek.MONDAY -> "Mo"
+            DayOfWeek.TUESDAY -> "Tu"
+            DayOfWeek.WEDNESDAY -> "We"
+            DayOfWeek.THURSDAY -> "Th"
+            DayOfWeek.FRIDAY -> "Fr"
+            DayOfWeek.SATURDAY -> "Sa"
+            DayOfWeek.SUNDAY -> "Su"
+        }
+        return weekly.split(';', '；').any { segment ->
+            segment.contains(token, ignoreCase = true) && Regex("off|closed|闭馆|休息", RegexOption.IGNORE_CASE).containsMatchIn(segment)
+        }
     }
 
     private fun buildAccommodations(

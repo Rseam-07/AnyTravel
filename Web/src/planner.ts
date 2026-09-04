@@ -1,29 +1,35 @@
-// AnyTravel Web heuristic itinerary builder.
-// Mirrors TourismPlanningPolicy on iOS: seed assignment by day count, greedy
-// nearest-neighbour ordering per day (limited opening-hour priority), typed
-// visit durations, lunch/night slots, contingency and over-capacity flags.
-// This is a planning estimate; real road segments come from OSRM when available.
-
+import { famousBestTime, famousStayMinutes, knowledgeHeat } from "./knowledge";
 import {
   DAY_BUDGETS,
   INTEREST_MINUTES,
-  PACE_META,
   type Coord,
+  type Interest,
   type Pace,
-  type ProviderQuote,
   type Plan,
   type PlanDay,
   type PlanStop,
+  type ProviderQuote,
   type TravelPlace,
   type TripDraft,
   clockText,
   durationText
 } from "./types";
 
-const EARTH_RADIUS_M = 6371000;
+const EARTH_RADIUS_M = 6_371_000;
+const DAILY_MAIN_LIMIT: Record<Pace, number> = { relaxed: 2, balanced: 3, full: 4 };
+const DAILY_TOTAL_LIMIT: Record<Pace, number> = { relaxed: 4, balanced: 5, full: 6 };
+const WHOLE_DAY_NAMES = /迪士尼|环球影城|主题乐园|欢乐谷|森林世界|海洋公园|冰雪大世界|黄山|九寨沟|张家界|米尔福德峡湾|霍比屯/;
+
+export interface DayAssignment {
+  stops: TravelPlace[];
+  anchor: TravelPlace | null;
+  date: string;
+  theme: string;
+  wholeDay: boolean;
+}
 
 export function distanceMeters(from: Coord, to: Coord): number {
-  const toRad = (v: number) => (v * Math.PI) / 180;
+  const toRad = (value: number) => (value * Math.PI) / 180;
   const dLat = toRad(to.lat - from.lat);
   const dLng = toRad(to.lng - from.lng);
   const a =
@@ -34,21 +40,176 @@ export function distanceMeters(from: Coord, to: Coord): number {
 
 export function estimateTravelMinutes(from: Coord, to: Coord, mode: TripDraft["transportMode"]): number {
   const km = distanceMeters(from, to) / 1000;
-  const spec: Record<string, [number, number]> = {
+  const spec: Record<TripDraft["transportMode"], [number, number]> = {
     walking: [4.5, 4],
     transit: [18, 12],
     driving: [27, 9]
   };
-  const [speed, overhead] = spec[mode] ?? spec.transit;
-  const raw = (km / speed) * 60 + overhead;
-  return Math.min(Math.max(Math.round(raw / 5) * 5, 5), 120);
+  const [speed, overhead] = spec[mode];
+  return Math.min(Math.max(Math.round((((km / speed) * 60) + overhead) / 5) * 5, 5), 120);
 }
 
 export function visitMinutes(place: TravelPlace, pace: Pace): number {
   const base = INTEREST_MINUTES[place.interest] ?? 105;
-  const multiplier = pace === "relaxed" ? 1.12 : pace === "full" ? 0.86 : 1;
-  const primary = place.planningPriority === "primary" ? 1.28 : 1;
-  return Math.max(Math.round((base * multiplier * primary) / 5) * 5, 5);
+  const paceMultiplier = pace === "relaxed" ? 1.12 : pace === "full" ? 0.88 : 1;
+  const priorityMultiplier = place.planningPriority === "primary" ? 1.18 : 1;
+  const fallback = Math.round(base * paceMultiplier * priorityMultiplier);
+  let suggested = famousStayMinutes(place, fallback);
+  if (WHOLE_DAY_NAMES.test(place.name)) suggested = Math.max(suggested, 300);
+  return Math.max(Math.round(suggested / 5) * 5, 30);
+}
+
+export function heatScore(place: TravelPlace, preferred: Interest[] = []): number {
+  let score = place.planningPriority === "primary" ? 42 : 0;
+  if (preferred.includes(place.interest)) score += 18;
+  if (/博物馆|美术馆|纪念馆|故宫|古城|古镇|园|寺|塔|山|湖|海|乐园|步行街/.test(place.name)) score += 14;
+  if (place.rating != null) score += place.rating * 3;
+  if (/酒店|宾馆|停车场|游客中心|服务区/.test(place.name)) score -= 45;
+  return knowledgeHeat(place, score);
+}
+
+export function addDays(date: string, days: number): string {
+  const match = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return date;
+  const parsed = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + days));
+  return parsed.toISOString().slice(0, 10);
+}
+
+export function assignDays(input: TravelPlace[], draft: TripDraft): { days: DayAssignment[]; overflow: number } {
+  const places = deduplicatePlaces(input);
+  const dayCount = Math.max(draft.dayCount, 1);
+  const center = draft.destinationCoord ?? places[0]?.coordinate;
+  if (!center || places.length === 0) return { days: [], overflow: 0 };
+
+  const ranked = [...places].sort(
+    (a, b) => heatScore(b, draft.interests) - heatScore(a, draft.interests)
+  );
+  const anchorCandidates = ranked.filter((place) => place.interest !== "food" && place.interest !== "night");
+  const anchors: TravelPlace[] = [];
+
+  while (anchors.length < dayCount && anchors.length < anchorCandidates.length) {
+    const remaining = anchorCandidates.filter((place) => !anchors.includes(place));
+    const picked = [...remaining].sort((a, b) => {
+      const spreadA = anchors.length === 0
+        ? 0
+        : Math.min(...anchors.map((anchor) => distanceMeters(anchor.coordinate, a.coordinate)));
+      const spreadB = anchors.length === 0
+        ? 0
+        : Math.min(...anchors.map((anchor) => distanceMeters(anchor.coordinate, b.coordinate)));
+      const scoreA = heatScore(a, draft.interests) + Math.min(spreadA / 2500, 36);
+      const scoreB = heatScore(b, draft.interests) + Math.min(spreadB / 2500, 36);
+      return scoreB - scoreA;
+    })[0];
+    if (!picked) break;
+    anchors.push(picked);
+  }
+
+  const days: DayAssignment[] = Array.from({ length: Math.min(dayCount, Math.max(anchors.length, 1)) }, (_, index) => {
+    const anchor = anchors[index] ?? null;
+    const wholeDay = anchor ? isWholeDay(anchor, draft.pace) : false;
+    return {
+      stops: anchor ? [anchor] : [],
+      anchor,
+      date: draft.startDate ? addDays(draft.startDate, index) : "",
+      theme: anchor ? `${shortName(anchor.name)}一带` : `第${index + 1}天`,
+      wholeDay
+    };
+  });
+
+  const used = new Set(anchors.map((place) => place.id));
+  const daytime = ranked.filter((place) => !used.has(place.id) && place.interest !== "food" && place.interest !== "night");
+  const food = ranked.filter((place) => !used.has(place.id) && place.interest === "food");
+  const night = ranked.filter((place) => !used.has(place.id) && place.interest === "night");
+
+  for (const pool of [daytime, food, night]) {
+    for (const place of pool) {
+      const available = days
+        .filter((day) => canAccept(day, place, draft.pace))
+        .map((day) => ({ day, score: placementScore(day, place, draft.interests) }))
+        .sort((a, b) => a.score - b.score)[0]?.day;
+      if (!available) continue;
+      available.stops.push(place);
+      used.add(place.id);
+    }
+  }
+
+  const nonEmpty = days.filter((day) => day.stops.length > 0);
+  return { days: nonEmpty, overflow: Math.max(places.length - used.size, 0) };
+}
+
+function canAccept(day: DayAssignment, place: TravelPlace, pace: Pace): boolean {
+  if (day.wholeDay) return false;
+  if (day.stops.length >= DAILY_TOTAL_LIMIT[pace]) return false;
+  if (place.interest === "food" && day.stops.some((item) => item.interest === "food")) return false;
+  if (place.interest === "night" && day.stops.some((item) => item.interest === "night")) return false;
+  if (place.interest !== "food" && place.interest !== "night") {
+    const mainStops = day.stops.filter((item) => item.interest !== "food" && item.interest !== "night").length;
+    if (mainStops >= DAILY_MAIN_LIMIT[pace]) return false;
+  }
+  const sameType = day.stops.filter((item) => item.interest === place.interest).length;
+  const typeLimit = pace === "full" ? 2 : 1;
+  return sameType < typeLimit;
+}
+
+function placementScore(day: DayAssignment, place: TravelPlace, preferred: Interest[]): number {
+  const anchor = day.anchor?.coordinate ?? place.coordinate;
+  const nearest = Math.min(
+    ...day.stops.map((item) => distanceMeters(item.coordinate, place.coordinate)),
+    distanceMeters(anchor, place.coordinate)
+  );
+  const loadPenalty = day.stops.length * 6000;
+  const priorityCredit = heatScore(place, preferred) * 35;
+  return nearest + loadPenalty - priorityCredit;
+}
+
+function isWholeDay(place: TravelPlace, pace: Pace): boolean {
+  return visitMinutes(place, pace) >= 300;
+}
+
+function deduplicatePlaces(places: TravelPlace[]): TravelPlace[] {
+  const unique: TravelPlace[] = [];
+  for (const place of places) {
+    if (!Number.isFinite(place.coordinate.lat) || !Number.isFinite(place.coordinate.lng)) continue;
+    const normalized = place.name.replace(/[\s·•（）()\-—]/g, "").toLowerCase();
+    const duplicate = unique.some((candidate) => {
+      const other = candidate.name.replace(/[\s·•（）()\-—]/g, "").toLowerCase();
+      const similarName = normalized === other || (normalized.length >= 4 && (normalized.includes(other) || other.includes(normalized)));
+      return similarName && distanceMeters(candidate.coordinate, place.coordinate) < 500;
+    });
+    if (!duplicate) unique.push(place);
+  }
+  return unique;
+}
+
+function orderedStops(day: DayAssignment, center: Coord, preferred: Interest[]): TravelPlace[] {
+  if (day.wholeDay) return day.stops.slice(0, 1);
+
+  const daytime = day.stops.filter((place) => place.interest !== "food" && place.interest !== "night");
+  const foods = day.stops.filter((place) => place.interest === "food");
+  const nights = day.stops.filter((place) => place.interest === "night");
+  const ordered: TravelPlace[] = [];
+  let cursor = center;
+
+  while (daytime.length > 0) {
+    const index = daytime
+      .map((place, itemIndex) => {
+        const best = famousBestTime(place);
+        const timeBonus = ordered.length === 0 && (best === "清晨" || best === "上午") ? -30_000 : 0;
+        const latePenalty = ordered.length === 0 && (best === "傍晚" || best === "晚上") ? 40_000 : 0;
+        return {
+          itemIndex,
+          score: distanceMeters(cursor, place.coordinate) + timeBonus + latePenalty - heatScore(place, preferred) * 25
+        };
+      })
+      .sort((a, b) => a.score - b.score)[0].itemIndex;
+    const picked = daytime.splice(index, 1)[0];
+    ordered.push(picked);
+    cursor = picked.coordinate;
+  }
+
+  if (foods[0]) ordered.splice(Math.min(1, ordered.length), 0, foods[0]);
+  ordered.push(...nights);
+  return ordered;
 }
 
 function openingWindow(place: TravelPlace): { start: number; end: number } | null {
@@ -57,161 +218,71 @@ function openingWindow(place: TravelPlace): { start: number; end: number } | nul
   if (!match) return null;
   const start = Number(match[1]) * 60 + Number(match[2]);
   const end = Number(match[3]) * 60 + Number(match[4]);
-  if (start < end && end <= 24 * 60) return { start, end };
-  return null;
+  return start < end && end <= 1440 ? { start, end } : null;
 }
 
 function dateLabel(date: string): string {
   if (!date) return "";
-  const d = new Date(`${date}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return date;
-  const week = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][d.getDay()];
-  return `${date.slice(5).replace("-", "月")}日 ${week}`;
+  const parsed = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return date;
+  const weekday = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][parsed.getDay()];
+  return `${date.slice(5).replace("-", "月")}日 ${weekday}`;
 }
 
-export function addDays(date: string, days: number): string {
-  const d = new Date(`${date}T00:00:00`);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
-export interface PlannedDay {
-  dayStops: TravelPlace[];
-  date: string;
-}
-
-export function dayBuckets(places: TravelPlace[], draft: TripDraft): PlannedDay[] {
-  const dayCount = Math.max(draft.dayCount, 1);
-  const center = draft.destinationCoord ?? places[0].coordinate;
-
-  // Seeds: first near destination centre, remaining ones spread apart.
-  const sorted = [...places].sort(
-    (a, b) => distanceMeters(center, a.coordinate) - distanceMeters(center, b.coordinate)
-  );
-  const seeds: TravelPlace[] = [sorted[0]];
-  for (let i = 1; i < dayCount && i < sorted.length; i++) {
-    let best: TravelPlace | null = null;
-    let bestDist = -1;
-    for (const place of sorted) {
-      if (seeds.includes(place)) continue;
-      const minDist = Math.min(...seeds.map((s) => distanceMeters(s.coordinate, place.coordinate)));
-      if (minDist > bestDist) {
-        bestDist = minDist;
-        best = place;
-      }
-    }
-    if (best) seeds.push(best);
-  }
-
-  // Assign each non-seed place to the nearest seed with capacity headroom.
-  const capacityPerDay = PACE_META[draft.pace].stopsPerDay + 2;
-  const buckets: Record<number, TravelPlace[]> = {};
-  const rest = places.filter((p) => !seeds.includes(p));
-  const normalized = rest.map((p, i) => ({ place: p, order: i })).sort((a, b) => a.order - b.order);
-  for (const { place } of normalized) {
-    let bestDay = 0;
-    let bestDist = Infinity;
-    for (let d = 0; d < seeds.length; d++) {
-      if ((buckets[d] ?? []).length >= capacityPerDay) continue;
-      const dist = distanceMeters(seeds[d].coordinate, place.coordinate);
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestDay = d;
-      }
-    }
-    (buckets[bestDay] = buckets[bestDay] ?? []).push(place);
-  }
-
-  const out: PlannedDay[] = [];
-  for (let d = 0; d < dayCount; d++) {
-    const stopList = [seeds[Math.min(d, seeds.length - 1)], ...(buckets[d] ?? [])];
-    if (stopList.length === 0) continue;
-    const unique: TravelPlace[] = [];
-    for (const place of stopList) {
-      const dup = unique.find(
-        (u) =>
-          (u.name === place.name || u.name.includes(place.name) || place.name.includes(u.name)) &&
-          distanceMeters(u.coordinate, place.coordinate) < 400
-      );
-      if (!dup) unique.push(place);
-    }
-    if (unique.length > 0) {
-      out.push({ dayStops: unique, date: draft.startDate ? addDays(draft.startDate, d) : "" });
-    }
-  }
-  return out;
+function shortName(name: string): string {
+  return name.replace(/风景名胜区|国家旅游度假区|历史文化街区/g, "").slice(0, 12);
 }
 
 export function planItinerary(
-  places: TravelPlace[],
+  input: TravelPlace[],
   draft: TripDraft,
   actualRoutes?: { from: Coord; to: Coord; minutes: number }[]
 ): Plan {
-  if (places.length < 2) {
-    throw new Error("还没有足够能落在地图上的地点，请换个目的地或关键词再试。");
-  }
+  const places = deduplicatePlaces(input);
+  if (places.length < 2) throw new Error("还没有足够能落在地图上的地点，请换个目的地或关键词再试。");
+
   const center = draft.destinationCoord ?? places[0].coordinate;
   const rhythm = DAY_BUDGETS[draft.pace];
-  const buckets = dayBuckets(places, draft);
-  const built: PlanDay[] = [];
-
-  for (const { dayStops, date } of buckets) {
-    // Greedy nearest-neighbour ordering with limited opening-hour priority.
-    const orderedStops: TravelPlace[] = [];
-    let cursor: Coord = center;
-    const remaining = [...dayStops];
-    while (remaining.length > 0) {
-      let pickIndex = 0;
-      let bestScore = Infinity;
-      for (let i = 0; i < remaining.length; i++) {
-        const place = remaining[i];
-        const dist = distanceMeters(cursor, place.coordinate);
-        let score = dist;
-        const win = openingWindow(place);
-        if (win && win.start < 12 * 60) score = Math.min(score, dist * 0.7);
-        if (place.interest === "night") score += 40000;
-        if (place.interest === "food" && orderedStops.length === 0) score += 30000;
-        if (score < bestScore) {
-          bestScore = score;
-          pickIndex = i;
-        }
-      }
-      const picked = remaining.splice(pickIndex, 1)[0];
-      orderedStops.push(picked);
-      cursor = picked.coordinate;
-    }
-
-    // Timeline.
+  const { days: assignments, overflow } = assignDays(places, draft);
+  const days: PlanDay[] = assignments.map((assignment, dayIndex) => {
+    const ordered = orderedStops(assignment, center, draft.interests);
     const stops: PlanStop[] = [];
+    const route: { from: Coord; to: Coord }[] = [];
     let minutes = rhythm.start;
     let visitTotal = 0;
     let travelTotal = 0;
-    let from: Coord = center;
-    const route: { from: Coord; to: Coord }[] = [];
-    const hasFood = orderedStops.some((p) => p.interest === "food");
-    const hasNight = orderedStops.some((p) => p.interest === "night");
+    let from = center;
+    let lunchAdded = false;
 
-    for (const place of orderedStops) {
+    for (const place of ordered) {
       const visit = visitMinutes(place, draft.pace);
       let move = estimateTravelMinutes(from, place.coordinate, draft.transportMode);
-      const realRoute = actualRoutes?.find(
-        (r) => distanceMeters(r.from, from) < 250 && distanceMeters(r.to, place.coordinate) < 250
+      const actual = actualRoutes?.find(
+        (item) => distanceMeters(item.from, from) < 300 && distanceMeters(item.to, place.coordinate) < 300
       );
-      if (realRoute) move = realRoute.minutes;
-      travelTotal += move;
+      if (actual) move = actual.minutes;
+
       minutes += move;
+      travelTotal += move;
       route.push({ from, to: place.coordinate });
 
-      if (!hasFood && stops.length > 0 && minutes < rhythm.lunch && minutes + visit > rhythm.lunch) {
-        minutes += rhythm.lunchDuration;
+      if (place.interest === "food") {
+        minutes = Math.max(minutes, rhythm.lunch);
+        lunchAdded = true;
+      } else if (!lunchAdded && stops.length > 0 && minutes < rhythm.lunch && minutes + visit > rhythm.lunch) {
+        minutes = rhythm.lunch + rhythm.lunchDuration;
+        lunchAdded = true;
       }
-      if (place.interest === "food" && stops.length > 0 && minutes < rhythm.lunch) {
-        minutes = rhythm.lunch;
-      }
+      const best = famousBestTime(place);
+      if (best === "傍晚") minutes = Math.max(minutes, 17 * 60);
+      if (best === "晚上" || place.interest === "night") minutes = Math.max(minutes, 18 * 60 + 30);
 
+      const window = openingWindow(place);
+      if (window && minutes < window.start) minutes = window.start;
       const arrivalMinute = minutes;
       minutes += visit;
-      const isFood = place.interest === "food";
+      visitTotal += visit;
+
       stops.push({
         place,
         arriveMinute: arrivalMinute,
@@ -220,65 +291,67 @@ export function planItinerary(
         departureText: clockText(minutes),
         visitMinutes: visit,
         moveMinutes: move,
-        moveFrom: stops.length > 0 ? from : center,
-        isPrimary: place.planningPriority === "primary",
+        moveFrom: from,
+        isPrimary: place === assignment.anchor || heatScore(place, draft.interests) >= 70,
         opening: place.opening,
         ticket: place.ticket,
-        note: isFood && hasFood ? "这一天的正餐落在这里" : undefined
+        note: place === assignment.anchor
+          ? assignment.wholeDay
+            ? "这处目的地需要大半天到一天，今天不再叠加其他景点。"
+            : "今天围绕这里展开，其他停留尽量控制在同一片区。"
+          : place.interest === "food"
+            ? "正餐和休息留在这段时间。"
+            : undefined
       });
       from = place.coordinate;
     }
 
-    const end = minutes;
+    const hasNight = ordered.some((place) => place.interest === "night" || famousBestTime(place) === "晚上");
     const ordinaryEnd = hasNight ? rhythm.nightEnd : rhythm.daytimeEnd;
-    const overCapacity = end > ordinaryEnd;
-    const hasMealStop = dayStops.some((p) => p.interest === "food");
-    const quoted = dayStops.filter((p) => p.ticket?.amountCNY != null).length;
-
+    const overCapacity = minutes > ordinaryEnd;
+    const label = dateLabel(assignment.date);
+    const title = `${label ? `${label} · ` : ""}${assignment.theme}`;
     const badges = [
-      `停留${durationText(visitTotal)}`,
-      travelTotal > 0 ? `移动${durationText(travelTotal)}` : "少移动",
-      hasMealStop ? "餐食已入线" : "午餐有留白"
+      `${stops.length} 处停留`,
+      `游览${durationText(visitTotal)}`,
+      `移动约${durationText(travelTotal)}`,
+      assignment.wholeDay ? "整日主线" : lunchAdded || ordered.some((place) => place.interest === "food") ? "午间有休息" : "午餐留白"
     ];
-    if (hasNight) badges.push("夜游置后");
-    if (quoted > 0) badges.push(`${quoted} 处门票价`);
-    const assessment = overCapacity
-      ? "按当前节奏估算偏满，建议减一站或增加一天。"
-      : "预计可在当天舒适时段内完成。";
 
-    built.push({
-      dateLabel: dateLabel(date),
-      title: date ? `${dateLabel(date)} · 第${built.length + 1}天` : `第${built.length + 1}天`,
+    return {
+      dateLabel: label,
+      title,
       stops,
-      totalMinutes: end - rhythm.start,
+      totalMinutes: Math.max(minutes - rhythm.start, 0),
       visitMinutes: visitTotal,
       travelMinutes: travelTotal,
       availableMinutes: Math.max(ordinaryEnd - rhythm.start, 0),
       overCapacity,
-      assessment,
+      assessment: overCapacity
+        ? "这天仍偏满，建议删掉一个次要停留或调整交通方式。"
+        : assignment.wholeDay
+          ? "全天只保留一条主线，避免把远郊或大型景区切碎。"
+          : `第 ${dayIndex + 1} 天集中在 ${assignment.theme}，包含交通、用餐与缓冲时间。`,
       badges,
       route
-    });
+    };
+  });
+
+  const notes = [
+    "每天围绕一个相邻区域展开；核心景点、用餐、短停留与夜间活动按真实可用时段排序。"
+  ];
+  if (overflow > 0) notes.unshift(`另有 ${overflow} 个候选点没有硬塞进日程，可增加天数或在地图上替换。`);
+  if (places.some((place) => place.source.includes("知识库"))) {
+    notes.push("部分候选来自离线目的地资料快照；门票、预约与开放信息必须在出发前复核。");
   }
 
-  const notes: string[] = [
-    "规划为 Web 本地启发式：移动时间按直线速度估算，取得 OSRM 真实路线后会自动替换。"
-  ];
-  if (places.some((p) => p.opening)) {
-    notes.push("已纳入可读取的营业时段，闭馆日与预约仍需在出发前复核。");
-  }
-  return {
-    days: built,
-    generatedAt: new Date().toISOString(),
-    notes,
-    engine: "web-heuristic"
-  };
+  return { days, generatedAt: new Date().toISOString(), notes, engine: "web-heuristic" };
 }
 
 export function bestQuote(quotes: ProviderQuote[]): ProviderQuote | undefined {
   return (
     quotes
-      .filter((q) => q.amountCNY != null && q.kind !== "demo")
+      .filter((quote) => quote.amountCNY != null && quote.kind !== "demo")
       .sort((a, b) => (a.amountCNY ?? 0) - (b.amountCNY ?? 0))[0] ?? quotes[0]
   );
 }

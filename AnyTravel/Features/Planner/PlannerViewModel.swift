@@ -276,12 +276,16 @@ final class PlannerViewModel {
 
     var currentSchedule: [ScheduleItem] {
         guard let currentDay else { return [] }
+        let plannedDate = draft.logistics.startDate.flatMap {
+            Calendar.current.date(byAdding: .day, value: currentDay.index, to: $0)
+        }
         return scheduleBuilder.build(
             for: currentDay,
             pace: draft.pace,
             accommodation: selectedAccommodation,
             travelMode: draft.travelMode,
-            constraints: tourismConstraints(for: currentDay)
+            constraints: tourismConstraints(for: currentDay),
+            plannedDate: plannedDate
         )
     }
 
@@ -1863,7 +1867,8 @@ final class PlannerViewModel {
                     pace: draft.pace,
                     accommodation: selectedAccommodation,
                     travelMode: draft.travelMode,
-                    constraints: tourismConstraints(for: day)
+                    constraints: tourismConstraints(for: day),
+                    plannedDate: date
                 ),
                 routeSegments: segments
             )

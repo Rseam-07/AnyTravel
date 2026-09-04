@@ -1,15 +1,15 @@
 // AnyTravel Web API layer.
-// Browser never holds platform secrets: prices and plans go through the
-// companion backend when configured. DeepSeek chat may run browser-direct with
-// the user's own key (stored locally only); Nominatim / Open-Meteo / OSRM are
-// open services used for search, weather and route geometry.
+// Prices, catalog search and the preferred assistant path go through the
+// companion backend. A browser-direct DeepSeek key remains an explicit local
+// fallback only; Nominatim / Open-Meteo / OSRM are open services.
 
-import type { ChannelStatus, Coord, ProviderIssue, WeatherDay } from "./types";
+import type { ChannelStatus, Coord, Interest, ProviderIssue, WeatherDay } from "./types";
 
 export const DEFAULT_BACKEND_URL = "http://127.0.0.1:8787/";
 export const DEEPSEEK_BASE_URL = "https://api.deepseek.com";
 
 const settingsKey = "anytravel-web:settings";
+const assistantSessionKey = "anytravel-web:assistant-session-key";
 
 export interface WebSettings {
   backendURL: string;
@@ -20,23 +20,46 @@ export interface WebSettings {
 export function loadSettings(): WebSettings {
   try {
     const raw = localStorage.getItem(settingsKey);
-    if (raw) return { ...defaultSettings(), ...JSON.parse(raw) };
+    if (raw) {
+      const persisted = JSON.parse(raw) as Partial<WebSettings>;
+      const legacyKey = typeof persisted.deepseekKey === "string" ? persisted.deepseekKey : "";
+      if (legacyKey && !sessionStorage.getItem(assistantSessionKey)) {
+        sessionStorage.setItem(assistantSessionKey, legacyKey);
+      }
+      if ("deepseekKey" in persisted) {
+        delete persisted.deepseekKey;
+        localStorage.setItem(settingsKey, JSON.stringify(persisted));
+      }
+      return {
+        ...defaultSettings(),
+        ...persisted,
+        deepseekKey: sessionStorage.getItem(assistantSessionKey) ?? ""
+      };
+    }
   } catch {
     /* ignore */
   }
-  return defaultSettings();
+  return { ...defaultSettings(), deepseekKey: sessionStorage.getItem(assistantSessionKey) ?? "" };
 }
 
 export function defaultSettings(): WebSettings {
   return {
     backendURL: DEFAULT_BACKEND_URL,
-    deepseekKey: import.meta.env.VITE_DEEPSEEK_API_KEY || "",
+    deepseekKey: "",
     deepseekModel: "deepseek-chat"
   };
 }
 
 export function saveSettings(settings: WebSettings) {
-  localStorage.setItem(settingsKey, JSON.stringify(settings));
+  if (settings.deepseekKey.trim()) {
+    sessionStorage.setItem(assistantSessionKey, settings.deepseekKey.trim());
+  } else {
+    sessionStorage.removeItem(assistantSessionKey);
+  }
+  localStorage.setItem(settingsKey, JSON.stringify({
+    backendURL: settings.backendURL,
+    deepseekModel: settings.deepseekModel
+  }));
 }
 
 // ---------- companion backend ----------
@@ -191,7 +214,7 @@ export async function fetchTransport(
 
 export async function fetchTickets(
   baseURL: string,
-  request: { destination: string; visitDate?: string; attractions: { id: string; name: string; address?: string }[] }
+  request: { destination: string; visitDate?: string; attractions: { id: string; name: string; address?: string; interest?: Interest }[] }
 ): Promise<BackendTicketResponse> {
   return backendFetch<BackendTicketResponse>(baseURL, "v1/quotes/tickets", request);
 }
@@ -249,6 +272,35 @@ export function channelStatusFromHealth(health: Record<string, string>): Channel
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
+}
+
+export interface AssistantInterpretContext {
+  destination: string;
+  origin: string;
+  dayCount: number;
+  travelers: number;
+  budgetPerPerson?: number;
+  pace: string;
+  travelMode: string;
+  interests: string[];
+  startDate?: string;
+  selectedDayIndex: number;
+  places: { name: string; dayIndex: number; interest: string }[];
+}
+
+export interface AssistantInterpretResponse {
+  reply: string;
+  actions: { type: string; value?: unknown }[];
+  model?: string;
+  capturedAt?: string;
+}
+
+export async function interpretAssistant(
+  settings: WebSettings,
+  input: string,
+  context: AssistantInterpretContext
+): Promise<AssistantInterpretResponse> {
+  return backendFetch<AssistantInterpretResponse>(settings.backendURL, "/v1/assistant/interpret", { input, context });
 }
 
 export async function deepseekChat(

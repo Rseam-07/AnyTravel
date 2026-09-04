@@ -118,3 +118,31 @@ test("requires a server-side managed key", async () => {
     (error) => error instanceof AssistantError && error.code === "assistant_not_configured"
   );
 });
+
+test("prefers a server-side DeepSeek configuration when both providers exist", async () => {
+  let capturedURL;
+  let capturedOptions;
+  const fetchImpl = async (url, options) => {
+    capturedURL = url;
+    capturedOptions = options;
+    return new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify({ reply: "已调整。", actions: [] }) } }]
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+
+  const result = await interpretAssistantRequest(
+    { input: "松弛一点", context },
+    {
+      fetchImpl,
+      env: {
+        DEEPSEEK_API_KEY: "deepseek-secret",
+        DEEPSEEK_MODEL: "deepseek-chat",
+        ZAI_API_KEY: "fallback-secret"
+      }
+    }
+  );
+
+  assert.equal(capturedURL.href, "https://api.deepseek.com/chat/completions");
+  assert.equal(capturedOptions.headers.authorization, "Bearer deepseek-secret");
+  assert.equal(result.model, "deepseek-chat");
+});

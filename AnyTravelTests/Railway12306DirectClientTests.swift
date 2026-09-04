@@ -102,6 +102,75 @@ final class Railway12306DirectClientTests: XCTestCase {
         XCTAssertTrue(result.value.contains { $0.id == flight.id })
         XCTAssertFalse(result.isCached)
     }
+
+    @MainActor
+    func testExactCityStationRanksAheadOfShortSuburbanResult() async throws {
+        RailwayURLProtocol.requestHandler = { request in
+            guard let url = request.url else { throw URLError(.badURL) }
+            let body: Data
+            switch url.path {
+            case "/station_name.js":
+                body = Data("var station_names ='@lta|练塘|LTU|liantang|lt|19|0712|上海|||@sha|上海|SHH|shanghai|sh|20|0712|上海|||@szh|苏州|SZH|suzhou|sz|1215|0710|苏州|||@snn|苏州南|SNU|suzhounan|szn|1216|0710|苏州|||';".utf8)
+            case "/otn/leftTicket/init":
+                body = Data("<html></html>".utf8)
+            case "/otn/leftTicket/query":
+                let exact = RailwayURLProtocol.trainRow(
+                    trainNumber: "55000G70010",
+                    serviceNumber: "G7001",
+                    originCode: "SHH",
+                    destinationCode: "SZH",
+                    departure: "09:00",
+                    arrival: "09:25",
+                    duration: "00:25"
+                )
+                let suburban = RailwayURLProtocol.trainRow(
+                    trainNumber: "55000C30310",
+                    serviceNumber: "C3031",
+                    originCode: "LTU",
+                    destinationCode: "SNU",
+                    departure: "12:18",
+                    arrival: "12:28",
+                    duration: "00:10"
+                )
+                body = try JSONSerialization.data(withJSONObject: [
+                    "status": true,
+                    "data": [
+                        "map": ["SHH": "上海", "SZH": "苏州", "LTU": "练塘", "SNU": "苏州南"],
+                        "result": [suburban, exact]
+                    ]
+                ])
+            case "/otn/leftTicket/queryTicketPrice":
+                body = try JSONSerialization.data(withJSONObject: ["status": true, "data": ["O": "¥39.0"]])
+            default:
+                throw URLError(.unsupportedURL)
+            }
+            return (
+                HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                body
+            )
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [RailwayURLProtocol.self]
+        let client = Railway12306DirectClient(
+            session: URLSession(configuration: configuration),
+            stationURL: URL(string: "https://rail.example/station_name.js")!,
+            baseURL: URL(string: "https://rail.example/otn")!,
+            resultLimit: 1
+        )
+        let departure = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: 5, to: .now))
+
+        let result = try await client.enrichTransportOptions(
+            [],
+            origin: "上海",
+            destination: "苏州",
+            logistics: TripLogistics(origin: "上海", startDate: departure, travelers: 1),
+            accessPoints: [],
+            accommodation: nil
+        )
+
+        XCTAssertEqual(result.value.first?.title, "G7001 · 上海→苏州")
+        XCTAssertTrue(result.value.first?.isRecommended == true)
+    }
 }
 
 private final class RailwayURLProtocol: URLProtocol, @unchecked Sendable {
@@ -138,7 +207,8 @@ private final class RailwayURLProtocol: URLProtocol, @unchecked Sendable {
         originCode: String,
         destinationCode: String,
         departure: String,
-        arrival: String
+        arrival: String,
+        duration: String = "00:32"
     ) -> String {
         var fields = Array(repeating: "", count: 58)
         fields[2] = trainNumber
@@ -147,7 +217,7 @@ private final class RailwayURLProtocol: URLProtocol, @unchecked Sendable {
         fields[7] = destinationCode
         fields[8] = departure
         fields[9] = arrival
-        fields[10] = "00:32"
+        fields[10] = duration
         fields[11] = "Y"
         fields[16] = "01"
         fields[17] = "02"

@@ -303,6 +303,15 @@ final class CompletePlanTests: XCTestCase {
         XCTAssertEqual(restored.logistics.travelers, 3)
         XCTAssertEqual(restored.budgetPerPerson, 7_500)
         XCTAssertEqual(restored.pace, .relaxed)
+        XCTAssertTrue(restored.logistics.hasDates)
+        XCTAssertEqual(
+            Calendar.current.dateComponents(
+                [.day],
+                from: try XCTUnwrap(restored.logistics.startDate),
+                to: try XCTUnwrap(restored.logistics.endDate)
+            ).day,
+            2
+        )
     }
 
     @MainActor

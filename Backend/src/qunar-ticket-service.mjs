@@ -127,8 +127,20 @@ function attachMatches(sights, attractions, matched) {
     if (!sight) continue;
     const price = Number(sight.qunarPrice);
     if (!sight.free && (!Number.isFinite(price) || price < 0)) continue;
+    // Search pages often attach tours, meals or observation products to open
+    // streets and landmarks. Never present those package prices as admission.
+    if (!sight.free && !isLikelyTicketedAttraction(attraction)) continue;
     matched.set(attraction.id, { attraction, sight });
   }
+}
+
+export function isLikelyTicketedAttraction(attraction) {
+  if (["food", "night"].includes(String(attraction?.interest || ""))) return false;
+  const name = String(attraction?.name || "").normalize("NFKC");
+  if (/街|路|巷|夜市|市集|书店|商场|购物中心|广场|地标|大桥|车站|机场|码头|酒店|餐厅|咖啡|东方之门|博物馆|美术馆|纪念馆|公园|湖(?:风景名胜区|景区)?$/u.test(name)) {
+    return false;
+  }
+  return true;
 }
 
 function makeQuote(attraction, sight, capturedAt, visitDate) {
@@ -168,7 +180,8 @@ function validateRequest(request) {
   const attractions = request.attractions.map((attraction) => ({
     id: String(attraction?.id || "").trim(),
     name: String(attraction?.name || "").trim(),
-    address: String(attraction?.address || "").trim()
+    address: String(attraction?.address || "").trim(),
+    interest: String(attraction?.interest || "").trim()
   }));
   if (attractions.some((attraction) => !attraction.id || !attraction.name)) {
     throw new QunarTicketError("Every attraction needs id and name");

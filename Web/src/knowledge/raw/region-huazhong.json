@@ -1,0 +1,501 @@
+{
+  "cities": [
+    {
+      "city": "郑州",
+      "province": "河南",
+      "region": "华中",
+      "country": "中国",
+      "coord": {"lat": 34.75, "lng": 113.62},
+      "tripDays": "2-3天",
+      "sense": "3600年商都，免费文博厚重到震撼，市区与登封少林是两条主线。",
+      "places": [
+        {"name": "河南博物院", "coord": {"lat": 34.787, "lng": 113.664}, "category": "博物馆", "stayMinutes": 180, "tier": "必去", "ticket": "免费（需提前预约）", "best": "上午", "tags": ["九大镇馆之宝", "贾湖骨笛", "莲鹤方壶", "周一闭馆"]},
+        {"name": "少林寺", "coord": {"lat": 34.507, "lng": 112.938}, "category": "宗教", "stayMinutes": 240, "tier": "必去", "ticket": "约80元（旺季3-10月08:00-17:00）", "best": "上午", "tags": ["禅宗祖庭", "塔林", "武术表演", "在登封"]},
+        {"name": "嵩阳书院", "coord": {"lat": 34.478, "lng": 113.013}, "category": "古迹", "stayMinutes": 90, "tier": "顺路", "ticket": "未知", "best": "下午", "tags": ["四大书院", "唐碑", "嵩山脚下"]},
+        {"name": "只有河南·戏剧幻城", "category": "剧院", "stayMinutes": 300, "tier": "推荐", "ticket": "未知", "best": "全天", "tags": ["沉浸式戏剧", "中牟景区", "21个剧场", "夜场演出"]},
+        {"name": "二七纪念塔", "coord": {"lat": 34.752, "lng": 113.663}, "category": "城市", "stayMinutes": 60, "tier": "推荐", "ticket": "免费", "best": "白天", "tags": ["二七广场", "德化步行街", "郑州地标"]},
+        {"name": "郑州黄河文化公园（炎黄广场）", "coord": {"lat": 34.927, "lng": 113.543}, "category": "公园", "stayMinutes": 120, "tier": "顺路", "ticket": "未知", "best": "下午", "tags": ["黄河", "炎黄二帝塑像", "郑州北郊"]}
+      ],
+      "patterns": [
+        "D1 市区文博线：河南博物院（上午）→二七纪念塔/德化步行街→二七广场夜景；D2 登封：少林寺+嵩阳书院，返市区；D3 只有河南·戏剧幻城沉浸式戏剧一日。",
+        "若只有1天，以市区文博为主；登封离市区约1.5小时车程，需单独安排一天。"
+      ],
+      "rules": ["河南博物院周一闭馆，需提前在官方公众号实名预约，免费但热门时段常约满", "市区到登封约1.5小时车程，建议早出发；少林寺景区含常住院、塔林，旺季8点开门", "住宿选二七广场一带，地铁1号线贯穿市区，去中牟戏剧幻城建议包车或打车"],
+      "sources": ["https://tw.trip.com/moments/detail/dengfeng-1014-148772317/", "https://www.hntv.tv/news/0/2049808484247261186", "https://tw.trip.com/moments/theme/destination-zhengzhou-157-itineraries-999195/"]
+    },
+    {
+      "city": "洛阳",
+      "province": "河南",
+      "region": "华中",
+      "country": "中国",
+      "coord": {"lat": 34.62, "lng": 112.45},
+      "tripDays": "2-3天",
+      "sense": "十三朝古都，白天看石窟与博物馆，晚上应天门灯光秀和洛邑古城汉服夜景。",
+      "places": [
+        {"name": "龙门石窟", "coord": {"lat": 34.554, "lng": 112.473}, "category": "古迹", "stayMinutes": 240, "tier": "必去", "ticket": "约90元", "best": "上午", "tags": ["世界文化遗产", "卢舍那大佛", "奉先寺", "60岁以上免票"]},
+        {"name": "白马寺", "coord": {"lat": 34.721, "lng": 112.613}, "category": "宗教", "stayMinutes": 120, "tier": "必去", "ticket": "约35元", "best": "上午", "tags": ["中国第一古刹", "齐云塔", "异国佛殿苑"]},
+        {"name": "洛邑古城", "coord": {"lat": 34.682, "lng": 112.481}, "category": "古镇", "stayMinutes": 180, "tier": "推荐", "ticket": "免费", "best": "晚上", "tags": ["汉服夜景", "文峰塔", "灯光秀"]},
+        {"name": "应天门遗址博物馆", "coord": {"lat": 34.678, "lng": 112.464}, "category": "古迹", "stayMinutes": 120, "tier": "推荐", "ticket": "未知", "best": "晚上", "tags": ["隋唐洛阳城", "城门灯光秀", "武则天登基处"]},
+        {"name": "天堂明堂（隋唐洛阳城）", "coord": {"lat": 34.669, "lng": 112.468}, "category": "古迹", "stayMinutes": 150, "tier": "推荐", "ticket": "未知", "best": "下午", "tags": ["明堂", "天堂", "隋唐遗址"]},
+        {"name": "洛阳博物馆", "coord": {"lat": 34.649, "lng": 112.453}, "category": "博物馆", "stayMinutes": 150, "tier": "推荐", "ticket": "免费（需预约）", "best": "下午", "tags": ["十三朝文物", "唐三彩", "周一闭馆"]},
+        {"name": "老城十字街·丽景门", "coord": {"lat": 34.682, "lng": 112.475}, "category": "美食街", "stayMinutes": 120, "tier": "推荐", "ticket": "免费", "best": "晚上", "tags": ["洛阳水席", "牛肉汤", "夜市烟火"]}
+      ],
+      "patterns": [
+        "D1 龙门石窟（上午人少）→洛阳博物馆（下午）→老城十字街晚餐+丽景门夜景；D2 白马寺→应天门/天堂明堂→洛邑古城夜景（汉服拍照）；D3 可加关林或返程。",
+        "夜游龙门旺季开放，夜景与卢舍那大佛灯光是加分项；洛邑古城白天与夜晚体验差异大，建议晚上去。"
+      ],
+      "rules": ["龙门石窟、洛阳博物馆均需提前预约/购票，旺季分时段入场", "应天门灯光秀与洛邑古城夜景集中在晚上，可安排同一晚串联", "老城十字街晚餐时间最热闹，水席和汤类小吃集中"],
+      "sources": ["https://tw.trip.com/moments/detail/luoyang-198-150159227/", "https://lxs.cncn.com/81497/n1268053", "https://m.toutiao.com/article/7645630258540003880/"]
+    },
+    {
+      "city": "开封",
+      "province": "河南",
+      "region": "华中",
+      "country": "中国",
+      "coord": {"lat": 34.8, "lng": 114.31},
+      "tripDays": "2-3天",
+      "sense": "北宋古都，一朝步入画卷，清明上河园加夜市烟火最出片。",
+      "places": [
+        {"name": "清明上河园", "coord": {"lat": 34.816, "lng": 114.336}, "category": "乐园", "stayMinutes": 300, "tier": "必去", "ticket": "约120元（《大宋·东京梦华》夜场另购）", "best": "白天", "tags": ["宋代市井", "实景演出", "东京梦华"]},
+        {"name": "开封府", "coord": {"lat": 34.782, "lng": 114.343}, "category": "古迹", "stayMinutes": 120, "tier": "推荐", "ticket": "约65元", "best": "上午", "tags": ["包公", "府衙实景", "包公湖"]},
+        {"name": "大相国寺", "coord": {"lat": 34.786, "lng": 114.349}, "category": "宗教", "stayMinutes": 60, "tier": "推荐", "ticket": "约40元", "best": "上午", "tags": ["千年古刹", "镇寺石狮", "皇家寺院"]},
+        {"name": "铁塔公园", "coord": {"lat": 34.829, "lng": 114.352}, "category": "古迹", "stayMinutes": 90, "tier": "顺路", "ticket": "未知", "best": "下午", "tags": ["开宝寺塔", "琉璃砖塔", "宋都地标"]},
+        {"name": "万岁山大宋武侠城", "coord": {"lat": 34.828, "lng": 114.354}, "category": "乐园", "stayMinutes": 240, "tier": "推荐", "ticket": "未知", "best": "下午", "tags": ["武侠实景剧", "夜场演艺", "打铁花"]},
+        {"name": "鼓楼夜市", "coord": {"lat": 34.791, "lng": 114.348}, "category": "美食街", "stayMinutes": 120, "tier": "推荐", "ticket": "免费", "best": "晚上", "tags": ["灌汤包", "桶子鸡", "夜市烟火"]}
+      ],
+      "patterns": [
+        "D1 清明上河园（白天游园+夜场《大宋·东京梦华》）→鼓楼夜市；D2 开封府→大相国寺→铁塔公园→万岁山夜场；D3 返程或加包公祠。",
+        "包公祠与开封府同在包公湖一带，步行串联；铁塔公园与清明上河园相距不远。"
+      ],
+      "rules": ["清明上河园、开封府等热门景区建议提前1-3天线上购票，节假日人多", "开封夜市傍晚五六点才出摊，白天逛园、晚上逛夜市安排合理", "市区景点集中，公交或共享单车即可串联"],
+      "sources": ["https://wgl.kaifeng.gov.cn/kfswhgdhlyj/swgljgzdt/pc/content/content_1855865784647340032.html", "http://www.360doc.com/content/25/1104/06/5186857_1164285198.shtml", "https://tw.trip.com/moments/detail/kaifeng-165-149143989/"]
+    },
+    {
+      "city": "武汉",
+      "province": "湖北",
+      "region": "华中",
+      "country": "中国",
+      "coord": {"lat": 30.59, "lng": 114.31},
+      "tripDays": "3-4天",
+      "sense": "江城三镇，黄鹤楼看江、省博看编钟、东湖骑行、江汉路夜灯。",
+      "places": [
+        {"name": "黄鹤楼", "coord": {"lat": 30.545, "lng": 114.305}, "category": "古迹", "stayMinutes": 120, "tier": "必去", "ticket": "约70元", "best": "上午", "tags": ["江南名楼", "崔颢诗", "长江大桥"]},
+        {"name": "湖北省博物馆", "coord": {"lat": 30.563, "lng": 114.393}, "category": "博物馆", "stayMinutes": 180, "tier": "必去", "ticket": "免费（需预约）", "best": "上午", "tags": ["曾侯乙编钟", "越王勾践剑", "周一闭馆"]},
+        {"name": "东湖听涛景区", "coord": {"lat": 30.568, "lng": 114.396}, "category": "公园", "stayMinutes": 240, "tier": "推荐", "ticket": "免费（樱园花季另收费）", "best": "下午", "tags": ["东湖绿道", "骑行", "樱花", "磨山免票"]},
+        {"name": "武汉大学", "coord": {"lat": 30.536, "lng": 114.365}, "category": "城市", "stayMinutes": 120, "tier": "推荐", "ticket": "免费（樱花季需预约入校）", "best": "上午", "tags": ["樱花大道", "老斋舍", "东湖之滨"]},
+        {"name": "江汉路步行街", "coord": {"lat": 30.584, "lng": 114.282}, "category": "城市", "stayMinutes": 120, "tier": "推荐", "ticket": "免费", "best": "晚上", "tags": ["百年建筑", "江汉关", "夜市小吃"]},
+        {"name": "户部巷", "coord": {"lat": 30.543, "lng": 114.306}, "category": "美食街", "stayMinutes": 90, "tier": "顺路", "ticket": "免费", "best": "晚上", "tags": ["热干面", "豆皮", "小吃街"]},
+        {"name": "武汉长江大桥", "coord": {"lat": 30.549, "lng": 114.296}, "category": "城市", "stayMinutes": 60, "tier": "推荐", "ticket": "免费", "best": "晚上", "tags": ["万里长江第一桥", "江景灯光", "步行上桥"]}
+      ],
+      "patterns": [
+        "D1 黄鹤楼→长江大桥→户部巷（午餐）→湖北省博物馆（下午）→江汉路/轮渡夜景；D2 东湖绿道骑行→武汉大学→昙华林；D3 知音号或汉口江滩+晴川阁。",
+        "省博与东湖相邻可同游；知音号是长江上的移动剧场夜游，需提前购票。"
+      ],
+      "rules": ["湖北省博物馆、樱花季武大入校、知音号均需提前预约，省博周一闭馆", "黄鹤楼—长江大桥—户部巷—江汉路一路集中，可步行+轮渡串联", "夏季湿热，户外景点建议上午或傍晚安排"],
+      "sources": ["https://tw.trip.com/moments/detail/wuhan-145-150813412/", "https://m.toutiao.com/article/7636729805773406774/", "https://post.smzdm.com/p/a65v5e8g/"]
+    },
+    {
+      "city": "宜昌",
+      "province": "湖北",
+      "region": "华中",
+      "country": "中国",
+      "coord": {"lat": 30.69, "lng": 111.29},
+      "tripDays": "3-4天",
+      "sense": "因三峡而兴的来电之城，大国重器三峡大坝与西陵峡山水画廊并存。",
+      "places": [
+        {"name": "三峡大坝旅游区", "coord": {"lat": 30.82, "lng": 111.008}, "category": "城市", "stayMinutes": 240, "tier": "必去", "ticket": "免费（需预约，景区内换乘另收费）", "best": "上午", "tags": ["坛子岭", "185平台", "截流纪念园", "在秭归"]},
+        {"name": "三峡人家", "category": "山水", "stayMinutes": 300, "tier": "推荐", "ticket": "未知", "best": "全天", "tags": ["西陵峡", "巴楚风情", "龙进溪", "婚嫁表演"]},
+        {"name": "清江画廊", "category": "山水", "stayMinutes": 300, "tier": "推荐", "ticket": "未知", "best": "全天", "tags": ["土家族", "武落钟离山", "游船", "在长阳"]},
+        {"name": "三峡大瀑布", "category": "自然", "stayMinutes": 180, "tier": "推荐", "ticket": "未知", "best": "上午", "tags": ["瀑布穿瀑体验", "情深深雨濛濛取景地"]},
+        {"name": "宜昌博物馆", "category": "博物馆", "stayMinutes": 120, "tier": "顺路", "ticket": "免费（需预约）", "best": "下午", "tags": ["巴楚文化", "楚国青铜器", "周一闭馆"]},
+        {"name": "滨江公园·镇江阁", "coord": {"lat": 30.69, "lng": 111.28}, "category": "公园", "stayMinutes": 90, "tier": "推荐", "ticket": "免费", "best": "晚上", "tags": ["长江夜景", "镇江阁", "江畔日落"]}
+      ],
+      "patterns": [
+        "D1 两坝一峡游船（三峡大坝+葛洲坝船闸）；D2 三峡人家（西陵峡，全天）；D3 清江画廊或三峡大瀑布。",
+        "三峡大坝景区免费但需提前官方预约，安检严格；坛子岭、185平台、截流纪念园为经典三站。"
+      ],
+      "rules": ["三峡大坝免费但需在官方渠道提前预约，安检禁带打火机等物品", "三峡人家、清江画廊需乘船进出，票务含船票，旺季提前订", "市区住宿方便，大坝在秭归方向约1小时车程，一般安排一日往返"],
+      "sources": ["https://m.cncn.com/lxs/62777/n1297012", "https://tw.trip.com/moments/detail/yichang-313-148392322/", "https://tw.trip.com/moments/theme/poi-yichang-three-gorges-tourist-resort-144556470-thorough-guides-993136/"]
+    },
+    {
+      "city": "恩施",
+      "province": "湖北",
+      "region": "华中",
+      "country": "中国",
+      "coord": {"lat": 30.28, "lng": 109.49},
+      "tripDays": "4-5天",
+      "sense": "22℃避暑胜地，峡谷、地缝、悬浮船和土家女儿城的烟火气。",
+      "places": [
+        {"name": "恩施大峡谷", "category": "自然", "stayMinutes": 360, "tier": "必去", "ticket": "未知", "best": "全天", "tags": ["七星寨", "云龙地缝", "一炷香", "索道电梯"]},
+        {"name": "屏山峡谷（鹤峰）", "category": "自然", "stayMinutes": 300, "tier": "推荐", "ticket": "未知", "best": "上午", "tags": ["悬浮船", "网红水上拍", "需跨县"]},
+        {"name": "恩施土司城", "coord": {"lat": 30.28, "lng": 109.49}, "category": "古迹", "stayMinutes": 120, "tier": "推荐", "ticket": "未知", "best": "上午", "tags": ["土家族建筑", "九进堂", "土司文化"]},
+        {"name": "恩施女儿城", "coord": {"lat": 30.27, "lng": 109.52}, "category": "古镇", "stayMinutes": 180, "tier": "推荐", "ticket": "免费", "best": "晚上", "tags": ["女儿会", "民俗演出", "小吃街"]},
+        {"name": "梭布垭石林", "category": "自然", "stayMinutes": 240, "tier": "顺路", "ticket": "未知", "best": "全天", "tags": ["奥陶纪石林", "戴冠石林"]},
+        {"name": "腾龙洞（利川）", "category": "自然", "stayMinutes": 240, "tier": "推荐", "ticket": "未知", "best": "下午", "tags": ["溶洞", "地下河", "激光秀"]}
+      ],
+      "patterns": [
+        "D1 恩施大峡谷（七星寨+云龙地缝，全天）；D2 鹤峰屏山峡谷（悬浮船打卡）或利川腾龙洞；D3 土司城+女儿城（晚上看民俗活动）；D4 梭布垭石林。",
+        "峡谷步道多、耗时久，各景区距市区远，以自驾或包车为主。"
+      ],
+      "rules": ["恩施大峡谷、屏山峡谷等大景区多为分时预约，需提前购票，峡谷内徒步需备防滑鞋和雨具", "屏山峡谷在鹤峰、腾龙洞在利川，跨县车程1-2小时，行程按此拆天", "7-8月为避暑旺季且多雨，雨后路滑；女儿城晚上最热闹"],
+      "sources": ["https://www.sina.cn/news/article/comos_ninwxzw8084232.html", "https://tw.trip.com/moments/detail/enshi-city-1446196-149994699/", "https://m.dahepiao.com/news/20251126538467.html"]
+    },
+    {
+      "city": "长沙",
+      "province": "湖南",
+      "region": "华中",
+      "country": "中国",
+      "coord": {"lat": 28.23, "lng": 112.94},
+      "tripDays": "3-4天",
+      "sense": "吃喝玩乐之城，岳麓山橘子洲配辣椒炒肉和茶颜悦色，烟火气拉满。",
+      "places": [
+        {"name": "岳麓山风景名胜区", "coord": {"lat": 28.184, "lng": 112.933}, "category": "山水", "stayMinutes": 240, "tier": "必去", "ticket": "免费（索道/滑道另收费）", "best": "上午", "tags": ["爱晚亭", "麓山寺", "云麓宫"]},
+        {"name": "岳麓书院", "coord": {"lat": 28.187, "lng": 112.935}, "category": "古迹", "stayMinutes": 90, "tier": "推荐", "ticket": "约40元", "best": "上午", "tags": ["千年学府", "朱张会讲", "湖南大学内"]},
+        {"name": "橘子洲", "coord": {"lat": 28.165, "lng": 112.967}, "category": "公园", "stayMinutes": 180, "tier": "必去", "ticket": "免费（观光小火车另收费）", "best": "下午", "tags": ["青年毛泽东雕像", "湘江", "节庆烟花"]},
+        {"name": "湖南博物院", "coord": {"lat": 28.221, "lng": 112.988}, "category": "博物馆", "stayMinutes": 180, "tier": "必去", "ticket": "免费（需预约，周一闭馆）", "best": "上午", "tags": ["马王堆", "辛追夫人", "素纱襌衣"]},
+        {"name": "太平老街·坡子街", "coord": {"lat": 28.193, "lng": 112.972}, "category": "美食街", "stayMinutes": 120, "tier": "推荐", "ticket": "免费", "best": "晚上", "tags": ["臭豆腐", "茶颜悦色", "小吃夜宵"]},
+        {"name": "天心阁", "coord": {"lat": 28.19, "lng": 112.978}, "category": "古迹", "stayMinutes": 60, "tier": "顺路", "ticket": "未知", "best": "下午", "tags": ["古城墙", "长沙老城"]},
+        {"name": "五一广场IFS", "coord": {"lat": 28.196, "lng": 112.974}, "category": "购物", "stayMinutes": 90, "tier": "顺路", "ticket": "免费", "best": "晚上", "tags": ["KAWS雕塑", "商圈", "夜生活"]}
+      ],
+      "patterns": [
+        "D1 岳麓山（爱晚亭+岳麓书院）→橘子洲（傍晚洲头看湘江）→五一广场夜宵；D2 湖南博物院（上午，预约）→太平老街/坡子街→天心阁；D3 可去世界之窗或靖港古镇。",
+        "橘子洲与岳麓山隔江相望，地铁+步行即可串联；节庆日橘子洲有烟花。"
+      ],
+      "rules": ["湖南博物院、橘子洲、岳麓山部分时段需预约，省博周一闭馆", "五一广场一带晚上最热闹，热门奶茶小吃排队较长", "岳麓山免门票但索道、滑道另收费，爱晚亭—岳麓书院—山顶可全程徒步"],
+      "sources": ["https://tw.trip.com/moments/detail/changsha-148-150190503/", "https://m.163.com/dy/article/L1QHO0O10556IUD7.html", "https://m.toutiao.com/article/7654550663862534671/"]
+    },
+    {
+      "city": "张家界",
+      "province": "湖南",
+      "region": "华中",
+      "country": "中国",
+      "coord": {"lat": 29.13, "lng": 110.48},
+      "tripDays": "3-4天",
+      "sense": "阿凡达悬浮山原型地，石英砂岩峰林配天门山玻璃栈道，世界级奇观。",
+      "places": [
+        {"name": "张家界国家森林公园（武陵源）", "coord": {"lat": 29.33, "lng": 110.5}, "category": "山水", "stayMinutes": 480, "tier": "必去", "ticket": "约224元（4日内有效）", "best": "全天", "tags": ["袁家界", "天子山", "金鞭溪", "阿凡达悬浮山"]},
+        {"name": "天门山国家森林公园", "coord": {"lat": 29.05, "lng": 110.48}, "category": "山水", "stayMinutes": 360, "tier": "必去", "ticket": "约278元（含往返索道）", "best": "全天", "tags": ["天门洞", "玻璃栈道", "盘山公路", "999级天梯"]},
+        {"name": "张家界大峡谷（玻璃桥）", "category": "山水", "stayMinutes": 300, "tier": "推荐", "ticket": "未知", "best": "全天", "tags": ["世界最长玻璃桥", "峡谷栈道", "在慈利"]},
+        {"name": "黄龙洞", "category": "自然", "stayMinutes": 150, "tier": "推荐", "ticket": "未知", "best": "上午", "tags": ["定海神针", "溶洞", "地下暗河"]},
+        {"name": "宝峰湖", "category": "山水", "stayMinutes": 120, "tier": "顺路", "ticket": "未知", "best": "上午", "tags": ["高峡平湖", "游船山歌"]},
+        {"name": "溪布街", "coord": {"lat": 29.35, "lng": 110.55}, "category": "美食街", "stayMinutes": 120, "tier": "顺路", "ticket": "免费", "best": "晚上", "tags": ["武陵源城区", "民俗小吃", "酒吧街"]},
+        {"name": "七十二奇楼", "category": "夜游", "stayMinutes": 120, "tier": "顺路", "ticket": "未知", "best": "晚上", "tags": ["市区夜景", "土家吊脚楼风格", "灯光秀"]}
+      ],
+      "patterns": [
+        "D1 天门山（市区索道上山，玻璃栈道，约半天-一天）；D2 武陵源：袁家界（阿凡达悬浮山）→天子山→金鞭溪；D3 大峡谷玻璃桥或黄龙洞+宝峰湖。",
+        "森林公园可玩2-4天，门票4日有效；雨后云海更美，金鞭溪徒步约2.5小时。"
+      ],
+      "rules": ["森林公园门票约4日有效，设多个门票站，刷身份证进山", "天门山分时预约进山（A/B/C线），旺季索道排队长，务必按预约时段", "市区到武陵源、大峡谷约1小时+车程，建议武陵源住1晚分流"],
+      "sources": ["https://tw.trip.com/moments/detail/zhangjiajie-23-150631517/", "https://m.163.com/dy/article/K70BRDQA0556FI7J.html", "http://news.cnhubei.com/content/2025-10/14/content_19575045.html"]
+    },
+    {
+      "city": "岳阳",
+      "province": "湖南",
+      "region": "华中",
+      "country": "中国",
+      "coord": {"lat": 29.36, "lng": 113.13},
+      "tripDays": "2-3天",
+      "sense": "洞庭天下水、岳阳天下楼，先忧后乐的人文小城。",
+      "places": [
+        {"name": "岳阳楼", "coord": {"lat": 29.383, "lng": 113.085}, "category": "古迹", "stayMinutes": 120, "tier": "必去", "ticket": "约70元", "best": "上午", "tags": ["江南三大名楼", "范仲淹", "洞庭湖"]},
+        {"name": "洞庭湖（巴陵广场）", "coord": {"lat": 29.384, "lng": 113.08}, "category": "自然", "stayMinutes": 90, "tier": "推荐", "ticket": "免费", "best": "下午", "tags": ["八百里洞庭", "日落", "冬季观鸟"]},
+        {"name": "君山岛", "category": "自然", "stayMinutes": 180, "tier": "推荐", "ticket": "未知（需乘船往返）", "best": "全天", "tags": ["湘妃竹", "柳毅井", "爱情岛"]},
+        {"name": "汴河街", "coord": {"lat": 29.382, "lng": 113.083}, "category": "美食街", "stayMinutes": 90, "tier": "推荐", "ticket": "免费", "best": "晚上", "tags": ["洞庭鱼鲜", "小吃", "茶楼"]},
+        {"name": "圣安寺", "category": "宗教", "stayMinutes": 60, "tier": "顺路", "ticket": "未知", "best": "下午", "tags": ["禅寺", "南湖"]},
+        {"name": "张谷英村", "category": "古镇", "stayMinutes": 180, "tier": "推荐", "ticket": "未知", "best": "全天", "tags": ["明清古建筑群", "民间故宫", "在岳阳县"]}
+      ],
+      "patterns": [
+        "D1 岳阳楼→汴河街→巴陵广场（洞庭湖日落）；D2 君山岛（乘船往返）；D3 张谷英村或洞庭湖湿地观鸟（秋冬）。",
+        "岳阳楼与君山岛有联票；冬季候鸟季是洞庭湖最佳观鸟时段。"
+      ],
+      "rules": ["岳阳楼、君山岛门票以景区公告为准，君山岛班船时间固定、旺季加开", "岳阳楼—汴河街—巴陵广场连成一片，步行即可", "冬季观鸟需注意湿地保护区开放区域"],
+      "sources": ["https://tw.trip.com/moments/detail/yueyang-287-147490631/", "https://tw.trip.com/moments/detail/yueyang-287-146966058/", "https://touch.piao.qunar.com/touch/productdetail.htm?productId=1407425237"]
+    },
+    {
+      "city": "凤凰",
+      "province": "湖南",
+      "region": "华中",
+      "country": "中国",
+      "coord": {"lat": 27.95, "lng": 109.6},
+      "tripDays": "2-3天",
+      "sense": "沱江吊脚楼边的边城，沈从文笔下的烟雨江南，夜景与晨雾双绝。",
+      "places": [
+        {"name": "凤凰古城", "coord": {"lat": 27.949, "lng": 109.6}, "category": "古镇", "stayMinutes": 480, "tier": "必去", "ticket": "免费（九景联票另购）", "best": "晚上", "tags": ["沱江吊脚楼", "古城墙", "夜景"], "desc": ""},
+        {"name": "沱江跳岩", "coord": {"lat": 27.95, "lng": 109.601}, "category": "古镇", "stayMinutes": 60, "tier": "推荐", "ticket": "免费", "best": "下午", "tags": ["网红石墩", "拍照打卡", "沱江"]},
+        {"name": "虹桥风雨楼", "coord": {"lat": 27.949, "lng": 109.603}, "category": "古镇", "stayMinutes": 60, "tier": "推荐", "ticket": "免费", "best": "晚上", "tags": ["沱江地标", "观景廊桥"]},
+        {"name": "沈从文故居", "coord": {"lat": 27.95, "lng": 109.597}, "category": "古迹", "stayMinutes": 45, "tier": "顺路", "ticket": "未知", "best": "上午", "tags": ["边城", "文豪故居"]},
+        {"name": "南华山国家森林公园", "coord": {"lat": 27.942, "lng": 109.6}, "category": "自然", "stayMinutes": 150, "tier": "推荐", "ticket": "未知", "best": "下午", "tags": ["俯瞰古城", "观景台"]},
+        {"name": "奇梁洞", "category": "自然", "stayMinutes": 120, "tier": "顺路", "ticket": "未知", "best": "上午", "tags": ["溶洞", "地下河", "离城约10公里"]}
+      ],
+      "patterns": [
+        "D1 古城漫游（北门码头→跳岩→虹桥→沈从文故居）→沱江夜景；D2 南华山（俯瞰古城）→奇梁洞或返程；D3 南方长城方向加游。",
+        "清晨晨雾中的沱江是必拍时段，建议住江边客栈至少一晚。"
+      ],
+      "rules": ["古城免费进入，沱江泛舟及沈从文故居等九景联票按需购买", "古城石板路多，拉杆箱不便；江景民宿旺季需提前订", "古镇夜景与晨雾两个最佳时段，白天高温时段适合室内或休整"],
+      "sources": ["https://tw.trip.com/moments/detail/fenghuang-county-988-149577044/", "https://hk.trip.com/moments/detail/fenghuang-county-988-150748431/", "https://tw.trip.com/moments/poi-tuojiang-rock-91381/"]
+    },
+    {
+      "city": "广州",
+      "province": "广东",
+      "region": "华南",
+      "country": "中国",
+      "coord": {"lat": 23.13, "lng": 113.26},
+      "tripDays": "3-4天",
+      "sense": "千年商都，食在广州，骑楼西关与珠江新城天际线同框。",
+      "places": [
+        {"name": "广州塔", "coord": {"lat": 23.106, "lng": 113.324}, "category": "城市", "stayMinutes": 120, "tier": "必去", "ticket": "约150元起（按观光层分档）", "best": "晚上", "tags": ["小蛮腰", "488摄影观景台", "摩天轮"]},
+        {"name": "珠江夜游", "coord": {"lat": 23.11, "lng": 113.292}, "category": "夜游", "stayMinutes": 90, "tier": "推荐", "ticket": "未知（船票分档）", "best": "晚上", "tags": ["两岸灯光", "海心沙", "天字码头"]},
+        {"name": "陈家祠（广东民间工艺博物馆）", "coord": {"lat": 23.127, "lng": 113.241}, "category": "博物馆", "stayMinutes": 90, "tier": "推荐", "ticket": "约10元", "best": "上午", "tags": ["岭南建筑", "灰塑砖雕", "民间工艺"]},
+        {"name": "沙面岛", "coord": {"lat": 23.106, "lng": 113.239}, "category": "城市", "stayMinutes": 120, "tier": "推荐", "ticket": "免费", "best": "下午", "tags": ["欧陆建筑", "咖啡", "婚纱照"]},
+        {"name": "永庆坊", "coord": {"lat": 23.108, "lng": 113.237}, "category": "城市", "stayMinutes": 120, "tier": "推荐", "ticket": "免费", "best": "下午", "tags": ["骑楼老街", "粤剧艺术博物馆", "潮流小店"]},
+        {"name": "白云山", "coord": {"lat": 23.18, "lng": 113.29}, "category": "自然", "stayMinutes": 240, "tier": "推荐", "ticket": "约5元（索道另收费）", "best": "上午", "tags": ["摩星岭", "云台花园", "城市绿肺"]},
+        {"name": "广东省博物馆", "coord": {"lat": 23.117, "lng": 113.323}, "category": "博物馆", "stayMinutes": 150, "tier": "推荐", "ticket": "免费（需预约，周一闭馆）", "best": "下午", "tags": ["潮州木雕", "端砚", "临珠江新城"]},
+        {"name": "越秀公园", "coord": {"lat": 23.139, "lng": 113.27}, "category": "公园", "stayMinutes": 90, "tier": "顺路", "ticket": "免费", "best": "上午", "tags": ["五羊石像", "镇海楼", "广州博物馆"]},
+        {"name": "北京路步行街", "coord": {"lat": 23.125, "lng": 113.268}, "category": "购物", "stayMinutes": 90, "tier": "顺路", "ticket": "免费", "best": "晚上", "tags": ["千年古道遗址", "逛街", "小吃"]}
+      ],
+      "patterns": [
+        "D1 陈家祠→永庆坊→沙面（下午）→珠江夜游（晚上）；D2 广州塔→广东省博物馆→花城广场；D3 白云山（摩星岭）或长隆一日。",
+        "夜晚珠江新城灯光秀与广州塔同框是经典机位；老城美食集中在越秀、荔湾。"
+      ],
+      "rules": ["广州塔、珠江夜游、陈家祠等需购票/预约，大部分历史街区免费", "地铁发达，白云机场进城约1小时；老城区（越秀/荔湾）美食密集", "夏季湿热多雨，户外景点建议上午或傍晚"],
+      "sources": ["https://tw.trip.com/moments/poi-canton-tower-90706", "https://tw.trip.com/moments/poi-pearl-river-night-cruise-10758708/", "https://q.mama.cn/topic/100403013"]
+    },
+    {
+      "city": "深圳",
+      "province": "广东",
+      "region": "华南",
+      "country": "中国",
+      "coord": {"lat": 22.54, "lng": 114.06},
+      "tripDays": "3-4天",
+      "sense": "转机顺游也能填满的城市，主题乐园加海滨栈道，山海城联动。",
+      "places": [
+        {"name": "世界之窗", "coord": {"lat": 22.539, "lng": 113.974}, "category": "乐园", "stayMinutes": 300, "tier": "必去", "ticket": "约220元", "best": "全天", "tags": ["世界微缩景观", "夜场演出", "09:00-22:00"]},
+        {"name": "欢乐谷", "coord": {"lat": 22.542, "lng": 113.983}, "category": "乐园", "stayMinutes": 300, "tier": "推荐", "ticket": "约240元", "best": "全天", "tags": ["机动游戏", "玛雅水公园", "注意安全"]},
+        {"name": "锦绣中华·民俗村", "coord": {"lat": 22.538, "lng": 113.976}, "category": "乐园", "stayMinutes": 240, "tier": "顺路", "ticket": "未知", "best": "下午", "tags": ["微缩景观", "民俗表演", "与世界之窗相邻"]},
+        {"name": "大梅沙海滨公园", "coord": {"lat": 22.594, "lng": 114.312}, "category": "海滨", "stayMinutes": 180, "tier": "必去", "ticket": "免费（旺季需预约）", "best": "上午", "tags": ["沙滩", "海滨栈道", "日出", "07:00-24:00"]},
+        {"name": "莲花山公园", "coord": {"lat": 22.548, "lng": 114.065}, "category": "公园", "stayMinutes": 90, "tier": "推荐", "ticket": "免费", "best": "下午", "tags": ["邓小平像", "俯瞰福田CBD", "风筝广场"]},
+        {"name": "深圳湾公园", "coord": {"lat": 22.53, "lng": 113.98}, "category": "公园", "stayMinutes": 120, "tier": "推荐", "ticket": "免费", "best": "下午", "tags": ["海鸥", "日落", "骑行", "地铁9号线直达"]},
+        {"name": "深圳博物馆", "coord": {"lat": 22.548, "lng": 114.062}, "category": "博物馆", "stayMinutes": 120, "tier": "顺路", "ticket": "免费（周一闭馆）", "best": "上午", "tags": ["改革开放史", "市民中心", "10:00-18:00"]}
+      ],
+      "patterns": [
+        "D1 莲花山公园→深圳博物馆→市民中心（福田CBD）→欢乐海岸夜市；D2 世界之窗+欢乐谷（或锦绣中华选一）；D3 大梅沙（日出）→深圳湾公园（日落）。",
+        "主题乐园选其一深度玩，滨海线留给日落；大鹏半岛（较场尾、西涌）适合加一天。"
+      ],
+      "rules": ["大梅沙旺季需预约进入，公共浴场免费", "世界之窗、欢乐谷等主题乐园票价较高，线上购票常有优惠", "深圳博物馆、市民中心周一闭馆；周末滨海景点人多"],
+      "sources": ["https://www.douyin.com/video/7355347769306926377", "https://www.wenweipo.com/a/202409/25/AP66f3c6ace4b05e159be25e26.html", "https://tw.trip.com/moments/detail/shenzhen-26-129574446/"]
+    },
+    {
+      "city": "珠海",
+      "province": "广东",
+      "region": "华南",
+      "country": "中国",
+      "coord": {"lat": 22.27, "lng": 113.58},
+      "tripDays": "3-4天",
+      "sense": "浪漫百岛之城，情侣路骑行看日月贝，长隆是亲子重头戏。",
+      "places": [
+        {"name": "珠海长隆海洋王国", "coord": {"lat": 22.099, "lng": 113.539}, "category": "乐园", "stayMinutes": 360, "tier": "必去", "ticket": "未知（票价随日期浮动）", "best": "全天", "tags": ["鲸鲨馆", "白鲸表演", "夜场烟花", "在横琴"]},
+        {"name": "情侣路（珠海渔女段）", "coord": {"lat": 22.267, "lng": 113.583}, "category": "海滨", "stayMinutes": 120, "tier": "必去", "ticket": "免费", "best": "下午", "tags": ["珠海渔女", "海边骑行", "香炉湾沙滩"]},
+        {"name": "日月贝（珠海大剧院）", "coord": {"lat": 22.283, "lng": 113.585}, "category": "剧院", "stayMinutes": 90, "tier": "推荐", "ticket": "免费（外观；演出另购）", "best": "晚上", "tags": ["贝壳造型", "野狸岛", "夜景"]},
+        {"name": "圆明新园", "coord": {"lat": 22.25, "lng": 113.563}, "category": "园林", "stayMinutes": 180, "tier": "推荐", "ticket": "免费（部分演出另收费）", "best": "下午", "tags": ["仿古皇家园林", "九洲清晏"]},
+        {"name": "外伶仃岛", "category": "海滨", "stayMinutes": 300, "tier": "顺路", "ticket": "未知（需乘船）", "best": "全天", "tags": ["离岛", "徒步", "海鲜"]},
+        {"name": "港珠澳大桥（珠海段）", "category": "城市", "stayMinutes": 60, "tier": "推荐", "ticket": "免费（远眺；乘车游另收费）", "best": "下午", "tags": ["世纪工程", "情侣路可见"]}
+      ],
+      "patterns": [
+        "D1 情侣路（珠海渔女→日月贝）→野狸岛看日落；D2 长隆海洋王国全天；D3 外伶仃岛或东澳岛一日往返。",
+        "长隆与市区分开，住横琴一晚更从容；海岛游需关注天气与船班。"
+      ],
+      "rules": ["长隆系园区需提前购票，节假日人多，海洋王国建议开园即入", "去海岛（外伶仃、东澳）需提前订船票并留意停航预警", "情侣路可骑行串联渔女、日月贝，傍晚日落最美"],
+      "sources": ["https://tw.trip.com/moments/detail/zhuhai-27-135022161/", "https://tw.trip.com/moments/theme/poi-zhuhai-fisherwoman-75881-comprehensive-guides-993136/", "http://zh.bendibao.com/xiuxian/2025120/100233.shtm"]
+    },
+    {
+      "city": "汕头",
+      "province": "广东",
+      "region": "华南",
+      "country": "中国",
+      "coord": {"lat": 23.35, "lng": 116.68},
+      "tripDays": "2-3天",
+      "sense": "潮汕美食之都加南澳海岛，骑楼老城与牛肉火锅都值得专程。",
+      "places": [
+        {"name": "南澳岛", "coord": {"lat": 23.42, "lng": 117.03}, "category": "海滨", "stayMinutes": 480, "tier": "必去", "ticket": "未知", "best": "全天", "tags": ["环岛公路", "跨海大桥", "风车", "北回归线"]},
+        {"name": "青澳湾", "coord": {"lat": 23.44, "lng": 117.08}, "category": "海滨", "stayMinutes": 180, "tier": "推荐", "ticket": "未知", "best": "上午", "tags": ["北回归线广场", "日出", "海鲜大排档"]},
+        {"name": "小公园开埠区（中山纪念亭）", "coord": {"lat": 23.354, "lng": 116.676}, "category": "城市", "stayMinutes": 120, "tier": "推荐", "ticket": "免费", "best": "下午", "tags": ["骑楼群", "民国建筑", "工夫茶"]},
+        {"name": "陈慈黉故居", "category": "古迹", "stayMinutes": 90, "tier": "顺路", "ticket": "未知", "best": "下午", "tags": ["岭南民居", "潮汕豪宅", "在澄海"]},
+        {"name": "妈屿岛", "category": "海滨", "stayMinutes": 120, "tier": "顺路", "ticket": "免费", "best": "下午", "tags": ["妈祖庙", "海边灯塔", "网红打卡"]},
+        {"name": "礐石风景区", "coord": {"lat": 23.3, "lng": 116.68}, "category": "自然", "stayMinutes": 150, "tier": "推荐", "ticket": "未知", "best": "全天", "tags": ["花岗岩山体", "汕头湾", "轮渡过海"]}
+      ],
+      "patterns": [
+        "D1 小公园开埠区→老市区美食（镇邦路、西堤路）夜宵；D2 南澳岛环岛一日（青澳湾日出）；D3 陈慈黉故居→妈屿岛或礐石。",
+        "南澳岛自驾环岛约3-4小时，青澳湾看日出；上岛过南澳大桥，通行规则以官方通告为准。"
+      ],
+      "rules": ["南澳大桥运营有新通告（2025年8月16日起实施），自驾上岛建议早出晚归避开拥堵", "小公园开埠区白天逛骑楼，晚上老市区夜宵", "潮汕美食集中在老市区与侨乡民居一带，牛肉火锅、粿品为主"],
+      "sources": ["https://hk.trip.com/moments/poi-little-park-148613054/", "https://m.thepaper.cn/newsDetail_forward_30941578", "https://www.shantou.gov.cn/cnst/gkml/zwgk/gzwj/gfxwj/szf/content/post_2462461.html"]
+    },
+    {
+      "city": "佛山",
+      "province": "广东",
+      "region": "华南",
+      "country": "中国",
+      "coord": {"lat": 23.02, "lng": 113.12},
+      "tripDays": "2-3天",
+      "sense": "功夫与陶都，祖庙醒狮、岭南园林、顺德美食，广佛同城一小时。",
+      "places": [
+        {"name": "佛山祖庙", "coord": {"lat": 23.032, "lng": 113.124}, "category": "古迹", "stayMinutes": 120, "tier": "必去", "ticket": "约20元", "best": "上午", "tags": ["黄飞鸿纪念馆", "醒狮表演", "北帝庙"]},
+        {"name": "岭南天地", "coord": {"lat": 23.033, "lng": 113.121}, "category": "美食街", "stayMinutes": 120, "tier": "推荐", "ticket": "免费", "best": "晚上", "tags": ["镬耳屋", "简氏别墅", "咖啡馆"]},
+        {"name": "梁园", "coord": {"lat": 23.03, "lng": 113.101}, "category": "园林", "stayMinutes": 90, "tier": "推荐", "ticket": "未知", "best": "上午", "tags": ["岭南四大名园", "假山", "盆景"]},
+        {"name": "南风古灶", "coord": {"lat": 23.015, "lng": 113.08}, "category": "古迹", "stayMinutes": 150, "tier": "推荐", "ticket": "未知", "best": "下午", "tags": ["五百年龄窑", "陶瓷公仔街", "在石湾"]},
+        {"name": "西樵山风景名胜区", "coord": {"lat": 22.93, "lng": 112.98}, "category": "山水", "stayMinutes": 300, "tier": "推荐", "ticket": "未知", "best": "全天", "tags": ["南海观音", "飞流瀑布", "黄飞鸿狮艺"]},
+        {"name": "清晖园（顺德）", "coord": {"lat": 22.834, "lng": 113.261}, "category": "园林", "stayMinutes": 120, "tier": "推荐", "ticket": "约15元", "best": "上午", "tags": ["岭南四大名园", "碧水假山", "在顺德大良"]},
+        {"name": "华盖路步行街（顺德）", "coord": {"lat": 22.835, "lng": 113.26}, "category": "美食街", "stayMinutes": 90, "tier": "顺路", "ticket": "免费", "best": "晚上", "tags": ["双皮奶", "民信老铺", "骑楼街"]},
+        {"name": "顺德欢乐海岸PLUS", "category": "乐园", "stayMinutes": 240, "tier": "顺路", "ticket": "未知", "best": "晚上", "tags": ["摩天轮", "华侨城", "夜景"]}
+      ],
+      "patterns": [
+        "D1 禅城线：祖庙→岭南天地→梁园→南风古灶；D2 顺德：清晖园→华盖路（双皮奶）→欢乐海岸PLUS；D3 西樵山（南海观音）半日。",
+        "广佛地铁直达祖庙；顺德美食值得专程，与禅城之间约1小时车程。"
+      ],
+      "rules": ["祖庙—岭南天地—梁园在禅城老城步行可达，建议住祖庙附近", "祖庙醒狮表演与南风古灶陶艺体验定时开放，出发前查时刻", "顺德与禅城之间地铁、城际均可衔接，顺德美食集中在华盖路与金榜上街"],
+      "sources": ["https://m.toutiao.com/w/1815774620010700/", "https://tw.trip.com/moments/detail/foshan-207-150882894/", "https://tw.trip.com/moments/poi-pingsha-island-18253659/"]
+    },
+    {
+      "city": "桂林",
+      "province": "广西",
+      "region": "华南",
+      "country": "中国",
+      "coord": {"lat": 25.27, "lng": 110.29},
+      "tripDays": "3-4天",
+      "sense": "桂林山水甲天下，城在景中、景在城中，山水与岩洞皆奇。",
+      "places": [
+        {"name": "象鼻山（象山景区）", "coord": {"lat": 25.27, "lng": 110.289}, "category": "山水", "stayMinutes": 60, "tier": "必去", "ticket": "免费（2022年1月31日起免票）", "best": "上午", "tags": ["桂林城徽", "水月洞", "打卡机位"]},
+        {"name": "漓江（桂林—阳朔段）", "coord": {"lat": 24.98, "lng": 110.42}, "category": "山水", "stayMinutes": 300, "tier": "必去", "ticket": "约215元（三星游船，四星约235元，竹筏约200元）", "best": "上午", "tags": ["九马画山", "20元人民币背景", "兴坪"]},
+        {"name": "两江四湖夜游", "coord": {"lat": 25.28, "lng": 110.29}, "category": "夜游", "stayMinutes": 90, "tier": "推荐", "ticket": "未知（船票分档）", "best": "晚上", "tags": ["环城水系", "灯光", "解放桥"]},
+        {"name": "靖江王城·独秀峰", "coord": {"lat": 25.282, "lng": 110.3}, "category": "古迹", "stayMinutes": 120, "tier": "推荐", "ticket": "未知", "best": "上午", "tags": ["明代藩王府", "独秀峰", "贡院"]},
+        {"name": "龙脊梯田（龙胜）", "category": "自然", "stayMinutes": 360, "tier": "推荐", "ticket": "未知", "best": "全天", "tags": ["金坑大寨", "平安寨", "9月底-10月稻黄"]},
+        {"name": "芦笛岩", "coord": {"lat": 25.295, "lng": 110.268}, "category": "自然", "stayMinutes": 90, "tier": "顺路", "ticket": "未知", "best": "下午", "tags": ["国宾洞", "钟乳石"]},
+        {"name": "桂林千古情", "category": "剧院", "stayMinutes": 120, "tier": "顺路", "ticket": "未知", "best": "晚上", "tags": ["实景演出", "千古情"]}
+      ],
+      "patterns": [
+        "D1 市区：象鼻山→靖江王城→两江四湖夜游；D2 漓江游船（桂林至阳朔约4小时）→阳朔西街；D3 龙脊梯田（龙胜，全天）或芦笛岩。",
+        "黄金组合：4-6月烟雨漓江，9-10月龙脊稻黄；桂林到阳朔也可乘竹筏或大巴。"
+      ],
+      "rules": ["漓江游船分星级，三星约215元、四星约235元（2025年参考），旺季船票紧张需提前预订", "市区景点（象鼻山、两江四湖、靖江王城）集中，白天游园、晚上游船分开", "龙脊梯田在龙胜往返需一整天，9月底-10月稻子金黄最佳"],
+      "sources": ["http://gx.cnr.cn/cnrgx/wentijiankang/20220125/t20220125_525725673.shtml", "https://www.sina.cn/news/article/comos_ninxvfn7991375.html", "https://lgw.guilin.gov.cn/zcwj/t27139667.shtml"]
+    },
+    {
+      "city": "阳朔",
+      "province": "广西",
+      "region": "华南",
+      "country": "中国",
+      "coord": {"lat": 24.78, "lng": 110.49},
+      "tripDays": "2-3天",
+      "sense": "漓江精华与遇龙河田园在这里安放，骑行、竹筏、西街酒吧夜。",
+      "places": [
+        {"name": "西街", "coord": {"lat": 24.778, "lng": 110.496}, "category": "古镇", "stayMinutes": 120, "tier": "必去", "ticket": "免费", "best": "晚上", "tags": ["酒吧", "啤酒鱼", "洋人街"]},
+        {"name": "遇龙河竹筏", "coord": {"lat": 24.74, "lng": 110.46}, "category": "山水", "stayMinutes": 180, "tier": "必去", "ticket": "未知（按筏分段计价）", "best": "上午", "tags": ["人工竹筏", "田园倒影", "金龙桥段"]},
+        {"name": "十里画廊", "coord": {"lat": 24.75, "lng": 110.5}, "category": "山水", "stayMinutes": 180, "tier": "推荐", "ticket": "免费（骑行租车另付费）", "best": "下午", "tags": ["月亮山", "大榕树", "骑行"]},
+        {"name": "兴坪古镇", "coord": {"lat": 24.933, "lng": 110.457}, "category": "古镇", "stayMinutes": 180, "tier": "必去", "ticket": "免费", "best": "下午", "tags": ["漓江精华段", "20元人民币背景", "老寨山日落"]},
+        {"name": "银子岩", "coord": {"lat": 24.61, "lng": 110.55}, "category": "自然", "stayMinutes": 150, "tier": "顺路", "ticket": "未知", "best": "上午", "tags": ["钟乳石", "溶洞"]},
+        {"name": "印象·刘三姐", "category": "剧院", "stayMinutes": 90, "tier": "推荐", "ticket": "未知（票价分档）", "best": "晚上", "tags": ["张艺谋", "山水实景演出"]},
+        {"name": "相公山", "category": "山水", "stayMinutes": 120, "tier": "顺路", "ticket": "未知", "best": "上午", "tags": ["漓江日出", "摄影机位"]}
+      ],
+      "patterns": [
+        "D1 漓江精华段（兴坪/20元人民币背景）→兴坪古镇→西街夜景；D2 遇龙河竹筏→十里画廊骑行；D3 银子岩或相公山日出+《印象·刘三姐》。",
+        "最佳季节4-6月（烟雨漓江）、9-11月（秋高气爽）；到大交通以动车阳朔站+打车进县城为主。"
+      ],
+      "rules": ["遇龙河竹筏按筏分段计价，旺季排队长；漓江竹筏多为机动筏", "西街晚上酒吧人多，兴坪老寨山看日落需爬半小时左右", "骑行十里画廊按小时租车，沿途大榕树、月亮山等单独收费"],
+      "sources": ["https://tw.trip.com/moments/detail/yangshuo-702-141294525/", "https://tw.trip.com/moments/theme/poi-laozhai-mountain-park-13675908-guides-993135", "https://www.sina.cn/news/article/comos_ninxvfn7991375.html"]
+    },
+    {
+      "city": "南宁",
+      "province": "广西",
+      "region": "华南",
+      "country": "中国",
+      "coord": {"lat": 22.82, "lng": 108.32},
+      "tripDays": "2-3天",
+      "sense": "半城绿树半城楼的绿城，老友粉与邕江夜色，被低估的省会。",
+      "places": [
+        {"name": "青秀山风景区", "coord": {"lat": 22.78, "lng": 108.37}, "category": "自然", "stayMinutes": 240, "tier": "必去", "ticket": "约20元", "best": "上午", "tags": ["龙象塔", "苏铁园", "5A级城市森林"]},
+        {"name": "三街两巷（兴宁路）", "coord": {"lat": 22.817, "lng": 108.322}, "category": "古镇", "stayMinutes": 120, "tier": "推荐", "ticket": "免费", "best": "晚上", "tags": ["骑楼", "城隍庙", "老南宁"]},
+        {"name": "邕江夜游", "coord": {"lat": 22.818, "lng": 108.316}, "category": "夜游", "stayMinutes": 90, "tier": "推荐", "ticket": "未知（船票分档）", "best": "晚上", "tags": ["民生码头", "江景灯光"]},
+        {"name": "广西民族博物馆", "coord": {"lat": 22.77, "lng": 108.41}, "category": "博物馆", "stayMinutes": 120, "tier": "推荐", "ticket": "免费（周一闭馆）", "best": "下午", "tags": ["铜鼓", "壮族文化", "干栏建筑"]},
+        {"name": "南宁方特东盟神画", "category": "乐园", "stayMinutes": 300, "tier": "顺路", "ticket": "未知", "best": "全天", "tags": ["东盟主题", "过山车", "亲子"]},
+        {"name": "中山路美食街", "coord": {"lat": 22.817, "lng": 108.32}, "category": "美食街", "stayMinutes": 120, "tier": "推荐", "ticket": "免费", "best": "晚上", "tags": ["老友粉", "酸嘢", "夜市"]}
+      ],
+      "patterns": [
+        "D1 青秀山（上午）→广西民族博物馆（下午）→三街两巷（晚上）；D2 邕江夜游→中山路夜市；D3 方特东盟神画或周边县市一日。",
+        "南宁是广西交通枢纽，常作为北海、桂林的中转站，适合安排1-2天。"
+      ],
+      "rules": ["青秀山、广西民族博物馆等需预约，民族博物馆周一闭馆", "三街两巷与中山路美食街相邻，晚上最热闹", "夏天酷热，白天安排室内场馆，傍晚再逛户外"],
+      "sources": ["https://tw.trip.com/moments/detail/nanning-166-149711829/", "https://k.sina.cn/article_8458837727_1f82f9edf00101mp3s.html", "https://m.toutiao.com/article/7502803992888525362/"]
+    },
+    {
+      "city": "北海",
+      "province": "广西",
+      "region": "华南",
+      "country": "中国",
+      "coord": {"lat": 21.48, "lng": 109.12},
+      "tripDays": "3-4天",
+      "sense": "天下第一滩银滩加火山海岛涠洲岛，海鲜与骑楼老街的慢生活。",
+      "places": [
+        {"name": "北海银滩", "coord": {"lat": 21.42, "lng": 109.13}, "category": "海滨", "stayMinutes": 240, "tier": "必去", "ticket": "免费", "best": "下午", "tags": ["天下第一滩", "沙细白", "日落"]},
+        {"name": "涠洲岛", "coord": {"lat": 21.03, "lng": 109.11}, "category": "海滨", "stayMinutes": 600, "tier": "必去", "ticket": "未知（需乘轮渡，另收上岛门票）", "best": "全天", "tags": ["火山地貌", "海鲜", "环岛电瓶车"]},
+        {"name": "北海老街（珠海路）", "coord": {"lat": 21.481, "lng": 109.115}, "category": "城市", "stayMinutes": 120, "tier": "推荐", "ticket": "免费", "best": "晚上", "tags": ["百年骑楼", "虾饼", "咖啡馆"]},
+        {"name": "侨港风情街", "coord": {"lat": 21.438, "lng": 109.117}, "category": "美食街", "stayMinutes": 120, "tier": "推荐", "ticket": "免费", "best": "晚上", "tags": ["越南卷粉", "糖水", "海鲜夜宵"]},
+        {"name": "鳄鱼山公园（涠洲岛）", "coord": {"lat": 21.01, "lng": 109.1}, "category": "自然", "stayMinutes": 120, "tier": "推荐", "ticket": "未知", "best": "上午", "tags": ["火山口", "海蚀地貌", "灯塔"]},
+        {"name": "金海湾红树林", "category": "自然", "stayMinutes": 150, "tier": "顺路", "ticket": "未知", "best": "下午", "tags": ["红树林", "赶海", "白鹭"]}
+      ],
+      "patterns": [
+        "D1 北海老街→侨港风情街（傍晚+夜宵）；D2 涠洲岛（鳄鱼山→石螺口日落，住岛上）；D3 银滩日出→金海湾红树林；D4 返程。",
+        "涠洲岛往返船票提前订，晕船备药；岛上包电瓶车环岛最方便。"
+      ],
+      "rules": ["去涠洲岛需提前订往返船票（约1小时航程），旺季船票紧俏", "银滩免费但旺季人多；侨港风情街海鲜夜宵集中", "老街、侨港、银滩均在市区，打车公交方便；涠洲岛建议住1-2晚看日出日落"],
+      "sources": ["https://www.sina.cn/news/article/comos_nikwuvh9865784.html", "https://tw.trip.com/moments/detail/beihai-140-135033249/", "https://lxs.cncn.com/88452/n1178050"]
+    },
+    {
+      "city": "海口",
+      "province": "海南",
+      "region": "华南",
+      "country": "中国",
+      "coord": {"lat": 20.04, "lng": 110.32},
+      "tripDays": "3-4天",
+      "sense": "椰城烟火气，骑楼老街南洋风，火山口公园看雷琼地质。",
+      "places": [
+        {"name": "骑楼老街（中山路）", "coord": {"lat": 20.043, "lng": 110.342}, "category": "城市", "stayMinutes": 150, "tier": "必去", "ticket": "免费", "best": "晚上", "tags": ["南洋骑楼", "百年商街", "老爸茶"]},
+        {"name": "假日海滩", "coord": {"lat": 20.058, "lng": 110.267}, "category": "海滨", "stayMinutes": 180, "tier": "推荐", "ticket": "免费", "best": "下午", "tags": ["热带海岸", "日落", "烧烤"]},
+        {"name": "雷琼海口火山群地质公园（火山口）", "coord": {"lat": 19.93, "lng": 110.21}, "category": "自然", "stayMinutes": 240, "tier": "推荐", "ticket": "未知", "best": "上午", "tags": ["死火山口", "热带雨林", "登顶观海口"]},
+        {"name": "海南省博物馆", "coord": {"lat": 20.0, "lng": 110.36}, "category": "博物馆", "stayMinutes": 150, "tier": "推荐", "ticket": "免费（周一闭馆）", "best": "下午", "tags": ["海南历史", "黎族文化", "黄花梨"]},
+        {"name": "万绿园", "coord": {"lat": 20.024, "lng": 110.305}, "category": "公园", "stayMinutes": 90, "tier": "顺路", "ticket": "免费", "best": "晚上", "tags": ["市民公园", "椰林", "风筝"]},
+        {"name": "五公祠", "coord": {"lat": 20.008, "lng": 110.35}, "category": "古迹", "stayMinutes": 90, "tier": "顺路", "ticket": "未知", "best": "上午", "tags": ["海南第一楼", "贬谪文化"]}
+      ],
+      "patterns": [
+        "D1 骑楼老街→万绿园（傍晚海风）→假日海滩日落；D2 雷琼火山口公园（半日）→海南省博物馆；D3 五公祠或周边县市（文昌、琼海）。",
+        "海口比三亚更有市井烟火气，适合慢游；骑楼到海边步行可达。"
+      ],
+      "rules": ["骑楼老街、假日海滩、万绿园免费；火山口公园等收费景区以现场公告为准", "海口公交/共享电动车方便，骑楼周边步行可达", "7-9月台风季出行前关注天气与航班"],
+      "sources": ["https://tw.trip.com/moments/detail/haikou-37-150806741/", "http://m.029558.com/content/detail/21961", "https://m.toutiao.com/article/7564638028526797331/"]
+    },
+    {
+      "city": "三亚",
+      "province": "海南",
+      "region": "华南",
+      "country": "中国",
+      "coord": {"lat": 18.25, "lng": 109.51},
+      "tripDays": "4-5天",
+      "sense": "中国最南端的度假天堂，海岛的看海日与西线的祈福日各司其职。",
+      "places": [
+        {"name": "亚龙湾", "coord": {"lat": 18.22, "lng": 109.63}, "category": "海滨", "stayMinutes": 300, "tier": "必去", "ticket": "免费（沙滩；水上项目另收费）", "best": "上午", "tags": ["天下第一湾", "潜水", "白色沙滩"]},
+        {"name": "蜈支洲岛", "coord": {"lat": 18.31, "lng": 109.76}, "category": "海滨", "stayMinutes": 360, "tier": "必去", "ticket": "未知（船票+门票）", "best": "全天", "tags": ["潜水天堂", "环岛电瓶车", "情人桥"]},
+        {"name": "南山文化旅游区", "coord": {"lat": 18.3, "lng": 109.2}, "category": "宗教", "stayMinutes": 300, "tier": "推荐", "ticket": "约108元", "best": "上午", "tags": ["108米海上观音", "不二法门", "素斋"]},
+        {"name": "天涯海角", "coord": {"lat": 18.3, "lng": 109.35}, "category": "海滨", "stayMinutes": 180, "tier": "推荐", "ticket": "免费（已免门票）", "best": "下午", "tags": ["天涯石", "海角石", "情侣打卡"]},
+        {"name": "大小洞天", "coord": {"lat": 18.3, "lng": 109.17}, "category": "自然", "stayMinutes": 180, "tier": "推荐", "ticket": "未知", "best": "下午", "tags": ["海蚀地貌", "南山毗邻", "婚纱摄影"]},
+        {"name": "椰梦长廊（三亚湾）", "coord": {"lat": 18.25, "lng": 109.49}, "category": "海滨", "stayMinutes": 120, "tier": "推荐", "ticket": "免费", "best": "晚上", "tags": ["日落", "凤凰岛", "海滨步道"]},
+        {"name": "鹿回头风景区", "coord": {"lat": 18.238, "lng": 109.521}, "category": "公园", "stayMinutes": 120, "tier": "顺路", "ticket": "未知", "best": "晚上", "tags": ["鹿回头传说", "俯瞰三亚湾", "夜景"]},
+        {"name": "后海村（皇后湾）", "category": "海滨", "stayMinutes": 180, "tier": "顺路", "ticket": "免费", "best": "下午", "tags": ["冲浪", "疍家渔村", "夜市"]}
+      ],
+      "patterns": [
+        "D1 亚龙湾（沙滩+水上项目）→三亚湾椰梦长廊日落；D2 蜈支洲岛（潜水/环岛，全天）；D3 南山文化旅游区→天涯海角→大小洞天（西线一日）；D4 鹿回头（夜景）或后海村冲浪。",
+        "冬季为旺季物价较高；西线三景点可包车串联，南山、大小洞天相邻。"
+      ],
+      "rules": ["蜈支洲岛、南山等需提前购票，蜈支洲岛上岛船班末班较早，建议早船上岛", "亚龙湾、三亚湾海滨浴场免费，沙滩椅与水上项目另收费", "天涯海角、大小洞天等已免费/部分免费，费用以官方公告为准"],
+      "sources": ["https://fg.sanya.gov.cn/fgwsite/wjgggs/201705/55ed91b7e2c744b3b38237101765df7b.shtml", "https://www.explorehainan.com/sitefiles/hnly_ft/html/zixun/tehui/21983.shtml", "https://m.toutiao.com/article/7630742394832552474/"]
+    }
+  ]
+}

@@ -80,7 +80,8 @@ data class TravelPlace(
     val introduction: String,
     val source: String,
     val popularityRank: Int = 999,
-    val suggestedVisitMinutes: Int = 90
+    val suggestedVisitMinutes: Int = 90,
+    val openingHoursWeek: String? = null
 )
 
 @Serializable

@@ -49,6 +49,52 @@ final class NativeTransportOptionMergerTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(result.first?.quotes.first).isCurrentPrice)
     }
 
+    func testReasonableFlightDurationRanksAheadOfCheaperTwoDayConnection() {
+        let longConnection = TransportOption(
+            mode: .flight,
+            title: "东航 MU8402",
+            originName: "栎社机场",
+            destinationName: "滨海机场",
+            durationMinutes: 2_495,
+            quotes: [
+                ProviderQuote(
+                    provider: .fliggy,
+                    amountCNY: 530,
+                    unit: .perPerson,
+                    kind: .live,
+                    capturedAt: .now,
+                    note: "当前搜索起价"
+                )
+            ]
+        )
+        let directFlight = TransportOption(
+            mode: .flight,
+            title: "奥凯 BK2878",
+            originName: "栎社机场",
+            destinationName: "滨海机场",
+            durationMinutes: 135,
+            quotes: [
+                ProviderQuote(
+                    provider: .fliggy,
+                    amountCNY: 541,
+                    unit: .perPerson,
+                    kind: .live,
+                    capturedAt: .now,
+                    note: "当前搜索起价"
+                )
+            ]
+        )
+
+        let result = NativeFlightOptionMerger.merging(
+            [longConnection, directFlight],
+            into: [],
+            provider: .fliggy,
+            direction: .outbound
+        )
+
+        XCTAssertEqual(result.first?.title, "奥凯 BK2878")
+    }
+
     func testLiveRailwayRemovesRecommendedDemoFareAndSortsCurrentServiceFirst() throws {
         let fixture = TransportOption(
             mode: .train,
@@ -88,5 +134,47 @@ final class NativeTransportOptionMergerTests: XCTestCase {
 
         XCTAssertEqual(result.map(\.title), ["G7012 · 上海→苏州"])
         XCTAssertTrue(try XCTUnwrap(result.first?.quotes.first).isCurrentPrice)
+    }
+
+    func testRecommendedExactStationTrainStaysAheadOfCheaperSuburbanTrain() {
+        let exact = TransportOption(
+            mode: .train,
+            title: "G7001 · 上海→苏州",
+            originName: "上海",
+            destinationName: "苏州",
+            durationMinutes: 25,
+            quotes: [
+                ProviderQuote(
+                    provider: .railway12306,
+                    amountCNY: 39,
+                    unit: .perPerson,
+                    kind: .live,
+                    capturedAt: .now,
+                    note: "当前票价"
+                )
+            ],
+            isRecommended: true
+        )
+        let suburban = TransportOption(
+            mode: .train,
+            title: "C3031 · 练塘→苏州南",
+            originName: "练塘",
+            destinationName: "苏州南",
+            durationMinutes: 10,
+            quotes: [
+                ProviderQuote(
+                    provider: .railway12306,
+                    amountCNY: 10,
+                    unit: .perPerson,
+                    kind: .live,
+                    capturedAt: .now,
+                    note: "当前票价"
+                )
+            ]
+        )
+
+        let result = NativeRailwayOptionMerger.merging([suburban, exact], into: [])
+
+        XCTAssertEqual(result.first?.title, "G7001 · 上海→苏州")
     }
 }

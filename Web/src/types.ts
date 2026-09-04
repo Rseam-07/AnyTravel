@@ -10,13 +10,13 @@ export type Interest =
   | "family"
   | "night";
 
-export const INTERESTS: { id: Interest; title: string; symbol: string; searchTerm: string }[] = [
-  { id: "gardens", title: "园林古迹", symbol: "🏛️", searchTerm: "名胜古迹 园林 古镇" },
-  { id: "culture", title: "人文博物馆", symbol: "🖼️", searchTerm: "博物馆 美术馆 纪念馆" },
-  { id: "food", title: "本地饮食", symbol: "🍜", searchTerm: "美食 小吃 老街" },
-  { id: "nature", title: "自然慢逛", symbol: "🌿", searchTerm: "公园 湖泊 山 步道" },
-  { id: "family", title: "亲子体验", symbol: "🎠", searchTerm: "亲子 乐园 科技馆" },
-  { id: "night", title: "夜间活动", symbol: "🌙", searchTerm: "夜景 夜市 演出" }
+export const INTERESTS: { id: Interest; title: string; searchTerm: string }[] = [
+  { id: "gardens", title: "园林古迹", searchTerm: "名胜古迹 园林 古镇" },
+  { id: "culture", title: "人文博物馆", searchTerm: "博物馆 美术馆 纪念馆" },
+  { id: "food", title: "本地饮食", searchTerm: "美食 小吃 老街" },
+  { id: "nature", title: "自然慢逛", searchTerm: "公园 湖泊 山 步道" },
+  { id: "family", title: "亲子体验", searchTerm: "亲子 乐园 科技馆" },
+  { id: "night", title: "夜间活动", searchTerm: "夜景 夜市 演出" }
 ];
 
 export type Pace = "relaxed" | "balanced" | "full";

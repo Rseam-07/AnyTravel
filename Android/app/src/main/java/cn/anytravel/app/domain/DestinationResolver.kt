@@ -15,10 +15,47 @@ import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.util.Locale
 
-class DestinationResolver(private val geocoder: Geocoder) {
+class DestinationResolver(
+    private val geocoder: Geocoder,
+    private val guideKnowledge: DomesticGuideKnowledgeStore
+) {
     suspend fun resolve(draft: TripDraft): DestinationPack {
-        DestinationCatalog.find(draft.destination)?.let { return it }
+        val guide = guideKnowledge.destination(draft)
+        DestinationCatalog.find(draft.destination)?.let { curated ->
+            return mergeCuratedAndGuide(curated, guide)
+        }
+        if (guide != null) return withContext(Dispatchers.IO) { enrichGuideWithSystemPlaces(guide, draft) }
         return withContext(Dispatchers.IO) { resolveFromSystem(draft) }
+    }
+
+    private fun mergeCuratedAndGuide(curated: DestinationPack, guide: DestinationPack?): DestinationPack {
+        if (guide == null) return curated
+        val names = curated.places.mapTo(mutableSetOf()) { normalizedName(it.name) }
+        return curated.copy(
+            places = (curated.places + guide.places.filter { names.add(normalizedName(it.name)) })
+                .sortedBy { it.popularityRank },
+            sourceNote = "${curated.sourceNote} ${guide.sourceNote}"
+        )
+    }
+
+    private fun enrichGuideWithSystemPlaces(guide: DestinationPack, draft: TripDraft): DestinationPack {
+        val hotels = runCatching {
+            search("${draft.destination} 酒店", 5).mapNotNull { address ->
+                val name = address.featureName?.takeUnless { it.all(Char::isDigit) } ?: return@mapNotNull null
+                AccommodationSeed(name, address.getAddressLine(0).orEmpty(), address.coordinate())
+            }.distinctBy { normalizedName(it.name) }.take(4)
+        }.getOrDefault(emptyList())
+        val rail = runCatching { search("${draft.destination} 火车站", 2).firstOrNull() }.getOrNull()
+        val airport = runCatching { search("${draft.destination} 机场", 1).firstOrNull() }.getOrNull()
+        val hubs = buildList {
+            if (rail != null) add(AccessPoint(rail.featureName ?: "抵达车站", LongDistanceMode.TRAIN, rail.coordinate()))
+            if (airport != null) add(AccessPoint(airport.featureName ?: "抵达机场", LongDistanceMode.FLIGHT, airport.coordinate()))
+        }
+        return guide.copy(
+            accommodations = hotels.ifEmpty { guide.accommodations },
+            accessPoints = hubs,
+            sourceNote = guide.sourceNote + if (hotels.isNotEmpty() || hubs.isNotEmpty()) " 住宿和枢纽位置由本机地点服务补充。" else ""
+        )
     }
 
     @Suppress("DEPRECATION")
@@ -79,6 +116,11 @@ class DestinationResolver(private val geocoder: Geocoder) {
 
     private fun Address.coordinate() = Coordinate(latitude, longitude)
 
+    private fun normalizedName(value: String): String = value
+        .lowercase(Locale.SIMPLIFIED_CHINESE)
+        .replace(Regex("[\\s()（）·—_-]"), "")
+        .replace(Regex("风景名胜区|旅游景区|景区|公园|博物馆|纪念馆"), "")
+
     private fun introductionFor(interest: TripInterest): String = when (interest) {
         TripInterest.GARDENS -> "把空间与建筑细节留给慢慢观看，出发前复核预约和开放时间。"
         TripInterest.CULTURE -> "适合把主要展陈与现场说明一起看，不必把每个展厅都赶完。"
@@ -92,4 +134,7 @@ class DestinationResolver(private val geocoder: Geocoder) {
 class DestinationResolutionException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
 fun createSystemGeocoder(context: android.content.Context): DestinationResolver =
-    DestinationResolver(Geocoder(context, Locale.SIMPLIFIED_CHINESE))
+    DestinationResolver(
+        Geocoder(context, Locale.SIMPLIFIED_CHINESE),
+        DomesticGuideKnowledgeStore.fromAssets(context.applicationContext)
+    )

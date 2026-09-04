@@ -4,14 +4,23 @@ import MapKit
 
 struct MapSearchService {
     private let amapClient: AMapPlaceClient
+    private let guideKnowledge: DomesticGuideKnowledgeStore
 
-    init(amapClient: AMapPlaceClient = AMapPlaceClient()) {
+    init(
+        amapClient: AMapPlaceClient = AMapPlaceClient(),
+        guideKnowledge: DomesticGuideKnowledgeStore = .shared
+    ) {
         self.amapClient = amapClient
+        self.guideKnowledge = guideKnowledge
     }
 
     func resolveDestination(_ query: String) async throws -> DestinationResolution {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw PlanningError.emptyDestination }
+
+        if let guideDestination = guideKnowledge.resolveDestination(trimmed) {
+            return guideDestination
+        }
 
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = trimmed
@@ -49,6 +58,12 @@ struct MapSearchService {
 
         var buckets: [TripInterest: [TravelPlace]] = [:]
         var seen = Set<String>()
+
+        for place in guideKnowledge.places(for: destination.title) {
+            let key = deduplicationKey(name: place.name, coordinate: place.coordinate.clLocationCoordinate)
+            guard seen.insert(key).inserted else { continue }
+            buckets[place.interest, default: []].append(place)
+        }
 
         for interest in activeInterests {
             let request = MKLocalSearch.Request()
@@ -124,6 +139,21 @@ struct MapSearchService {
             index += 1
         }
 
+        // A traveler may select only one interest, while the bundled city guide
+        // still contains useful nearby highlights. Fill a thin online result set
+        // with the remaining ranked guide places so planning stays useful offline.
+        if selected.count < targetCount {
+            let selectedKeys = Set(selected.map {
+                deduplicationKey(name: $0.name, coordinate: $0.coordinate.clLocationCoordinate)
+            })
+            var fallbackKeys = selectedKeys
+            for place in guideKnowledge.places(for: destination.title) where selected.count < targetCount {
+                let key = deduplicationKey(name: place.name, coordinate: place.coordinate.clLocationCoordinate)
+                guard fallbackKeys.insert(key).inserted else { continue }
+                selected.append(place)
+            }
+        }
+
         guard selected.count >= min(2, targetCount) else {
             throw PlanningError.placesNotFound
         }
@@ -149,7 +179,7 @@ struct MapSearchService {
             latitude: destination.coordinate.latitude,
             longitude: destination.coordinate.longitude
         )
-        var candidates: [TravelPlace] = []
+        var candidates: [TravelPlace] = guideKnowledge.places(for: destination.title)
 
         for spec in querySpecs {
             let mapRequest = MKLocalSearch.Request()

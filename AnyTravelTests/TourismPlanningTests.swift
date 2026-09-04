@@ -203,6 +203,41 @@ final class TourismPlanningTests: XCTestCase {
         XCTAssertTrue(visit.detail.contains("今日营业13:00–17:00"))
     }
 
+    func testWeeklyOpeningHoursUseThePlannedWeekday() throws {
+        let tuesday = try XCTUnwrap(Calendar(identifier: .gregorian).date(from: DateComponents(year: 2026, month: 9, day: 8)))
+        let venue = TravelPlace(
+            name: "每周一休息的展馆",
+            address: "测试地址",
+            coordinate: Coordinate(latitude: 31.300, longitude: 120.600),
+            interest: .culture,
+            openingHoursWeek: "Mo off; Tu-Su 09:00-17:00"
+        )
+
+        let state = TourismPlanningPolicy().openingState(for: venue, on: tuesday)
+
+        XCTAssertEqual(state, .open(.init(startMinute: 9 * 60, endMinute: 17 * 60)))
+    }
+
+    func testRoutePlannerMovesRegularMondayClosureToAnotherDay() throws {
+        let monday = try XCTUnwrap(Calendar(identifier: .gregorian).date(from: DateComponents(year: 2026, month: 9, day: 7)))
+        let museum = place("苏州博物馆", latitude: 31.325, longitude: 120.621, interest: .culture)
+        let garden = place("金鸡湖", latitude: 31.316, longitude: 120.680, interest: .nature)
+        let draft = TripDraft(
+            destination: "苏州",
+            dayCount: 2,
+            logistics: TripLogistics(startDate: monday)
+        )
+
+        let days = RoutePlanner().orderPlaces(
+            [museum, garden],
+            from: museum.coordinate,
+            draft: draft
+        )
+
+        XCTAssertFalse(days[0].stops.contains { $0.name == "苏州博物馆" })
+        XCTAssertTrue(days[1].stops.contains { $0.name == "苏州博物馆" })
+    }
+
     func testArrivalConstraintMovesTheFirstVisitAndExplainsTheBuffer() throws {
         let day = ItineraryDay(index: 0, stops: [
             place("园林", latitude: 31.300, longitude: 120.600, interest: .gardens)

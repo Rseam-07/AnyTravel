@@ -28,7 +28,7 @@ const server = http.createServer(async (request, response) => {
       sendJSON(response, 200, {
         status: "ok",
         service: "anytravel-companion",
-        assistant: process.env.ZAI_API_KEY ? "configured" : "disabled",
+        assistant: process.env.DEEPSEEK_API_KEY || process.env.ZAI_API_KEY ? "configured" : "disabled",
         amap: process.env.AMAP_API_KEY ? "configured" : "disabled",
         oneBoundCtrip: process.env.ONEBOUND_API_KEY && process.env.ONEBOUND_API_SECRET ? "configured" : "disabled",
         ctripSession: process.env.CTRIP_SCRAPER_ENABLED === "true" ? "configured" : "disabled",

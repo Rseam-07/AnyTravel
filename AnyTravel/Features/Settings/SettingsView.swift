@@ -200,6 +200,25 @@ struct SettingsView: View {
                 } footer: {
                     Text("连接仓库内的伴随服务后，RollingGo、携程网页采集与后续渠道会从同一处归来；密钥只留在服务端。")
                 }
+
+                Section {
+                    Link(destination: URL(string: "https://www.openstreetmap.org/copyright")!) {
+                        Label("OpenStreetMap 地图与地点", systemImage: "map")
+                    }
+                    Link(destination: URL(string: "https://www.wikidata.org/wiki/Wikidata:Licensing")!) {
+                        Label("Wikidata 公共知识", systemImage: "books.vertical")
+                    }
+                    Link(destination: URL(string: "https://audiala.com/")!) {
+                        Label("Data by Audiala · 旅行资料", systemImage: "book.pages")
+                    }
+                    Link(destination: URL(string: "https://sjfw.mct.gov.cn/site/dataservice/base")!) {
+                        Label("文化和旅游部 A 级景区名录", systemImage: "checkmark.seal")
+                    }
+                } header: {
+                    Text("这张地图从哪里生长")
+                } footer: {
+                    Text("内置攻略用于发现与排序，已经过城市归属、重复地点和代表性地标校验；营业、预约和票价仍会按你的出行日期重新查询。")
+                }
             }
             .navigationTitle("旅途偏好与价格渠道")
             .navigationBarTitleDisplayMode(.inline)

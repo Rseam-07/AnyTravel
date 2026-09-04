@@ -1,22 +1,33 @@
-import { Component, useEffect, useRef, useState, type ReactNode } from "react";
+import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  BedDouble,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  Luggage,
+  Map as MapIcon,
+  RotateCcw,
+  Settings,
+  SlidersHorizontal,
+  TrainFront,
+  WalletCards
+} from "lucide-react";
 import { AppProvider, useApp } from "./store";
-import MapView from "./components/MapView";
+import MapView, { type MapSection } from "./components/MapView";
 import Composer, { ConditionsCard } from "./components/Composer";
 import ChatPanel from "./components/ChatPanel";
 import SettingsPanel from "./components/SettingsPanel";
-import TrackRail from "./components/TrackRail";
 import { AccommodationPanel, BudgetPanel, PlanPanel, TransportPanel } from "./components/Panels";
-import type { Interest } from "./types";
 
-type Tab = "compose" | "plan" | "stay" | "transport" | "budget";
+type ReadyTab = "plan" | "stay" | "transport" | "budget";
 
-const TAB_META: { id: Tab; title: string }[] = [
-  { id: "compose", title: "条件" },
-  { id: "plan", title: "方案" },
-  { id: "stay", title: "住宿" },
-  { id: "transport", title: "交通" },
-  { id: "budget", title: "费用" }
-];
+const READY_TABS = [
+  { id: "plan", title: "行程", icon: MapIcon },
+  { id: "stay", title: "住宿", icon: BedDouble },
+  { id: "transport", title: "交通", icon: TrainFront },
+  { id: "budget", title: "费用", icon: WalletCards }
+] satisfies { id: ReadyTab; title: string; icon: typeof MapIcon }[];
 
 export default function App() {
   return (
@@ -30,18 +41,18 @@ export default function App() {
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { message: string | null }> {
   state: { message: string | null } = { message: null };
+
   static getDerivedStateFromError(error: unknown) {
     return { message: error instanceof Error ? error.message : String(error) };
   }
+
   render() {
     if (this.state.message) {
       return (
-        <div style={{ padding: 40, fontFamily: "var(--font)" }}>
-          <h2>页面遇到了一点问题</h2>
-          <pre style={{ whiteSpace: "pre-wrap", background: "#f3efe7", padding: 16, borderRadius: 12 }}>{this.state.message}</pre>
-          <button className="primary-cta" onClick={() => location.reload()}>
-            刷新重试
-          </button>
+        <div className="fatal-state">
+          <h2>这一段路暂时没有接上</h2>
+          <p>{this.state.message}</p>
+          <button className="primary-cta" onClick={() => location.reload()}>刷新重试</button>
         </div>
       );
     }
@@ -51,222 +62,378 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { message: string
 
 function Shell() {
   const app = useApp();
-  const state = app.state;
-  const [tab, setTab] = useState<Tab>("plan");
+  const { state } = app;
+  const [tab, setTab] = useState<ReadyTab>("plan");
+  const [editingConditions, setEditingConditions] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [mapDark, setMapDark] = useState(() => localStorage.getItem("anytravel-web:mapstyle") === "dark");
+  const hasPlan = Boolean(state.plan);
+  const mapSection: MapSection = !hasPlan ? "plan" : tab === "stay" ? "stay" : tab === "transport" ? "transport" : "plan";
 
-  if (state.phase === "welcome") {
-    return <Welcome />;
-  }
+  useEffect(() => {
+    if (state.phase === "ready") {
+      setTab("plan");
+      setEditingConditions(false);
+    }
+  }, [state.plan?.generatedAt, state.phase]);
 
   return (
-    <div className={`app${mapDark ? " dark" : ""}`} onClick={() => undefined}>
-      <MapView dark={mapDark} onDarkChange={setMapDark} />
-      <div className="top-bar desktop-only">
-        <Composer />
-      </div>
-      {state.phase === "planning" && <div className="phase-pill">正在翻阅这座城的热门去处…</div>}
+    <div className={`app${mapDark ? " dark" : ""}`}>
+      <MapView dark={mapDark} onDarkChange={setMapDark} activeSection={mapSection} />
+      <TopChrome
+        onReset={app.resetAll}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenLibrary={() => setLibraryOpen(true)}
+      />
+
+      {state.phase === "planning" && <div className="route-status">正在筛地点、排顺序、铺路线…</div>}
+      {state.phase === "ready" && state.plan && (
+        <div className="route-status">
+          {tab === "stay"
+            ? "落脚片区已经和每日主线对齐"
+            : tab === "transport"
+              ? "往返选择已经和目的地保持同步"
+              : tab === "budget"
+                ? "费用会随着你的选择一起更新"
+                : `第 ${state.selectedDay + 1} 天的脚步已经落在地图上`}
+        </div>
+      )}
 
       <aside className={`side-panel desktop-only${collapsed ? " collapsed" : ""}`}>
         <button
           className="collapse-handle"
-          onClick={() => setCollapsed((v) => !v)}
-          aria-label={collapsed ? "展开面板" : "收起面板"}
+          onClick={() => setCollapsed((value) => !value)}
+          aria-label={collapsed ? "展开规划面板" : "收起规划面板"}
         >
-          {collapsed ? "›" : "‹"}
+          {collapsed ? <ChevronRight size={18} aria-hidden="true" /> : <ChevronLeft size={18} aria-hidden="true" />}
         </button>
         {!collapsed && (
-          <>
-            <PanelTabs tab={tab} setTab={setTab} />
-            <div className="side-content">
-              <PanelBody tab={tab} goConditions={() => setTab("compose")} />
-            </div>
-          </>
+          <PanelScaffold
+            tab={tab}
+            setTab={setTab}
+            hasPlan={hasPlan}
+            editingConditions={editingConditions}
+            setEditingConditions={setEditingConditions}
+          />
         )}
       </aside>
 
-      <div className="desktop-only">
-        <TrackRail />
-      </div>
+      <MobileLayer
+        tab={tab}
+        setTab={setTab}
+        hasPlan={hasPlan}
+        editingConditions={editingConditions}
+        setEditingConditions={setEditingConditions}
+      />
 
-      <MobileLayer tab={tab} setTab={setTab} />
-
-      <button className="chat-fab" onClick={() => app.toggleChat(true)} aria-label="打开智能向导">
-        ✨
-      </button>
       {state.chatOpen && <ChatPanel />}
-
-      <button
-        className="map-control"
-        style={{ position: "absolute", top: 18, right: 76, zIndex: 8 }}
-        onClick={() => setSettingsOpen(true)}
-        aria-label="设置"
-      >
-        ⚙️
-      </button>
       {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
+      {libraryOpen && <LibraryPanel onClose={() => setLibraryOpen(false)} />}
 
-      <div className="print-plan">
-        <PrintView />
-      </div>
+      <div className="print-plan"><PrintView /></div>
     </div>
   );
 }
 
-function PanelBody({ tab, goConditions }: { tab: Tab; goConditions?: () => void }) {
-  switch (tab) {
-    case "compose":
-      return <ConditionsCard />;
-    case "plan":
-      return <PlanPanel />;
-    case "stay":
-      return <AccommodationPanel />;
-    case "transport":
-      return <TransportPanel onGoConditions={goConditions} />;
-    case "budget":
-      return <BudgetPanel />;
-  }
-}
+function TopChrome({
+  onReset,
+  onOpenSettings,
+  onOpenLibrary
+}: {
+  onReset: () => void;
+  onOpenSettings: () => void;
+  onOpenLibrary: () => void;
+}) {
+  const { state } = useApp();
+  const title = state.draft.destination || "AnyTravel";
+  const subtitle = state.phase === "planning"
+    ? "正在把想法落到地图上"
+    : state.phase === "ready"
+      ? `${state.draft.dayCount} 天 · 每次选择都落在地图上`
+      : state.phase === "failure"
+        ? "这一段路需要重新接上"
+        : state.draft.destination
+          ? "再告诉我一点旅途偏好"
+          : "地图正等你说出下一处远方";
+  const progress = state.phase === "ready" || state.phase === "failure"
+    ? 3
+    : state.phase === "planning"
+      ? 2
+      : state.draft.destination
+        ? 1
+        : 0;
 
-function PanelTabs({ tab, setTab }: { tab: Tab; setTab: (tab: Tab) => void }) {
   return (
-    <div className="side-tabs">
-      {TAB_META.map((meta) => (
-        <button key={meta.id} className={`side-tab${tab === meta.id ? " active" : ""}`} onClick={() => setTab(meta.id)}>
-          {meta.title}
+    <header className="ios-chrome">
+      <div className="chrome-row">
+        <button className="glass-circle" onClick={onReset} aria-label="重新规划" title="重新规划">
+          <RotateCcw size={20} aria-hidden="true" />
         </button>
-      ))}
-    </div>
+        <div className="journey-title" aria-live="polite">
+          <strong>{title}</strong>
+          <span>{subtitle}</span>
+        </div>
+        <button className="glass-circle" onClick={onOpenSettings} aria-label="旅途偏好与价格渠道" title="设置">
+          <Settings size={20} aria-hidden="true" />
+        </button>
+        <button className="glass-circle" onClick={onOpenLibrary} aria-label="已保存行程" title="旅册">
+          <Luggage size={20} aria-hidden="true" />
+        </button>
+      </div>
+      <div className="progress-dots" aria-label={`规划进度，第 ${progress + 1} 步，共 4 步`}>
+        {[0, 1, 2, 3].map((index) => <i key={index} className={index === progress ? "active" : ""} />)}
+      </div>
+    </header>
   );
 }
 
+function PanelScaffold({
+  tab,
+  setTab,
+  hasPlan,
+  editingConditions,
+  setEditingConditions
+}: {
+  tab: ReadyTab;
+  setTab: (tab: ReadyTab) => void;
+  hasPlan: boolean;
+  editingConditions: boolean;
+  setEditingConditions: (value: boolean) => void;
+}) {
+  return (
+    <>
+      <div className="panel-grabber" aria-hidden="true"><i /></div>
+      {hasPlan && !editingConditions && <PanelTabs tab={tab} setTab={setTab} />}
+      <div className="side-content">
+        {!hasPlan ? (
+          <DestinationStart />
+        ) : editingConditions ? (
+          <div className="conditions-view">
+            <div className="panel-section-head">
+              <div>
+                <span>调整行程</span>
+                <small>日期、人数、预算与抵达方式</small>
+              </div>
+              <button className="chip-btn" onClick={() => setEditingConditions(false)}>返回行程</button>
+            </div>
+            <ConditionsCard />
+          </div>
+        ) : (
+          <>
+            <div className="ready-tools">
+              <span>{tab === "plan" ? "当天路线" : tab === "stay" ? "落脚选择" : tab === "transport" ? "往返抵达" : "旅途花费"}</span>
+              <button className="chip-btn" onClick={() => setEditingConditions(true)}>
+                <SlidersHorizontal size={15} aria-hidden="true" /> 调整
+              </button>
+            </div>
+            <PanelBody tab={tab} goConditions={() => setEditingConditions(true)} />
+          </>
+        )}
+      </div>
+    </>
+  );
+}
 
-
-// ---------- mobile: three-detent sheet ----------
-
-const DETENTS = { compact: 190, medium: window.innerHeight * 0.52, large: window.innerHeight * 0.88 };
-
-function MobileLayer({ tab, setTab }: { tab: Tab; setTab: (tab: Tab) => void }) {
-  const app = useApp();
-  const [detent, setDetent] = useState<keyof typeof DETENTS>("medium");
-  const [dragY, setDragY] = useState<number | null>(null);
-  const startRef = useRef<{ y: number; height: number } | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-
-  const height = dragY != null ? dragY : DETENTS[detent];
-
-  useEffect(() => {
-    DETENTS.medium = window.innerHeight * 0.52;
-    DETENTS.large = window.innerHeight * 0.88;
-    setDetent((d) => {
-      if (d === "medium") return "medium";
-      return d;
-    });
-  }, []);
-
-  const onPointerDown = (e: React.PointerEvent) => {
-    startRef.current = { y: e.clientY, height: heightRef() };
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-  };
-  const heightRef = () => (dragY != null ? dragY : DETENTS[detent]);
-
-  const onPointerMove = (e: React.PointerEvent) => {
-    if (!startRef.current) return;
-    const next = startRef.current.height + (startRef.current.y - e.clientY);
-    setDragY(Math.max(90, Math.min(window.innerHeight - 40, next)));
-  };
-
-  const onPointerUp = () => {
-    startRef.current = null;
-    const current = dragY ?? DETENTS[detent];
-    const candidates: [keyof typeof DETENTS, number][] = [
-      ["compact", DETENTS.compact],
-      ["medium", DETENTS.medium],
-      ["large", DETENTS.large]
-    ];
-    const nearest = candidates.sort((a, b) => Math.abs(a[1] - current) - Math.abs(b[1] - current))[0][0];
-    setDetent(nearest);
-    setDragY(null);
-  };
-
-  const stepUp = () => {
-    const order: (keyof typeof DETENTS)[] = ["compact", "medium", "large"];
-    const index = order.indexOf(detent);
-    setDetent(order[Math.min(index + 1, order.length - 1)]);
-  };
-  const stepDown = () => {
-    const order: (keyof typeof DETENTS)[] = ["compact", "medium", "large"];
-    const index = order.indexOf(detent);
-    setDetent(order[Math.max(index - 1, 0)]);
-  };
+function DestinationStart() {
+  const { state, resolveDestination } = useApp();
+  const [choosing, setChoosing] = useState<string | null>(null);
+  const examples = ["苏州", "杭州", "成都"];
 
   return (
-    <div
-      ref={containerRef}
-      className="mobile-sheet mobile-only"
-      style={{ height }}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
-    >
-      <button className="sheet-expand" onClick={detent === "large" ? stepDown : stepUp} aria-label="切换面板高度">
-        {detent === "large" ? "▾" : "▴"}
-      </button>
-      <div className="sheet-handle">
-        <div className="bar" />
-      </div>
-      <div className="mobile-only" style={{ padding: "0 10px 8px" }}>
-        <Composer />
-      </div>
-      <div className="sheet-tabs">
-        {TAB_META.map((meta) => (
-          <button key={meta.id} className={`side-tab${tab === meta.id ? " active" : ""}`} onClick={() => setTab(meta.id)}>
-            {meta.title}
+    <div className="destination-start">
+      <p className="eyebrow">从地图出发，不填长表格</p>
+      <h1>想把哪里变成一段行程？</h1>
+      <Composer />
+      <div className="destination-examples" aria-label="推荐目的地">
+        {examples.map((city) => (
+          <button
+            key={city}
+            className="example-chip"
+            disabled={choosing !== null}
+            onClick={async () => {
+              setChoosing(city);
+              await resolveDestination(city);
+              setChoosing(null);
+            }}
+          >
+            {choosing === city ? "定位中…" : city}
           </button>
         ))}
       </div>
-      <div className="sheet-content">
-        <PanelBody tab={tab} goConditions={() => setTab("compose")} />
-      </div>
+      {state.draft.destination && (
+        <div className="destination-confirmed">
+          <strong>地图已抵达 {state.draft.destination}</strong>
+          <span>继续补充偏好，或直接让旅程展开。</span>
+          <ConditionsCard />
+        </div>
+      )}
+      {state.failureDetail && <div className="issue-note">{state.failureDetail}</div>}
     </div>
   );
 }
 
-function Welcome() {
-  const app = useApp();
-  const { updateDraft, dismissWelcome, resolveDestination, generatePlan } = app;
+function PanelBody({ tab, goConditions }: { tab: ReadyTab; goConditions?: () => void }) {
+  switch (tab) {
+    case "plan": return <PlanPanel />;
+    case "stay": return <AccommodationPanel />;
+    case "transport": return <TransportPanel onGoConditions={goConditions} />;
+    case "budget": return <BudgetPanel />;
+  }
+}
 
-  const startExample = async (destination: string, dayCount: number, travelers: number, pace: "relaxed" | "balanced" | "full", interest?: Interest) => {
-    updateDraft({ dayCount, travelers, pace, interests: interest ? [interest, "culture", "food", "nature"] : ["gardens", "culture", "food", "nature"] });
-    await resolveDestination(destination);
-    dismissWelcome();
-    void generatePlan();
+function PanelTabs({ tab, setTab }: { tab: ReadyTab; setTab: (tab: ReadyTab) => void }) {
+  return (
+    <div className="side-tabs" role="tablist" aria-label="行程内容">
+      {READY_TABS.map((meta) => {
+        const Icon = meta.icon;
+        const selected = tab === meta.id;
+        return (
+          <button
+            key={meta.id}
+            className={`side-tab${selected ? " active" : ""}`}
+            onClick={() => setTab(meta.id)}
+            role="tab"
+            aria-selected={selected}
+          >
+            <Icon size={17} aria-hidden="true" />
+            {meta.title}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+type Detent = "compact" | "medium" | "large";
+
+function MobileLayer({
+  tab,
+  setTab,
+  hasPlan,
+  editingConditions,
+  setEditingConditions
+}: {
+  tab: ReadyTab;
+  setTab: (tab: ReadyTab) => void;
+  hasPlan: boolean;
+  editingConditions: boolean;
+  setEditingConditions: (value: boolean) => void;
+}) {
+  const [detent, setDetent] = useState<Detent>("medium");
+  const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight);
+  const [liveHeight, setLiveHeight] = useState<number | null>(null);
+  const sheetRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{ pointerY: number; height: number; samples: { height: number; time: number }[] } | null>(null);
+  const heights = useMemo(() => ({
+    compact: hasPlan ? 174 : 250,
+    medium: Math.min(Math.max(viewportHeight * 0.61, 390), 570, Math.max(viewportHeight - 20, 320)),
+    large: Math.max(viewportHeight - 20, 320)
+  }), [hasPlan, viewportHeight]);
+  const height = liveHeight ?? heights[detent];
+
+  useEffect(() => {
+    const update = () => setViewportHeight(window.innerHeight);
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  const moveDetent = (up: boolean) => {
+    const order: Detent[] = ["compact", "medium", "large"];
+    const index = order.indexOf(detent);
+    setDetent(order[Math.min(Math.max(index + (up ? 1 : -1), 0), order.length - 1)]);
+  };
+
+  const onPointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const currentHeight = sheetRef.current?.getBoundingClientRect().height ?? height;
+    dragRef.current = { pointerY: event.clientY, height: currentHeight, samples: [{ height: currentHeight, time: performance.now() }] };
+    setLiveHeight(currentHeight);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const onPointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const now = performance.now();
+    const next = Math.min(Math.max(drag.height + drag.pointerY - event.clientY, heights.compact), heights.large);
+    setLiveHeight(next);
+    drag.samples.push({ height: next, time: now });
+    drag.samples = drag.samples.filter((sample) => now - sample.time < 140);
+  };
+
+  const onPointerUp = () => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const first = drag.samples[0];
+    const last = drag.samples.at(-1) ?? first;
+    const seconds = Math.max((last.time - first.time) / 1000, 0.016);
+    const velocity = (last.height - first.height) / seconds;
+    const projected = last.height + velocity * 0.18;
+    const next = (Object.entries(heights) as [Detent, number][])
+      .sort((a, b) => Math.abs(a[1] - projected) - Math.abs(b[1] - projected))[0][0];
+    dragRef.current = null;
+    setDetent(next);
+    setLiveHeight(null);
   };
 
   return (
-    <div className="welcome">
-      <div className="welcome-card">
-        <div className="welcome-logo">
-          <img src="/logo.png" alt="AnyTravel 折叠远方" />
+    <div ref={sheetRef} className={`mobile-sheet mobile-only${liveHeight !== null ? " dragging" : ""}`} style={{ height }}>
+      <button
+        className="sheet-handle"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        onDoubleClick={() => moveDetent(detent !== "large")}
+        aria-label="调整地图面板高度"
+        aria-valuetext={detent === "compact" ? "仅显示主要内容" : detent === "medium" ? "显示主要内容" : "几乎全屏显示"}
+      >
+        <i />
+      </button>
+      <button className="sheet-expand" onClick={() => moveDetent(detent !== "large")} aria-label="切换面板高度">
+        {detent === "large" ? <ChevronDown size={18} aria-hidden="true" /> : <ChevronUp size={18} aria-hidden="true" />}
+      </button>
+      <PanelScaffold
+        tab={tab}
+        setTab={setTab}
+        hasPlan={hasPlan}
+        editingConditions={editingConditions}
+        setEditingConditions={setEditingConditions}
+      />
+    </div>
+  );
+}
+
+function LibraryPanel({ onClose }: { onClose: () => void }) {
+  const { state, loadTrip, deleteTrip } = useApp();
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="library-title" onClick={(event) => event.stopPropagation()}>
+        <div className="modal-head">
+          <div>
+            <h2 id="library-title">旅册</h2>
+            <p className="sub-text">在这台浏览器保存的行程</p>
+          </div>
+          <button className="chip-btn" onClick={onClose}>完成</button>
         </div>
-        <h1>旅行是一场诗意的迁徙</h1>
-        <p>
-          先选车次，还是先挑住处？都可以。把想去的地方、预算和节奏交给 AnyTravel，
-          它会在背景地图上把日子铺成一条能走的路线——每个人都能看懂为什么这样排。
-        </p>
-        <div className="example-chips">
-          <button className="example-chip" onClick={() => void startExample("苏州", 3, 2, "relaxed")}>🌿 苏州 3 天 2 人</button>
-          <button className="example-chip" onClick={() => void startExample("杭州", 4, 2, "relaxed", "gardens")}>🏞️ 杭州 4 天，园林古镇</button>
-          <button className="example-chip" onClick={() => void startExample("青岛", 3, 4, "balanced")}>🌊 青岛 3 天 4 人</button>
-        </div>
-        <button className="primary-cta" onClick={dismissWelcome}>开始规划</button>
-        <p style={{ marginTop: 22, fontSize: 12 }}>
-          Web 版与 iOS 共用同一套行程模型与价格渠道：铁路 12306、去哪儿门票、RollingGo/携程/同程/艺龙/万邦 由伴随服务承载（见“设置”）。
-        </p>
-      </div>
+        {state.savedTrips.length === 0 && <div className="empty-note">还没有保存的行程。</div>}
+        {state.savedTrips.map((trip) => (
+          <div key={trip.id} className="trip-row">
+            <span className="t-title">{trip.title}</span>
+            <button className="mini-btn" onClick={() => { loadTrip(trip.id); onClose(); }}>打开</button>
+            <button className="mini-btn danger" onClick={() => deleteTrip(trip.id)}>删除</button>
+          </div>
+        ))}
+      </section>
     </div>
   );
 }
@@ -278,11 +445,11 @@ function PrintView() {
   return (
     <div>
       <h1>{state.draft.destination} · {state.draft.dayCount} 天行程</h1>
-      {plan.days.map((day, i) => (
-        <section key={i}>
+      {plan.days.map((day, index) => (
+        <section key={index}>
           <h2>{day.title}</h2>
-          {day.stops.map((stop, index) => (
-            <p key={index}>
+          {day.stops.map((stop, stopIndex) => (
+            <p key={stopIndex}>
               <strong>{stop.arrivalText}–{stop.departureText}</strong> {stop.place.name}
               {stop.place.address ? `（${stop.place.address.slice(0, 80)}）` : ""}
             </p>

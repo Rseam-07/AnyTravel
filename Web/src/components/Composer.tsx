@@ -1,7 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Baby, Landmark, MoonStar, Search, Sparkles, Trees, UtensilsCrossed, Images } from "lucide-react";
 import { nominatimSearch, type NominatimPlace } from "../api";
 import { useApp } from "../store";
 import { INTERESTS, PACE_META, type Interest, type Pace } from "../types";
+import { knowledgeCitiesRef } from "../knowledge";
+
+const INTEREST_ICONS = {
+  gardens: Landmark,
+  culture: Images,
+  food: UtensilsCrossed,
+  nature: Trees,
+  family: Baby,
+  night: MoonStar
+} as const;
 
 export default function Composer() {
   const { state, updateDraft, resolveDestination, generatePlan, toggleChat } = useApp();
@@ -23,10 +34,25 @@ export default function Composer() {
       setSuggestions([]);
       return;
     }
+    const normalized = text.trim().replace(/(市|省)$/, "");
+    const local = knowledgeCitiesRef()
+      .filter((city) => city.city.includes(normalized) || normalized.includes(city.city))
+      .slice(0, 6)
+      .flatMap<NominatimPlace>((city) => city.coord ? [{
+        name: city.city,
+        display_name: `${city.city}, ${city.province || city.country}, 离线可规划`,
+        latitude: city.coord.lat,
+        longitude: city.coord.lng,
+        type: "administrative",
+        addresstype: "city"
+      }] : []);
+    setSuggestions(local);
     try {
-      setSuggestions(await nominatimSearch(settings.backendURL, text, 6));
+      const remote = await nominatimSearch(settings.backendURL, text, 6);
+      const names = new Set(local.map((item) => item.name));
+      setSuggestions([...local, ...remote.filter((item) => !names.has(item.name))].slice(0, 8));
     } catch {
-      setSuggestions([]);
+      setSuggestions(local);
     }
   }, [settings.backendURL]);
 
@@ -42,7 +68,6 @@ export default function Composer() {
     setSuggestions([]);
     setOpen(false);
     inputRef.current?.blur();
-    updateDraft({ destination: place.name });
     await resolveDestination(place.display_name.split(",")[0] || place.name);
     setQuery(place.name);
   };
@@ -52,7 +77,7 @@ export default function Composer() {
   return (
     <div className="composer" onClick={(e) => e.stopPropagation()}>
       <div className="composer-row">
-        <span className="search-icon">🔍</span>
+        <span className="search-icon" aria-hidden="true"><Search size={20} strokeWidth={2.2} /></span>
         <input
           ref={inputRef}
           placeholder="想去哪座城市？比如：苏州、杭州、青岛…"
@@ -84,7 +109,7 @@ export default function Composer() {
         />
         <div className="composer-actions">
           <button className="chip-btn" title="打开智能向导" onClick={() => toggleChat(true)}>
-            ✨ 直接说吧
+            <Sparkles size={16} aria-hidden="true" /> 直接说吧
           </button>
           <button className="generate-btn" disabled={!canGenerate} onClick={() => void generatePlan()}>
             {state.phase === "planning" ? "规划中…" : "让旅程展开"}
@@ -118,8 +143,9 @@ export function ConditionsCard() {
       <div className="section-title">这次怎么走</div>
       <div className="composer-expanded" style={{ borderTop: "none", padding: "4px 0 10px" }}>
         <div className="field">
-          <label>出发地（用于往返班次）</label>
+          <label htmlFor="trip-origin">出发地（用于往返班次）</label>
           <input
+            id="trip-origin"
             type="text"
             placeholder="比如：上海"
             value={draft.origin}
@@ -127,8 +153,9 @@ export function ConditionsCard() {
           />
         </div>
         <div className="field">
-          <label>出发日期</label>
+          <label htmlFor="trip-start-date">出发日期</label>
           <input
+            id="trip-start-date"
             type="date"
             value={draft.startDate ?? ""}
             onChange={(e) => updateDraft({ startDate: e.target.value })}
@@ -137,11 +164,11 @@ export function ConditionsCard() {
         <div className="field">
           <label>天数</label>
           <div className="stepper">
-            <button onClick={() => updateDraft({ dayCount: Math.max(draft.dayCount - 1, 1) })} disabled={draft.dayCount <= 1}>
+            <button aria-label="减少一天" onClick={() => updateDraft({ dayCount: Math.max(draft.dayCount - 1, 1) })} disabled={draft.dayCount <= 1}>
               −
             </button>
             <span>{draft.dayCount} 天</span>
-            <button onClick={() => updateDraft({ dayCount: Math.min(draft.dayCount + 1, 14) })} disabled={draft.dayCount >= 14}>
+            <button aria-label="增加一天" onClick={() => updateDraft({ dayCount: Math.min(draft.dayCount + 1, 14) })} disabled={draft.dayCount >= 14}>
               +
             </button>
           </div>
@@ -149,18 +176,19 @@ export function ConditionsCard() {
         <div className="field">
           <label>同行人数</label>
           <div className="stepper">
-            <button onClick={() => updateDraft({ travelers: Math.max(draft.travelers - 1, 1) })} disabled={draft.travelers <= 1}>
+            <button aria-label="减少一人" onClick={() => updateDraft({ travelers: Math.max(draft.travelers - 1, 1) })} disabled={draft.travelers <= 1}>
               −
             </button>
             <span>{draft.travelers} 人</span>
-            <button onClick={() => updateDraft({ travelers: Math.min(draft.travelers + 1, 10) })} disabled={draft.travelers >= 10}>
+            <button aria-label="增加一人" onClick={() => updateDraft({ travelers: Math.min(draft.travelers + 1, 10) })} disabled={draft.travelers >= 10}>
               +
             </button>
           </div>
         </div>
         <div className="field">
-          <label>人均预算（元）</label>
+          <label htmlFor="trip-budget">人均预算（元）</label>
           <input
+            id="trip-budget"
             type="number"
             value={draft.budgetPerPerson ?? ""}
             min={100}
@@ -169,8 +197,8 @@ export function ConditionsCard() {
           />
         </div>
         <div className="field">
-          <label>节奏</label>
-          <select value={draft.pace} onChange={(e) => updateDraft({ pace: e.target.value as Pace })}>
+          <label htmlFor="trip-pace">节奏</label>
+          <select id="trip-pace" value={draft.pace} onChange={(e) => updateDraft({ pace: e.target.value as Pace })}>
             {(Object.keys(PACE_META) as Pace[]).map((pace) => (
               <option key={pace} value={pace}>
                 {PACE_META[pace].title} · {PACE_META[pace].note}
@@ -179,8 +207,8 @@ export function ConditionsCard() {
           </select>
         </div>
         <div className="field">
-          <label>市内移动（估算）</label>
-          <select value={draft.transportMode} onChange={(e) => updateDraft({ transportMode: e.target.value as TripDraftTransportMode })}>
+          <label htmlFor="trip-transport-mode">市内移动（估算）</label>
+          <select id="trip-transport-mode" value={draft.transportMode} onChange={(e) => updateDraft({ transportMode: e.target.value as TripDraftTransportMode })}>
             <option value="transit">地铁公交</option>
             <option value="walking">步行</option>
             <option value="driving">打车/自驾</option>
@@ -190,18 +218,25 @@ export function ConditionsCard() {
           <label>想去哪类地方</label>
           <div className="interest-grid">
             {INTERESTS.map((interest) => (
-              <button
-                key={interest.id}
-                className={`chip-btn ${draft.interests.includes(interest.id) ? "active" : ""}`}
-                onClick={() => {
-                  const next = draft.interests.includes(interest.id)
-                    ? draft.interests.filter((i) => i !== interest.id)
-                    : [...draft.interests, interest.id];
-                  updateDraft({ interests: next.length === 0 ? (["gardens"] as Interest[]) : next });
-                }}
-              >
-                {interest.symbol} {interest.title}
-              </button>
+              (() => {
+                const Icon = INTEREST_ICONS[interest.id];
+                const selected = draft.interests.includes(interest.id);
+                return (
+                  <button
+                    key={interest.id}
+                    className={`chip-btn ${selected ? "active" : ""}`}
+                    aria-pressed={selected}
+                    onClick={() => {
+                      const next = selected
+                        ? draft.interests.filter((i) => i !== interest.id)
+                        : [...draft.interests, interest.id];
+                      updateDraft({ interests: next.length === 0 ? (["gardens"] as Interest[]) : next });
+                    }}
+                  >
+                    <Icon size={15} aria-hidden="true" /> {interest.title}
+                  </button>
+                );
+              })()
             ))}
           </div>
         </div>

@@ -116,6 +116,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cn.anytravel.app.model.AccommodationOption
@@ -135,8 +136,10 @@ import cn.anytravel.app.model.distanceText
 import cn.anytravel.app.model.durationText
 import cn.anytravel.app.domain.DestinationCatalog
 import cn.anytravel.app.ui.PlanTab
+import cn.anytravel.app.ui.AccommodationSort
 import cn.anytravel.app.ui.PlannerUiState
 import cn.anytravel.app.ui.PlannerViewModel
+import cn.anytravel.app.data.AssistantProviderMode
 import cn.anytravel.app.ui.components.PlannerMap
 import cn.anytravel.app.ui.theme.AnyTravelMotion
 import cn.anytravel.app.ui.theme.HorizonTeal
@@ -169,6 +172,7 @@ fun PlannerScreen(state: PlannerUiState, viewModel: PlannerViewModel) {
             selectedDay = state.selectedDay,
             selectedTab = state.selectedTab,
             autoCamera = state.autoCamera,
+            focusedPlaceID = state.focusedPlaceID,
             onUserGesture = viewModel::userMovedMap,
             modifier = Modifier.fillMaxSize()
         )
@@ -258,6 +262,9 @@ fun PlannerScreen(state: PlannerUiState, viewModel: PlannerViewModel) {
             onDismiss = { viewModel.showSettings(false) },
             onSaveURL = viewModel::saveBackendURL,
             onTestURL = viewModel::testBackend,
+            onSaveAssistant = viewModel::saveAssistantConfiguration,
+            onTestAssistant = viewModel::testAssistantConfiguration,
+            onDeleteAssistantKey = viewModel::deleteAssistantAPIKey,
             onRestartWelcome = viewModel::restartOnboarding
         )
     }
@@ -692,7 +699,14 @@ private fun PlanPanel(
             ) { tab ->
                 when (tab) {
                     PlanTab.DAYS -> DaysContent(plan, state.selectedDay, viewModel::selectDay)
-                    PlanTab.STAYS -> StaysContent(plan, viewModel::selectAccommodation)
+                    PlanTab.STAYS -> StaysContent(
+                        plan = plan,
+                        priceCeiling = state.accommodationMaxNightlyPrice,
+                        sort = state.accommodationSort,
+                        onPriceCeiling = viewModel::setAccommodationPriceCeiling,
+                        onSort = viewModel::setAccommodationSort,
+                        onSelect = viewModel::selectAccommodation
+                    )
                     PlanTab.TRANSPORT -> TransportContent(plan, viewModel::selectTransport)
                     PlanTab.COSTS -> CostsContent(plan)
                 }
@@ -713,7 +727,7 @@ private fun CompactPlanBar(state: PlannerUiState, viewModel: PlannerViewModel, d
             OutlinedTextField(
                 value = request,
                 onValueChange = { request = it },
-                placeholder = { Text("说出想改变的脚步、预算或交通…") },
+                placeholder = { Text(if (state.isAssistantResponding) "正在听懂这句话…" else "想怎么改都可以直接说…") },
                 leadingIcon = { Icon(Icons.Rounded.EditLocationAlt, contentDescription = null) },
                 singleLine = true,
                 modifier = Modifier.weight(1f),
@@ -724,14 +738,19 @@ private fun CompactPlanBar(state: PlannerUiState, viewModel: PlannerViewModel, d
                     viewModel.applyQuickAdjustment(request)
                     request = ""
                 },
-                enabled = request.isNotBlank(),
+                enabled = request.isNotBlank() && !state.isAssistantResponding,
                 modifier = Modifier.size(54.dp),
                 contentPadding = PaddingValues(0.dp),
                 shape = CircleShape
-            ) { Icon(Icons.Rounded.Check, contentDescription = "应用这句话") }
+            ) {
+                Icon(
+                    if (state.isAssistantResponding) Icons.Rounded.MoreHoriz else Icons.Rounded.Check,
+                    contentDescription = "应用这句话"
+                )
+            }
         }
         Text(
-            "${state.plan?.draft?.destination.orEmpty()} · 上拉展开完整方案",
+            state.assistantStatusMessage ?: "${state.plan?.draft?.destination.orEmpty()} · 上拉展开完整方案",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 8.dp, top = 3.dp)
@@ -772,34 +791,41 @@ private fun DaysContent(plan: CompletePlan, selectedDay: Int, onSelectDay: (Int)
 }
 
 @Composable
-private fun StaysContent(plan: CompletePlan, onSelect: (String) -> Unit) {
+private fun StaysContent(
+    plan: CompletePlan,
+    priceCeiling: Int?,
+    sort: AccommodationSort,
+    onPriceCeiling: (Int?) -> Unit,
+    onSort: (AccommodationSort) -> Unit,
+    onSelect: (String) -> Unit
+) {
     if (plan.draft.skipAccommodation) {
         EmptyState(Icons.Rounded.Bed, "这次不需要住宿", "景点、路线和交通仍会继续规划。")
         return
     }
-    var priceCeiling by remember(plan.id) { mutableStateOf<Int?>(null) }
-    var sort by remember(plan.id) { mutableStateOf(StaySort.RECOMMENDED) }
     val filtered = plan.accommodations.filter { option ->
         val price = option.quotes.mapNotNull { it.amountCNY }.minOrNull()
-        priceCeiling == null || (price != null && price <= priceCeiling!!)
+        priceCeiling?.let { ceiling -> price != null && price <= ceiling } ?: true
     }.sortedWith(when (sort) {
-        StaySort.RECOMMENDED -> compareByDescending<AccommodationOption> { it.id == plan.selectedAccommodationId }
+        AccommodationSort.RECOMMENDED -> compareByDescending<AccommodationOption> { it.id == plan.selectedAccommodationId }
             .thenBy { it.averageAttractionDistanceMeters }
-        StaySort.PRICE -> compareBy { it.quotes.mapNotNull(PriceQuote::amountCNY).minOrNull() ?: Int.MAX_VALUE }
-        StaySort.DISTANCE -> compareBy { it.averageAttractionDistanceMeters }
-        StaySort.RATING -> compareByDescending { it.guestRating ?: -1.0 }
+        AccommodationSort.LOWEST_PRICE -> compareBy { it.quotes.mapNotNull(PriceQuote::amountCNY).minOrNull() ?: Int.MAX_VALUE }
+        AccommodationSort.CLOSEST_TO_ATTRACTIONS -> compareBy { it.averageAttractionDistanceMeters }
+        AccommodationSort.CLOSEST_TO_TRANSIT -> compareBy { it.hubDistanceMeters }
+        AccommodationSort.RATING -> compareByDescending { it.guestRating ?: -1.0 }
     })
     LazyColumn(contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(null to "全部价格", 400 to "¥400内", 700 to "¥700内", 1000 to "¥1000内").forEach { (price, title) ->
-                        FilterChip(selected = priceCeiling == price, onClick = { priceCeiling = price }, label = { Text(title) })
+                    listOf<Int?>(null, 400, 700, 1000, priceCeiling).distinct().forEach { price ->
+                        val title = price?.let { "¥${it}内" } ?: "全部价格"
+                        FilterChip(selected = priceCeiling == price, onClick = { onPriceCeiling(price) }, label = { Text(title) })
                     }
                 }
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StaySort.entries.forEach { option ->
-                        FilterChip(selected = sort == option, onClick = { sort = option }, label = { Text(option.title) })
+                    AccommodationSort.entries.forEach { option ->
+                        FilterChip(selected = sort == option, onClick = { onSort(option) }, label = { Text(option.title) })
                     }
                 }
             }
@@ -1106,10 +1132,17 @@ private fun SettingsSheet(
     onDismiss: () -> Unit,
     onSaveURL: (String) -> Unit,
     onTestURL: (String) -> Unit,
+    onSaveAssistant: (AssistantProviderMode, String, String, String) -> Unit,
+    onTestAssistant: (AssistantProviderMode, String, String, String) -> Unit,
+    onDeleteAssistantKey: () -> Unit,
     onRestartWelcome: () -> Unit
 ) {
     val context = LocalContext.current
     var url by remember(state.backendURL) { mutableStateOf(state.backendURL) }
+    var assistantMode by remember(state.assistantMode) { mutableStateOf(state.assistantMode) }
+    var customBaseURL by remember(state.customAssistantBaseURL) { mutableStateOf(state.customAssistantBaseURL) }
+    var customModel by remember(state.customAssistantModel) { mutableStateOf(state.customAssistantModel) }
+    var customAPIKey by remember { mutableStateOf("") }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surface) {
         LazyColumn(
             modifier = Modifier.testTag("settings-list"),
@@ -1144,12 +1177,101 @@ private fun SettingsSheet(
             }
             item { HorizontalDivider() }
             item {
+                Text("自然语言向导", style = MaterialTheme.typography.titleLarge)
+                Text("你可以随便说一句，向导会把日期、预算、节奏、交通与地图动作拆成可执行的选择。", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 5.dp))
+            }
+            item {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AssistantProviderMode.entries.forEach { mode ->
+                        FilterChip(
+                            selected = assistantMode == mode,
+                            onClick = { assistantMode = mode },
+                            label = { Text(mode.title) }
+                        )
+                    }
+                }
+            }
+            if (assistantMode == AssistantProviderMode.MANAGED) {
+                item {
+                    DataBoundaryCard("默认由 GLM-5.3-Flash 理解旅途语言；填写伴随服务地址时优先经由你的节点，否则由应用内置连接直达。")
+                }
+            } else {
+                item {
+                    OutlinedTextField(
+                        value = customBaseURL,
+                        onValueChange = { customBaseURL = it },
+                        label = { Text("OpenAI 兼容服务地址") },
+                        placeholder = { Text("https://…/v1") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp)
+                    )
+                }
+                item {
+                    OutlinedTextField(
+                        value = customModel,
+                        onValueChange = { customModel = it },
+                        label = { Text("模型名称") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp)
+                    )
+                }
+                item {
+                    OutlinedTextField(
+                        value = customAPIKey,
+                        onValueChange = { customAPIKey = it },
+                        label = { Text("API Key") },
+                        placeholder = { Text(if (state.hasCustomAssistantAPIKey) "已安全保存，留空即可沿用" else "只保存在这台设备") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp)
+                    )
+                }
+            }
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(
+                        onClick = { onSaveAssistant(assistantMode, customBaseURL, customModel, customAPIKey) },
+                        modifier = Modifier.weight(1f).height(52.dp),
+                        shape = RoundedCornerShape(16.dp)
+                    ) { Text("保存向导") }
+                    OutlinedButton(
+                        onClick = { onTestAssistant(assistantMode, customBaseURL, customModel, customAPIKey) },
+                        enabled = !state.isAssistantResponding,
+                        modifier = Modifier.weight(1f).height(52.dp),
+                        shape = RoundedCornerShape(16.dp)
+                    ) { Text(if (state.isAssistantResponding) "正在确认" else "测试向导") }
+                }
+            }
+            if (assistantMode == AssistantProviderMode.CUSTOM && state.hasCustomAssistantAPIKey) {
+                item {
+                    TextButton(onClick = onDeleteAssistantKey, modifier = Modifier.fillMaxWidth()) {
+                        Text("删除这台设备上的自定义 API Key")
+                    }
+                }
+            }
+            state.assistantStatusMessage?.let { message ->
+                item { DataBoundaryCard(message) }
+            }
+            item { HorizontalDivider() }
+            item {
                 Text("平台入口", style = MaterialTheme.typography.titleLarge)
                 Text("卡片会标明来源和抓取时间；打开渠道后由平台完成登录、锁价与下单。", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 5.dp))
             }
             item { ProviderLink("携程", "酒店与交通", "https://m.ctrip.com/html5/") { openURL(context, it) } }
             item { ProviderLink("去哪儿", "酒店与交通", "https://touch.qunar.com/") { openURL(context, it) } }
             item { ProviderLink("铁路12306", "官方购票页", "https://www.12306.cn/") { openURL(context, it) } }
+            item { HorizontalDivider() }
+            item {
+                Text("这张地图从哪里生长", style = MaterialTheme.typography.titleLarge)
+                Text("内置攻略经过城市归属、重复地点和代表性地标校验；营业、预约和票价会按出行日期重新查询。", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 5.dp))
+            }
+            item { ProviderLink("OpenStreetMap", "地图与地点 · ODbL", "https://www.openstreetmap.org/copyright") { openURL(context, it) } }
+            item { ProviderLink("Wikidata", "公共知识 · CC0", "https://www.wikidata.org/wiki/Wikidata:Licensing") { openURL(context, it) } }
+            item { ProviderLink("Data by Audiala", "旅行资料 · CC BY 4.0", "https://audiala.com/") { openURL(context, it) } }
+            item { ProviderLink("文化和旅游部", "A 级景区名录校验", "https://sjfw.mct.gov.cn/site/dataservice/base") { openURL(context, it) } }
             item { HorizontalDivider() }
             item {
                 OutlinedButton(
@@ -1257,13 +1379,6 @@ private fun PlanTab.icon(): ImageVector = when (this) {
     PlanTab.STAYS -> Icons.Rounded.Bed
     PlanTab.TRANSPORT -> Icons.Rounded.Train
     PlanTab.COSTS -> Icons.Rounded.Payments
-}
-
-private enum class StaySort(val title: String) {
-    RECOMMENDED("推荐"),
-    PRICE("价格"),
-    DISTANCE("离景点近"),
-    RATING("评分")
 }
 
 private fun PriceQuote.priceText(): String {

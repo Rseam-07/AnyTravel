@@ -129,6 +129,9 @@ enum NativeFlightOptionMerger {
         if hasCurrentPrice(lhs) != hasCurrentPrice(rhs) { return hasCurrentPrice(lhs) }
         if lhs.isRecommended != rhs.isRecommended { return lhs.isRecommended }
         if lhs.mode != rhs.mode { return lhs.mode.rawValue < rhs.mode.rawValue }
+        let lhsDurationRank = durationRank(lhs.durationMinutes)
+        let rhsDurationRank = durationRank(rhs.durationMinutes)
+        if lhsDurationRank != rhsDurationRank { return lhsDurationRank < rhsDurationRank }
         let lhsPrice = lhs.quotes.filter(\.isCurrentPrice).compactMap(\.amountCNY).min() ?? .max
         let rhsPrice = rhs.quotes.filter(\.isCurrentPrice).compactMap(\.amountCNY).min() ?? .max
         if lhsPrice != rhsPrice { return lhsPrice < rhsPrice }
@@ -136,5 +139,10 @@ enum NativeFlightOptionMerger {
             return (lhs.departureTime ?? .distantFuture) < (rhs.departureTime ?? .distantFuture)
         }
         return lhs.title < rhs.title
+    }
+
+    private static func durationRank(_ durationMinutes: Int?) -> Int {
+        guard let durationMinutes else { return 1 }
+        return (30...(16 * 60)).contains(durationMinutes) ? 0 : 2
     }
 }

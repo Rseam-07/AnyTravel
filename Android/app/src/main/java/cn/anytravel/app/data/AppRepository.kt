@@ -9,6 +9,7 @@ import kotlinx.serialization.json.Json
 
 class AppRepository(context: Context) {
     private val preferences = context.getSharedPreferences("anytravel", Context.MODE_PRIVATE)
+    private val assistantSecrets = AssistantSecretStore(context)
     private val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
@@ -66,6 +67,36 @@ class AppRepository(context: Context) {
         preferences.edit { putString(KEY_BACKEND_URL, value.trim()) }
     }
 
+    fun assistantConfiguration(): AssistantConfiguration = AssistantConfiguration(
+        mode = preferences.getString(KEY_ASSISTANT_MODE, null)
+            ?.let { runCatching { AssistantProviderMode.valueOf(it) }.getOrNull() }
+            ?: AssistantProviderMode.MANAGED,
+        customBaseURL = preferences.getString(KEY_ASSISTANT_BASE_URL, null)
+            ?: "https://open.bigmodel.cn/api/paas/v4",
+        customModel = preferences.getString(KEY_ASSISTANT_MODEL, null) ?: "glm-5.3-flash",
+        customAPIKey = assistantSecrets.read()
+    )
+
+    fun saveAssistantConfiguration(
+        mode: AssistantProviderMode,
+        customBaseURL: String,
+        customModel: String,
+        customAPIKey: String?
+    ): AssistantConfiguration {
+        preferences.edit {
+            putString(KEY_ASSISTANT_MODE, mode.name)
+            putString(KEY_ASSISTANT_BASE_URL, customBaseURL.trim())
+            putString(KEY_ASSISTANT_MODEL, customModel.trim())
+        }
+        customAPIKey?.trim()?.takeIf(String::isNotBlank)?.let(assistantSecrets::save)
+        return assistantConfiguration()
+    }
+
+    fun deleteAssistantAPIKey(): AssistantConfiguration {
+        assistantSecrets.delete()
+        return assistantConfiguration()
+    }
+
     private fun writePlans(plans: List<CompletePlan>) {
         preferences.edit { putString(KEY_PLANS, json.encodeToString(ListSerializer(CompletePlan.serializer()), plans)) }
     }
@@ -75,5 +106,8 @@ class AppRepository(context: Context) {
         private const val KEY_DRAFT = "trip_draft"
         private const val KEY_PLANS = "saved_plans"
         private const val KEY_BACKEND_URL = "pricing_backend_url"
+        private const val KEY_ASSISTANT_MODE = "assistant_provider_mode"
+        private const val KEY_ASSISTANT_BASE_URL = "assistant_custom_base_url"
+        private const val KEY_ASSISTANT_MODEL = "assistant_custom_model"
     }
 }

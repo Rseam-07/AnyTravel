@@ -198,7 +198,14 @@ struct Railway12306DirectClient {
         guard let queryURL = query.url else { throw Railway12306DirectError.invalidResponse }
         let queryData = try await load(queryURL, referer: bookingURL)
         let trains = try Self.parseTrainQuery(queryData)
-            .sorted(by: Self.compareTrains)
+            .sorted {
+                Self.compareTrains(
+                    $0,
+                    $1,
+                    requestedOriginCode: journey.from.code,
+                    requestedDestinationCode: journey.to.code
+                )
+            }
             .prefix(resultLimit)
 
         var results: [TransportOption] = []
@@ -392,11 +399,21 @@ struct Railway12306DirectClient {
         return available.isEmpty ? "余票以 12306 页面为准" : available.joined(separator: " · ")
     }
 
-    private static func compareTrains(_ lhs: Train, _ rhs: Train) -> Bool {
+    private static func compareTrains(
+        _ lhs: Train,
+        _ rhs: Train,
+        requestedOriginCode: String,
+        requestedDestinationCode: String
+    ) -> Bool {
+        let lhsStationPenalty = (lhs.originCode == requestedOriginCode ? 0 : 1)
+            + (lhs.destinationCode == requestedDestinationCode ? 0 : 1)
+        let rhsStationPenalty = (rhs.originCode == requestedOriginCode ? 0 : 1)
+            + (rhs.destinationCode == requestedDestinationCode ? 0 : 1)
         let lhsPrefix = lhs.serviceNumber.first.map { "GDC".contains($0) } == true ? 0 : 1
         let rhsPrefix = rhs.serviceNumber.first.map { "GDC".contains($0) } == true ? 0 : 1
         let lhsDaytime = ("06:00"..."20:30").contains(lhs.departureTime) ? 0 : 1
         let rhsDaytime = ("06:00"..."20:30").contains(rhs.departureTime) ? 0 : 1
+        if lhsStationPenalty != rhsStationPenalty { return lhsStationPenalty < rhsStationPenalty }
         if lhsPrefix != rhsPrefix { return lhsPrefix < rhsPrefix }
         if lhsDaytime != rhsDaytime { return lhsDaytime < rhsDaytime }
         if lhs.durationMinutes != rhs.durationMinutes { return (lhs.durationMinutes ?? .max) < (rhs.durationMinutes ?? .max) }

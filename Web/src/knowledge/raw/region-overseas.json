@@ -1,0 +1,639 @@
+{
+  "cities": [
+    {
+      "city": "巴黎",
+      "province": "",
+      "region": "欧洲",
+      "country": "法国",
+      "coord": { "lat": 48.86, "lng": 2.35 },
+      "tripDays": "3-5天",
+      "sense": "塞纳河串起艺术与历史，一座让人每次离开都想着回来漫游的城市",
+      "places": [
+        { "name": "卢浮宫", "coord": { "lat": 48.861, "lng": 2.336 }, "category": "博物馆", "stayMinutes": 180, "tier": "必去", "ticket": "约22欧元，需官网预约时段", "best": "全天", "tags": ["世界四大博物馆", "蒙娜丽莎", "玻璃金字塔"] },
+        { "name": "埃菲尔铁塔", "coord": { "lat": 48.858, "lng": 2.294 }, "category": "夜景", "stayMinutes": 120, "tier": "必去", "ticket": "约22-36欧元（按登塔楼层）", "best": "晚上", "tags": ["铁娘子", "整点闪灯", "塞纳河畔"] },
+        { "name": "凡尔赛宫", "coord": { "lat": 48.805, "lng": 2.13 }, "category": "古迹", "stayMinutes": 240, "tier": "推荐", "ticket": "约21欧元，需预约", "best": "全天", "tags": ["镜厅", "皇家园林", "RER C线即到"] },
+        { "name": "凯旋门", "coord": { "lat": 48.874, "lng": 2.295 }, "category": "古迹", "stayMinutes": 60, "tier": "推荐", "ticket": "约16欧元（登顶）", "best": "下午", "tags": ["香榭丽舍大街", "戴高乐广场"] },
+        { "name": "塞纳河游船", "coord": { "lat": 48.862, "lng": 2.337 }, "category": "夜景", "stayMinutes": 90, "tier": "推荐", "ticket": "约15-25欧元", "best": "晚上", "tags": ["游船观光", "巴黎圣母院外观", "夜赏铁塔"] },
+        { "name": "蒙马特高地·圣心大教堂", "coord": { "lat": 48.887, "lng": 2.343 }, "category": "宗教", "stayMinutes": 90, "tier": "顺路", "ticket": "免费（登顶另计）", "best": "下午", "tags": ["画家村", "城市全景", "文艺街区"] },
+        { "name": "巴黎圣母院", "coord": { "lat": 48.853, "lng": 2.35 }, "category": "宗教", "stayMinutes": 45, "tier": "顺路", "ticket": "免费（内部需在线预约）", "best": "全天", "tags": ["哥特建筑", "2024年重开"] }
+      ],
+      "patterns": [
+        "D1 卢浮宫→塞纳河游船→埃菲尔铁塔夜景；D2 凡尔赛宫一日（含花园）；D3 凯旋门→香榭丽舍→蒙马特→圣心堂"
+      ],
+      "rules": [
+        "卢浮宫、凡尔赛宫等热门场馆务必提前1-2周官网预约时段，现场排队极长",
+        "市内地铁RER便利，可买Paris Visite 3日通票（Zone1-3），机场往返用RER B线"
+      ],
+      "sources": [
+        "https://www.louvre.fr/zh-hans/canguanfuwu",
+        "https://tw.trip.com/moments/poi-arc-de-triomphe-du-carrousel-92784",
+        "https://m.thepaper.cn/detail/31105396"
+      ]
+    },
+    {
+      "city": "伦敦",
+      "province": "",
+      "region": "欧洲",
+      "country": "英国",
+      "coord": { "lat": 51.51, "lng": -0.13 },
+      "tripDays": "3-5天",
+      "sense": "王室、博物馆与泰晤士河交织，免费大博物馆让艺术触手可及",
+      "places": [
+        { "name": "大英博物馆", "coord": { "lat": 51.519, "lng": -0.127 }, "category": "博物馆", "stayMinutes": 150, "tier": "必去", "ticket": "免费（建议在线预约时段）", "best": "全天", "tags": ["罗塞塔石碑", "帕特农雕塑", "免费"] },
+        { "name": "伦敦塔", "coord": { "lat": 51.508, "lng": -0.076 }, "category": "古迹", "stayMinutes": 150, "tier": "必去", "ticket": "约35英镑，需预约", "best": "下午", "tags": ["王室珍宝", "古堡历史", "皇家卫兵"] },
+        { "name": "伦敦眼", "coord": { "lat": 51.503, "lng": -0.119 }, "category": "夜景", "stayMinutes": 90, "tier": "推荐", "ticket": "约30英镑", "best": "傍晚", "tags": ["摩天轮", "泰晤士河全景"] },
+        { "name": "威斯敏斯特教堂", "coord": { "lat": 51.499, "lng": -0.127 }, "category": "宗教", "stayMinutes": 60, "tier": "推荐", "ticket": "约30英镑", "best": "上午", "tags": ["加冕教堂", "王室婚礼", "诗人角"] },
+        { "name": "白金汉宫", "coord": { "lat": 51.501, "lng": -0.142 }, "category": "古迹", "stayMinutes": 60, "tier": "推荐", "ticket": "约30英镑（仅夏季开放内部）", "best": "上午", "tags": ["卫兵换岗", "皇家宫邸"] },
+        { "name": "英国国家美术馆", "coord": { "lat": 51.509, "lng": -0.128 }, "category": "美术馆", "stayMinutes": 120, "tier": "推荐", "ticket": "免费（特展另计）", "best": "下午", "tags": ["梵高《向日葵》", "特拉法加广场"] },
+        { "name": "塔桥", "coord": { "lat": 51.505, "lng": -0.075 }, "category": "古迹", "stayMinutes": 45, "tier": "顺路", "ticket": "免费（登塔另计）", "best": "全天", "tags": ["开桥时刻", "泰晤士河畔"] }
+      ],
+      "patterns": [
+        "D1 大英博物馆→特拉法加广场→国家美术馆；D2 伦敦塔→塔桥→伦敦眼→泰晤士夜游；D3 威斯敏斯特教堂→白金汉宫→海德公园"
+      ],
+      "rules": [
+        "大英博物院与国家美术馆免费但旺季需提前网上领定时票",
+        "地铁用Contactless/Oyster卡随刷随走，周一至五白天高峰票价更高",
+        "伦敦塔、伦敦眼、威斯敏斯特教堂提前官网购票可免排队"
+      ],
+      "sources": [
+        "https://tw.trip.com/moments/detail/london-309-137639217/",
+        "https://www.honglingjin.co.uk/234801.html",
+        "https://events.ohpama.com/169710/"
+      ]
+    },
+    {
+      "city": "罗马",
+      "province": "",
+      "region": "欧洲",
+      "country": "意大利",
+      "coord": { "lat": 41.9, "lng": 12.5 },
+      "tripDays": "3-4天",
+      "sense": "整座城市就是露天博物馆，千年遗迹与咖啡香混融的生活现场",
+      "places": [
+        { "name": "罗马斗兽场", "coord": { "lat": 41.89, "lng": 12.492 }, "category": "古迹", "stayMinutes": 120, "tier": "必去", "ticket": "约18欧元（联票含古罗马广场）", "best": "上午", "tags": ["古罗马", "角斗场", "务必预约"] },
+        { "name": "梵蒂冈博物馆", "coord": { "lat": 41.906, "lng": 12.454 }, "category": "博物馆", "stayMinutes": 180, "tier": "必去", "ticket": "约20欧元+预约费", "best": "上午", "tags": ["西斯廷礼拜堂", "拉斐尔房间", "提前抢票"] },
+        { "name": "圣彼得大教堂", "coord": { "lat": 41.902, "lng": 12.454 }, "category": "宗教", "stayMinutes": 90, "tier": "推荐", "ticket": "免费（登顶约10欧元）", "best": "上午", "tags": ["世界最大教堂", "圣彼得广场", "登穹顶"] },
+        { "name": "古罗马广场", "coord": { "lat": 41.893, "lng": 12.485 }, "category": "古迹", "stayMinutes": 90, "tier": "推荐", "ticket": "含于斗兽场联票", "best": "全天", "tags": ["帝国废墟", "帕拉蒂尼山"] },
+        { "name": "万神殿", "coord": { "lat": 41.899, "lng": 12.477 }, "category": "古迹", "stayMinutes": 45, "tier": "推荐", "ticket": "约5欧元", "best": "全天", "tags": ["穹顶天窗", "罗马神庙"] },
+        { "name": "特雷维喷泉", "coord": { "lat": 41.901, "lng": 12.483 }, "category": "城市", "stayMinutes": 30, "tier": "顺路", "ticket": "免费", "best": "全天", "tags": ["许愿池", "巴洛克雕塑"] },
+        { "name": "纳沃纳广场", "coord": { "lat": 41.899, "lng": 12.473 }, "category": "城市", "stayMinutes": 45, "tier": "顺路", "ticket": "免费", "best": "傍晚", "tags": ["四河喷泉", "街头画师"] }
+      ],
+      "patterns": [
+        "D1 斗兽场→古罗马广场→帕拉蒂尼山；D2 梵蒂冈博物馆→圣彼得教堂→圣天使堡外观；D3 万神殿→纳沃纳→许愿池→西班牙广场"
+      ],
+      "rules": [
+        "斗兽场与梵蒂冈博物馆必须提前官网预约时段，旺季数周前售罄并需另付预约费",
+        "地铁B线Colosseo站直达斗兽场；市内景点步行可达，宜穿舒适的鞋",
+        "周日圣彼得广场常有大弥撒，登顶时间可能调整；景区扒手多注意随身物品"
+      ],
+      "sources": [
+        "https://www.getyourguide.com/zh-cn/rome-l33/rome-colosseum-forum-palatine-hill-entry-w-audio-guide-t696609/",
+        "https://tw.trip.com/moments/detail/rome-303-149044771/",
+        "https://hk.trip.com/moments/detail/colosseo-2041171-145837875/"
+      ]
+    },
+    {
+      "city": "佛罗伦萨",
+      "province": "",
+      "region": "欧洲",
+      "country": "意大利",
+      "coord": { "lat": 43.77, "lng": 11.26 },
+      "tripDays": "2-3天",
+      "sense": "文艺复兴的原点，小而密的城区里每座教堂美术馆都是艺术圣殿",
+      "places": [
+        { "name": "乌菲齐美术馆", "coord": { "lat": 43.768, "lng": 11.256 }, "category": "美术馆", "stayMinutes": 180, "tier": "必去", "ticket": "约25欧元（早鸟票约19欧），需预约", "best": "上午", "tags": ["波提切利《维纳斯》", "文艺复兴", "官方App购票"] },
+        { "name": "学院美术馆", "coord": { "lat": 43.777, "lng": 11.259 }, "category": "美术馆", "stayMinutes": 90, "tier": "必去", "ticket": "约16欧元，需预约", "best": "上午", "tags": ["米开朗基罗《大卫》"] },
+        { "name": "圣母百花大教堂", "coord": { "lat": 43.773, "lng": 11.256 }, "category": "宗教", "stayMinutes": 90, "tier": "推荐", "ticket": "约30欧元（联票含登穹顶）", "best": "全天", "tags": ["布鲁内莱斯基穹顶", "乔托钟楼", "洗礼堂金门"] },
+        { "name": "米开朗基罗广场", "coord": { "lat": 43.763, "lng": 11.269 }, "category": "城市", "stayMinutes": 60, "tier": "推荐", "ticket": "免费", "best": "傍晚", "tags": ["全景日落", "大卫铜像复制品"] },
+        { "name": "老桥", "coord": { "lat": 43.768, "lng": 11.253 }, "category": "城市", "stayMinutes": 30, "tier": "顺路", "ticket": "免费", "best": "全天", "tags": ["金店桥", "瓦萨里走廊"] },
+        { "name": "皮蒂宫·波波里花园", "coord": { "lat": 43.765, "lng": 11.25 }, "category": "园林", "stayMinutes": 120, "tier": "推荐", "ticket": "约16欧元（与波波里联票）", "best": "全天", "tags": ["美第奇宫", "意式花园"] },
+        { "name": "圣十字教堂", "coord": { "lat": 43.768, "lng": 11.262 }, "category": "宗教", "stayMinutes": 60, "tier": "顺路", "ticket": "约8欧元", "best": "全天", "tags": ["米开朗基罗墓", "但丁墓"] }
+      ],
+      "patterns": [
+        "D1 学院美术馆→圣母百花→老桥→皮蒂宫；D2 乌菲齐（上午）→圣十字教堂→米开朗基罗广场日落"
+      ],
+      "rules": [
+        "乌菲齐与学院美术馆必须官网提前购票预约，现场基本无当日票",
+        "老城景点步行可达；登圣母百花穹顶共463级台阶，需预约时段少量放票"
+      ],
+      "sources": [
+        "https://www.getyourguide.com/zh-cn/florence-l32/florence-accademia-and-uffizi-combo-priority-entry-tickets-t407207/",
+        "https://hk.trip.com/moments/poi-uffizi-gallery-78594/",
+        "https://www.1230t.com/blog/a/12564.html"
+      ]
+    },
+    {
+      "city": "威尼斯",
+      "province": "",
+      "region": "欧洲",
+      "country": "意大利",
+      "coord": { "lat": 45.44, "lng": 12.32 },
+      "tripDays": "2-3天",
+      "sense": "被海水托举千年的水城，运河小巷里全是潮湿又浪漫的旧梦",
+      "places": [
+        { "name": "圣马可大教堂", "coord": { "lat": 45.434, "lng": 12.34 }, "category": "宗教", "stayMinutes": 60, "tier": "必去", "ticket": "免费（内部博物馆另计），建议预约", "best": "上午", "tags": ["金马赛克穹顶", "拜占庭珍宝"] },
+        { "name": "总督宫", "coord": { "lat": 45.434, "lng": 12.341 }, "category": "古迹", "stayMinutes": 90, "tier": "推荐", "ticket": "约30欧元", "best": "全天", "tags": ["叹息桥", "威尼斯共和国权力中心"] },
+        { "name": "圣马可广场", "coord": { "lat": 45.434, "lng": 12.338 }, "category": "城市", "stayMinutes": 45, "tier": "顺路", "ticket": "免费", "best": "全天", "tags": ["拿破仑客厅", "圣马可钟楼"] },
+        { "name": "贡多拉游船", "coord": { "lat": 45.433, "lng": 12.32 }, "category": "海滨", "stayMinutes": 45, "tier": "推荐", "ticket": "约80欧元/船（30分钟，可拼船）", "best": "下午", "tags": ["小运河", "船夫歌声"] },
+        { "name": "里亚托桥", "coord": { "lat": 45.438, "lng": 12.336 }, "category": "古迹", "stayMinutes": 30, "tier": "顺路", "ticket": "免费", "best": "全天", "tags": ["大运河地标", "清晨人少"] },
+        { "name": "彩色岛·玻璃岛", "coord": { "lat": 45.485, "lng": 12.416 }, "category": "古镇", "stayMinutes": 240, "tier": "推荐", "ticket": "免费（水上巴士另计）", "best": "全天", "tags": ["彩色房子", "玻璃工艺", "离岛半日"] },
+        { "name": "大运河", "coord": { "lat": 45.44, "lng": 12.33 }, "category": "海滨", "stayMinutes": 60, "tier": "顺路", "ticket": "免费（水上巴士1号线约9.5欧元）", "best": "下午", "tags": ["运河航拍", "水上巴士"] }
+      ],
+      "patterns": [
+        "D1 圣马可广场→圣马可大教堂→总督宫→贡多拉；D2 玻璃岛+彩色岛半日→里亚托桥看夕阳"
+      ],
+      "rules": [
+        "主岛内步行即可，去外岛乘Vaporetto水上巴士，单程约9.5欧元按需购票",
+        "圣马可大教堂、总督宫旺季务必提前预约时段，教堂衣着需过肩过膝",
+        "冬季水位高可能淹广场，备防水鞋套；贡多拉上船前先谈好价格和时长"
+      ],
+      "sources": [
+        "https://www.getyourguide.com/zh-cn/venice-l35/venice-flex-pass-choose-2-7-top-attractions-tours-t1243262/",
+        "https://tournews.tw/venice-travel-guide/",
+        "https://tw.trip.com/moments/poi-la-giudecca-91896/"
+      ]
+    },
+    {
+      "city": "巴塞罗那",
+      "province": "",
+      "region": "欧洲",
+      "country": "西班牙",
+      "coord": { "lat": 41.39, "lng": 2.17 },
+      "tripDays": "3-4天",
+      "sense": "高迪把童话砌进了石头，地中海阳光下的加泰罗尼亚热情之城",
+      "places": [
+        { "name": "圣家堂", "coord": { "lat": 41.404, "lng": 2.174 }, "category": "宗教", "stayMinutes": 120, "tier": "必去", "ticket": "约26-36欧元，必须官网预约", "best": "上午", "tags": ["高迪", "百年烂尾教堂", "登塔"] },
+        { "name": "巴特罗之家", "coord": { "lat": 41.392, "lng": 2.165 }, "category": "古迹", "stayMinutes": 90, "tier": "推荐", "ticket": "约35欧元，建议预约", "best": "上午", "tags": ["高迪", "童话公寓", "夜间演出"] },
+        { "name": "米拉之家", "coord": { "lat": 41.395, "lng": 2.161 }, "category": "古迹", "stayMinutes": 90, "tier": "推荐", "ticket": "约30欧元，建议预约", "best": "傍晚", "tags": ["高迪", "屋顶烟囱", "采石场"] },
+        { "name": "古埃尔公园", "coord": { "lat": 41.414, "lng": 2.153 }, "category": "公园", "stayMinutes": 120, "tier": "推荐", "ticket": "约10-13欧元（观景区）", "best": "下午", "tags": ["马赛克蜥蜴", "高迪", "登高观城"] },
+        { "name": "兰布拉大道", "coord": { "lat": 41.383, "lng": 2.171 }, "category": "美食街", "stayMinutes": 60, "tier": "顺路", "ticket": "免费", "best": "傍晚", "tags": ["街头艺人", "波盖利亚市场"] },
+        { "name": "哥特区", "coord": { "lat": 41.384, "lng": 2.176 }, "category": "古镇", "stayMinutes": 90, "tier": "顺路", "ticket": "免费", "best": "全天", "tags": ["中世纪巷弄", "巴塞罗那大教堂外观"] },
+        { "name": "巴塞罗那海滩", "coord": { "lat": 41.391, "lng": 2.197 }, "category": "海滨", "stayMinutes": 90, "tier": "顺路", "ticket": "免费", "best": "下午", "tags": ["地中海岸", "奥林匹克港"] }
+      ],
+      "patterns": [
+        "D1 圣家堂→圣保罗医院外观→古埃尔公园；D2 巴特罗之家→米拉之家→兰布拉→哥特区；D3 海滩+加泰罗尼亚广场"
+      ],
+      "rules": [
+        "圣家堂等所有高迪建筑务必官网提前订票并按小时段入场，现场基本无票",
+        "城区地铁便利，十次票T-casual约12欧元；热门景点间步行20分钟内",
+        "夏季炎热，主城区艺术馆多午后闭馆-下午茶时段，行程排松一点"
+      ],
+      "sources": [
+        "https://tw.trip.com/moments/detail/barcelona-381-145800481/",
+        "https://www.52spain.com/d/91576-ba-sai-luo-na-gao-di-jian-zhu-wan-zheng-you-lan-zhi-nan-cong-sheng-jia-tang-dao-mi-la-zhi-jia-de-yi-shu-zhi-lv",
+        "https://www.kaytrip.com/raiders_detail_5293.html"
+      ]
+    },
+    {
+      "city": "马德里",
+      "province": "",
+      "region": "欧洲",
+      "country": "西班牙",
+      "coord": { "lat": 40.42, "lng": -3.7 },
+      "tripDays": "2-3天",
+      "sense": "王宫、美术馆与广场连成轴线，晚上十点才开始的夜生活之城",
+      "places": [
+        { "name": "马德里王宫", "coord": { "lat": 40.418, "lng": -3.714 }, "category": "古迹", "stayMinutes": 120, "tier": "必去", "ticket": "约14欧元", "best": "上午", "tags": ["欧洲最大王宫之一", "皇家宴会厅", "卫兵换岗"] },
+        { "name": "普拉多博物馆", "coord": { "lat": 40.414, "lng": -3.693 }, "category": "美术馆", "stayMinutes": 180, "tier": "必去", "ticket": "约15欧元（晚免费时段排队）", "best": "上午", "tags": ["委拉斯开兹", "戈雅", "西班牙绘画"] },
+        { "name": "太阳门广场", "coord": { "lat": 40.417, "lng": -3.703 }, "category": "城市", "stayMinutes": 30, "tier": "顺路", "ticket": "免费", "best": "全天", "tags": ["全国公路零点", "熊与草莓树雕像"] },
+        { "name": "马约尔广场", "coord": { "lat": 40.415, "lng": -3.707 }, "category": "城市", "stayMinutes": 45, "tier": "顺路", "ticket": "免费", "best": "全天", "tags": ["文艺复兴广场", "咖啡座"] },
+        { "name": "丽池公园", "coord": { "lat": 40.415, "lng": -3.685 }, "category": "公园", "stayMinutes": 90, "tier": "推荐", "ticket": "免费", "best": "下午", "tags": ["水晶宫", "划船湖"] },
+        { "name": "德波神庙", "coord": { "lat": 40.424, "lng": -3.718 }, "category": "古迹", "stayMinutes": 45, "tier": "推荐", "ticket": "免费（登塔限流）", "best": "傍晚", "tags": ["古埃及神庙", "日落观景"] },
+        { "name": "格兰大道", "coord": { "lat": 40.42, "lng": -3.705 }, "category": "购物", "stayMinutes": 60, "tier": "顺路", "ticket": "免费", "best": "傍晚", "tags": ["百年电影宫", "购物街"] }
+      ],
+      "patterns": [
+        "D1 王宫→马约尔广场→太阳门→德波神庙看日落；D2 普拉多博物馆→丽池公园→格兰大道"
+      ],
+      "rules": [
+        "普拉多周一至周六18:00-20:00有免费时段（仅限收藏展），排队很长；王宫/普拉多官网购票可免排队",
+        "地铁Zona A单次约2欧元左右，买10次票更划算；景点步行串联即可"
+      ],
+      "sources": [
+        "https://www.52spain.com/d/44657-ma-de-li-bi-qu-jing-dian-tui-jian-cong-huang-gong-dao-pu-la-duo-de-wan-zheng-you-lan-zhi-nan",
+        "https://www.52spain.com/d/86856-ma-de-li-liang-ri-you-shi-yong-zhi-nan-jing-dian-lu-xian-he-sheng-qian-ji-qiao",
+        "https://www.getyourguide.com/zh-cn/madrid-l46/madrid-highlights-entrance-to-prado-museum-t33328/"
+      ]
+    },
+    {
+      "city": "阿姆斯特丹",
+      "province": "",
+      "region": "欧洲",
+      "country": "荷兰",
+      "coord": { "lat": 52.37, "lng": 4.9 },
+      "tripDays": "2-3天",
+      "sense": "运河环抱着自行车与郁金香，博物馆与咖啡馆构成松弛的北方威尼斯",
+      "places": [
+        { "name": "荷兰国立博物馆", "coord": { "lat": 52.36, "lng": 4.885 }, "category": "博物馆", "stayMinutes": 150, "tier": "必去", "ticket": "约25欧元，需预约", "best": "上午", "tags": ["伦勃朗《夜巡》", "维米尔", "运河环"] },
+        { "name": "梵高博物馆", "coord": { "lat": 52.358, "lng": 4.881 }, "category": "美术馆", "stayMinutes": 120, "tier": "必去", "ticket": "约22-25欧元，必须官网预约", "best": "上午", "tags": ["《向日葵》", "梵高生平"] },
+        { "name": "运河游船", "coord": { "lat": 52.365, "lng": 4.89 }, "category": "海滨", "stayMinutes": 60, "tier": "推荐", "ticket": "约15-20欧元", "best": "下午", "tags": ["玻璃船", "运河环", "阿尔卑斯山墙屋"] },
+        { "name": "安妮之家", "coord": { "lat": 52.375, "lng": 4.884 }, "category": "博物馆", "stayMinutes": 90, "tier": "推荐", "ticket": "约16欧元，需提前网络购票", "best": "下午", "tags": ["二战历史", "提前2周放票"] },
+        { "name": "博物馆广场", "coord": { "lat": 52.357, "lng": 4.882 }, "category": "公园", "stayMinutes": 45, "tier": "顺路", "ticket": "免费", "best": "全天", "tags": ["I amsterdam标志", "草坪"] },
+        { "name": "九街", "coord": { "lat": 52.371, "lng": 4.882 }, "category": "购物", "stayMinutes": 60, "tier": "顺路", "ticket": "免费", "best": "下午", "tags": ["运河边精品店", "买手店"] }
+      ],
+      "patterns": [
+        "D1 荷兰国立博物馆→博物馆广场→运河游船；D2 梵高博物馆→安妮之家→九街"
+      ],
+      "rules": [
+        "梵高博物馆与安妮之家必须官网提前购票（安妮之家提前2周左右放票，售完即止）",
+        "运河环内步行/自行车最佳，电车单程票按小时计；红灯区属成人区域，拍照需谨慎"
+      ],
+      "sources": [
+        "https://www.travelarbitrage.net/blog/amsterdam-5days-2026",
+        "https://ginatw.com/amsterdam-holland-pass-rijksmuseum-vangogh-museum/",
+        "https://tw.trip.com/moments/poi-van-gogh-museum-87106"
+      ]
+    },
+    {
+      "city": "布拉格",
+      "province": "",
+      "region": "欧洲",
+      "country": "捷克",
+      "coord": { "lat": 50.08, "lng": 14.44 },
+      "tripDays": "2-3天",
+      "sense": "查理大桥连着童话城堡，伏尔塔瓦河畔全是尖塔与红屋顶",
+      "places": [
+        { "name": "布拉格城堡", "coord": { "lat": 50.091, "lng": 14.4 }, "category": "古迹", "stayMinutes": 180, "tier": "必去", "ticket": "约250-450捷克克朗（分套票）", "best": "上午", "tags": ["圣维特大教堂", "黄金巷", "卫兵换岗"] },
+        { "name": "查理大桥", "coord": { "lat": 50.086, "lng": 14.411 }, "category": "古迹", "stayMinutes": 60, "tier": "必去", "ticket": "免费", "best": "清晨", "tags": ["30尊圣像", "伏尔塔瓦河", "清晨人最少"] },
+        { "name": "老城广场+天文钟", "coord": { "lat": 50.088, "lng": 14.421 }, "category": "城市", "stayMinutes": 60, "tier": "推荐", "ticket": "免费（天文钟登顶另计）", "best": "全天", "tags": ["整点报时", "泰恩教堂", "步行街"] },
+        { "name": "圣维特大教堂", "coord": { "lat": 50.09, "lng": 14.401 }, "category": "宗教", "stayMinutes": 60, "tier": "推荐", "ticket": "含于城堡套票", "best": "上午", "tags": ["哥特主教堂", "彩色花窗"] },
+        { "name": "约翰·列侬墙", "coord": { "lat": 50.087, "lng": 14.407 }, "category": "城市", "stayMinutes": 30, "tier": "顺路", "ticket": "免费", "best": "全天", "tags": ["涂鸦墙", "自由主题"] },
+        { "name": "佩特任山瞭望塔", "coord": { "lat": 50.083, "lng": 14.395 }, "category": "城市", "stayMinutes": 90, "tier": "顺路", "ticket": "未知", "best": "下午", "tags": ["小埃菲尔", "缆车上山"] },
+        { "name": "瓦茨拉夫广场", "coord": { "lat": 50.081, "lng": 14.427 }, "category": "城市", "stayMinutes": 30, "tier": "顺路", "ticket": "免费", "best": "傍晚", "tags": ["国家博物馆外观", "现代街区"] }
+      ],
+      "patterns": [
+        "D1 布拉格城堡→查理大桥→老城广场天文钟；D2 列侬墙→佩特任山→瓦茨拉夫广场"
+      ],
+      "rules": [
+        "查理大桥清晨与深夜人最少，日出前后拍摄最佳",
+        "城堡门票当日购买、分A/B/C套票，看全内部精选A套票（含圣维特大教堂+黄金巷）",
+        "电车22路直达城堡（Pražský hrad站），从老城经查理大桥步行上山约25分钟爬坡"
+      ],
+      "sources": [
+        "https://tw.trip.com/moments/poi-old-town-bridge-tower-96066/",
+        "https://discoveringprague.com/zh-hans/czech-unesco-sites-map/",
+        "https://www.getyourguide.com/zh-cn/prague-l10/prague-prague-castle-25-hour-tour-with-entry-ticket-t50046/"
+      ]
+    },
+    {
+      "city": "维也纳",
+      "province": "",
+      "region": "欧洲",
+      "country": "奥地利",
+      "coord": { "lat": 48.21, "lng": 16.37 },
+      "tripDays": "2-3天",
+      "sense": "音乐与哈布斯堡的余晖，在这里连咖啡都自带圆舞曲节拍",
+      "places": [
+        { "name": "美泉宫", "coord": { "lat": 48.186, "lng": 16.312 }, "category": "园林", "stayMinutes": 180, "tier": "必去", "ticket": "约25-30欧元（宫殿参观），花园免费", "best": "上午", "tags": ["茜茜公主", "41间厅室", "皇家花园"] },
+        { "name": "霍夫堡宫（茜茜博物馆）", "coord": { "lat": 48.207, "lng": 16.366 }, "category": "博物馆", "stayMinutes": 120, "tier": "推荐", "ticket": "约15-18欧元（联票）", "best": "上午", "tags": ["哈布斯堡", "银器馆", "皇家公寓"] },
+        { "name": "圣斯蒂芬大教堂", "coord": { "lat": 48.208, "lng": 16.373 }, "category": "宗教", "stayMinutes": 45, "tier": "推荐", "ticket": "免费（登塔另计）", "best": "全天", "tags": ["哥特尖塔", "老城地标"] },
+        { "name": "维也纳国家歌剧院", "coord": { "lat": 48.203, "lng": 16.369 }, "category": "剧院", "stayMinutes": 90, "tier": "推荐", "ticket": "约15欧元起（当日站票）", "best": "晚上", "tags": ["环形大道", "站票", "演出季"] },
+        { "name": "金色大厅", "coord": { "lat": 48.201, "lng": 16.373 }, "category": "剧院", "stayMinutes": 90, "tier": "顺路", "ticket": "约10-15欧元（参观）", "best": "下午", "tags": ["新年音乐会", "莫扎特故居旁"] },
+        { "name": "格拉本大街·斯蒂芬广场", "coord": { "lat": 48.208, "lng": 16.369 }, "category": "购物", "stayMinutes": 45, "tier": "顺路", "ticket": "免费", "best": "全天", "tags": ["黑死病纪念柱", "精品街"] },
+        { "name": "百水公寓", "coord": { "lat": 48.208, "lng": 16.394 }, "category": "城市", "stayMinutes": 30, "tier": "顺路", "ticket": "免费（外观）", "best": "全天", "tags": ["彩色不规则外墙", "童话建筑"] }
+      ],
+      "patterns": [
+        "D1 美泉宫（上午）→环城大道→金色大厅；D2 霍夫堡→圣斯蒂芬教堂→格拉本→国家歌剧院看演出"
+      ],
+      "rules": [
+        "美泉宫旺季务必官网预约入场时段，花园免费但宫殿有票；地铁U4直达",
+        "金色大厅/歌剧院当日站票常上午发售，需提前排队；正式演出需着正装"
+      ],
+      "sources": [
+        "https://www.getyourguide.com/zh-cn/vienna-l7/vienna-skip-the-line-schonbrunn-palace-and-gardens-tour-t861480/",
+        "https://thebettervacation.com/zh-TW/%E7%B6%AD%E4%B9%9F%E7%B4%8D/%E7%BE%8E%E6%B3%89%E5%AE%AE/",
+        "https://tw.trip.com/moments/poi-graben-13759434/"
+      ]
+    },
+    {
+      "city": "苏黎世",
+      "province": "",
+      "region": "欧洲",
+      "country": "瑞士",
+      "coord": { "lat": 47.37, "lng": 8.54 },
+      "tripDays": "2-3天",
+      "sense": "一半金融之都一半湖山，班霍夫大街尽头的湖光才是它的灵魂",
+      "places": [
+        { "name": "苏黎世湖游船", "coord": { "lat": 47.36, "lng": 8.54 }, "category": "海滨", "stayMinutes": 90, "tier": "必去", "ticket": "约10-15瑞士法郎（1小时班次）", "best": "下午", "tags": ["阿尔卑斯山背景", "天鹅", "班次按季"] },
+        { "name": "班霍夫大街", "coord": { "lat": 47.37, "lng": 8.538 }, "category": "购物", "stayMinutes": 60, "tier": "推荐", "ticket": "免费", "best": "全天", "tags": ["奢侈品街", "瑞士钟表", "全球最贵街道"] },
+        { "name": "苏黎世老城", "coord": { "lat": 47.371, "lng": 8.543 }, "category": "古镇", "stayMinutes": 120, "tier": "推荐", "ticket": "免费", "best": "全天", "tags": ["中世纪巷子", "大教堂双塔", "河畔"] },
+        { "name": "苏黎世美术馆", "coord": { "lat": 47.37, "lng": 8.548 }, "category": "美术馆", "stayMinutes": 120, "tier": "推荐", "ticket": "约23瑞士法郎", "best": "上午", "tags": ["蒙克《呐喊》", "瑞士艺术"] },
+        { "name": "林登霍夫山", "coord": { "lat": 47.373, "lng": 8.541 }, "category": "城市", "stayMinutes": 45, "tier": "顺路", "ticket": "免费", "best": "傍晚", "tags": ["观景平台", "老城全景"] },
+        { "name": "玉特利山", "coord": { "lat": 47.35, "lng": 8.49 }, "category": "自然", "stayMinutes": 120, "tier": "推荐", "ticket": "免费（登山火车另计）", "best": "下午", "tags": ["俯瞰全城", "瞭望塔"] },
+        { "name": "苏黎世大教堂", "coord": { "lat": 47.37, "lng": 8.544 }, "category": "宗教", "stayMinutes": 45, "tier": "顺路", "ticket": "免费（登塔另计）", "best": "全天", "tags": ["双塔地标", "罗曼式"] }
+      ],
+      "patterns": [
+        "D1 老城→大教堂→林登霍夫→湖上游船；D2 玉特利山→班霍夫大街→苏黎世美术馆"
+      ],
+      "rules": [
+        "瑞士物价高，可考虑苏黎世城市卡（含交通与部分景点）；湖游船时刻按季节变化，出发前查官网",
+        "市区主要景点步行可达，公共交通准点高效；超市Coop/Migros买水餐更便宜"
+      ],
+      "sources": [
+        "https://tw.trip.com/moments/detail/zurich-301-148834471/",
+        "https://www.getyourguide.com/zh-cn/zurich-l55/zurich-city-tour-with-lake-cruise-optional-fifa-museum-t408971/",
+        "https://niniyeh.com/zurich-attractions/"
+      ]
+    },
+    {
+      "city": "纽约",
+      "province": "",
+      "region": "北美洲",
+      "country": "美国",
+      "coord": { "lat": 40.71, "lng": -74.01 },
+      "tripDays": "3-5天",
+      "sense": "永远在动的大苹果，每个街区都是电影取景地",
+      "places": [
+        { "name": "自由女神像", "coord": { "lat": 40.689, "lng": -74.045 }, "category": "古迹", "stayMinutes": 150, "tier": "必去", "ticket": "约25美元（含渡轮），需预约", "best": "全天", "tags": ["自由岛轮渡", "皇冠登顶需另购票"] },
+        { "name": "帝国大厦", "coord": { "lat": 40.748, "lng": -73.986 }, "category": "城市", "stayMinutes": 90, "tier": "必去", "ticket": "约44美元起（86层观景台）", "best": "晚上", "tags": ["曼哈顿夜景", "预约免排队"] },
+        { "name": "大都会艺术博物馆", "coord": { "lat": 40.779, "lng": -73.963 }, "category": "博物馆", "stayMinutes": 180, "tier": "推荐", "ticket": "约30美元", "best": "上午", "tags": ["艺术殿堂", "埃及神庙", "屋顶花园"] },
+        { "name": "中央公园", "coord": { "lat": 40.782, "lng": -73.965 }, "category": "公园", "stayMinutes": 120, "tier": "推荐", "ticket": "免费", "best": "全天", "tags": ["城市绿肺", "溜冰场", "马车"] },
+        { "name": "时代广场", "coord": { "lat": 40.758, "lng": -73.985 }, "category": "城市", "stayMinutes": 45, "tier": "顺路", "ticket": "免费", "best": "晚上", "tags": ["霓虹灯海", "百老汇售票亭"] },
+        { "name": "布鲁克林大桥", "coord": { "lat": 40.706, "lng": -73.997 }, "category": "城市", "stayMinutes": 60, "tier": "推荐", "ticket": "免费", "best": "下午", "tags": ["木栈道", "曼哈顿天际线"] },
+        { "name": "9·11国家纪念馆", "coord": { "lat": 40.711, "lng": -74.013 }, "category": "博物馆", "stayMinutes": 60, "tier": "顺路", "ticket": "约33美元（博物馆）", "best": "全天", "tags": ["双子塔基坑", "反思池"] }
+      ],
+      "patterns": [
+        "D1 自由女神→华尔街铜牛→布鲁克林大桥；D2 大都会→中央公园；D3 时代广场→帝国大厦观夜景→百老汇看剧"
+      ],
+      "rules": [
+        "自由女神渡轮、帝国大厦等热门项目建议提前官网购票选时段，排队长",
+        "地铁24小时运行，OMNY/地铁卡按次刷卡；百老汇当天折扣票可去TKTS售票亭碰运气"
+      ],
+      "sources": [
+        "https://www.citypass.com/new-york",
+        "https://www.getyourguide.com/zh-cn/new-york-city-l59/new-york-essentials-1-observatory-2-top-nyc-attractions-t1112832/",
+        "https://tw.trip.com/moments/detail/new-york-248-138519096/"
+      ]
+    },
+    {
+      "city": "洛杉矶",
+      "province": "",
+      "region": "北美洲",
+      "country": "美国",
+      "coord": { "lat": 34.05, "lng": -118.24 },
+      "tripDays": "3-4天",
+      "sense": "阳光、海滩与片场之城，开车一小时内从好莱坞到太平洋",
+      "places": [
+        { "name": "好莱坞环球影城", "coord": { "lat": 34.138, "lng": -118.354 }, "category": "乐园", "stayMinutes": 480, "tier": "必去", "ticket": "约110美元起（动态票价）", "best": "全天", "tags": ["哈利波特", "侏罗纪", "好莱坞大道入口"] },
+        { "name": "好莱坞星光大道", "coord": { "lat": 34.101, "lng": -118.339 }, "category": "城市", "stayMinutes": 60, "tier": "顺路", "ticket": "免费", "best": "全天", "tags": ["中国剧院", "手印"] },
+        { "name": "格里菲斯天文台", "coord": { "lat": 34.118, "lng": -118.3 }, "category": "科技馆", "stayMinutes": 90, "tier": "推荐", "ticket": "免费（停车另计）", "best": "下午", "tags": ["观好莱坞标志", "穹顶星空秀"] },
+        { "name": "圣莫尼卡码头", "coord": { "lat": 34.008, "lng": -118.498 }, "category": "海滨", "stayMinutes": 120, "tier": "推荐", "ticket": "免费", "best": "傍晚", "tags": ["66号公路终点", "摩天轮", "日落"] },
+        { "name": "盖蒂中心", "coord": { "lat": 34.12, "lng": -118.178 }, "category": "美术馆", "stayMinutes": 150, "tier": "推荐", "ticket": "免费（停车费约20美元）", "best": "上午", "tags": ["梵高《鸢尾花》", "花园与建筑", "山丘上的博物馆"] },
+        { "name": "比佛利山庄", "coord": { "lat": 34.073, "lng": -118.4 }, "category": "城市", "stayMinutes": 45, "tier": "顺路", "ticket": "免费", "best": "全天", "tags": ["罗迪欧大道", "明星宅邸"] }
+      ],
+      "patterns": [
+        "D1 环球影城全天；D2 星光大道→格里菲斯天文台→比佛利山庄；D3 盖蒂中心→圣莫尼卡看日落"
+      ],
+      "rules": [
+        "环球影城旺季票价与快速通道在线购买更便宜,园内人流大建议开园就进",
+        "城市太大公共交通弱，自驾或打车为主；夏季下午山区易塞车,热门景点早去"
+      ],
+      "sources": [
+        "https://vivianexplore.tw/los-angeles-travel/",
+        "https://www.getyourguide.com/zh-cn/los-angeles-l179/los-angeles-all-inclusive-pass-plus-with-universal-studios-t5625/",
+        "https://bobbytravel.tw/los-angeles-attractions/"
+      ]
+    },
+    {
+      "city": "旧金山",
+      "province": "",
+      "region": "北美洲",
+      "country": "美国",
+      "coord": { "lat": 37.77, "lng": -122.42 },
+      "tripDays": "3-4天",
+      "sense": "雾气漫过金门大桥的清晨，坡道电车与海风构成西海岸的浪漫",
+      "places": [
+        { "name": "金门大桥", "coord": { "lat": 37.82, "lng": -122.478 }, "category": "城市", "stayMinutes": 90, "tier": "必去", "ticket": "免费", "best": "下午", "tags": ["桥面步行", "观景点", "晨雾"] },
+        { "name": "恶魔岛", "coord": { "lat": 37.827, "lng": -122.423 }, "category": "古迹", "stayMinutes": 180, "tier": "推荐", "ticket": "约45美元（含渡轮），需提前抢票", "best": "全天", "tags": ["监狱岛", "渡轮", "必须官网预订"] },
+        { "name": "渔人码头·39号码头", "coord": { "lat": 37.808, "lng": -122.417 }, "category": "美食街", "stayMinutes": 120, "tier": "推荐", "ticket": "免费", "best": "全天", "tags": ["海狮", "酸面包", "海鲜浓汤"] },
+        { "name": "九曲花街", "coord": { "lat": 37.802, "lng": -122.419 }, "category": "城市", "stayMinutes": 30, "tier": "顺路", "ticket": "免费", "best": "全天", "tags": ["伦巴底街弯道", "绣球花"] },
+        { "name": "金门公园", "coord": { "lat": 37.769, "lng": -122.482 }, "category": "公园", "stayMinutes": 120, "tier": "推荐", "ticket": "免费", "best": "全天", "tags": ["比纽约中央公园更大", "荷兰风车"] },
+        { "name": "旧金山现代艺术博物馆", "coord": { "lat": 37.786, "lng": -122.401 }, "category": "美术馆", "stayMinutes": 120, "tier": "推荐", "ticket": "约30美元", "best": "上午", "tags": ["里外新馆", "当代艺术"] },
+        { "name": "艺术宫", "coord": { "lat": 37.802, "lng": -122.448 }, "category": "公园", "stayMinutes": 60, "tier": "顺路", "ticket": "免费", "best": "傍晚", "tags": ["罗马柱圆顶", "天鹅湖"] }
+      ],
+      "patterns": [
+        "D1 金门大桥→艺术宫→九曲花街→渔人码头；D2 恶魔岛半日→SFMOMA；D3 金门公园+城市轻轨"
+      ],
+      "rules": [
+        "恶魔岛船票是稀缺资源，务必提前数周在官网抢票，现场无票",
+        "市区坡道陡，观光体验首推叮当车；天气多变、常年有雾，备防风外套",
+        "金门大桥桥面步行往返约40分钟，禁自行车上人行道时注意分流规则"
+      ],
+      "sources": [
+        "https://sim88.com.tw/blogs/travel-internet-tips/sanfrancisco-4d3n-itinerary-2026",
+        "https://www.getyourguide.com/zh-cn/san-francisco-l61/san-francisco-city-tour-alcatraz-experience-t120306/",
+        "https://tw.trip.com/moments/detail/san-francisco-249-148930594/"
+      ]
+    },
+    {
+      "city": "拉斯维加斯",
+      "province": "",
+      "region": "北美洲",
+      "country": "美国",
+      "coord": { "lat": 36.17, "lng": -115.14 },
+      "tripDays": "2-4天",
+      "sense": "沙漠里的不夜城，喷泉、灯牌、赌场与秀在深夜同时透支着感官",
+      "places": [
+        { "name": "拉斯维加斯大道", "coord": { "lat": 36.115, "lng": -115.172 }, "category": "城市", "stayMinutes": 180, "tier": "必去", "ticket": "免费", "best": "晚上", "tags": ["酒店群", "霓虹夜景", "步行街区"] },
+        { "name": "百乐宫音乐喷泉", "coord": { "lat": 36.112, "lng": -115.176 }, "category": "夜景", "stayMinutes": 45, "tier": "必去", "ticket": "免费（观看）", "best": "晚上", "tags": ["喷泉秀", "每15-30分钟一场", "免费"] },
+        { "name": "红岩峡谷", "coord": { "lat": 36.16, "lng": -115.445 }, "category": "自然", "stayMinutes": 120, "tier": "推荐", "ticket": "约15美元/车", "best": "下午", "tags": ["红岩徒步", "30分钟车程"] },
+        { "name": "弗里蒙特街", "coord": { "lat": 36.17, "lng": -115.144 }, "category": "夜景", "stayMinutes": 60, "tier": "推荐", "ticket": "免费", "best": "晚上", "tags": ["灯光天幕", "老城区", "街头表演"] },
+        { "name": "胡佛大坝", "coord": { "lat": 36.016, "lng": -114.737 }, "category": "古迹", "stayMinutes": 90, "tier": "顺路", "ticket": "约30美元起（游客中心导览）", "best": "全天", "tags": ["米德湖", "一日游路线"] },
+        { "name": "秀·太阳马戏团", "coord": { "lat": 36.117, "lng": -115.175 }, "category": "剧院", "stayMinutes": 120, "tier": "推荐", "ticket": "约100美元起（按场次）", "best": "晚上", "tags": ["KÀ", "O秀", "提前订票"] },
+        { "name": "大峡谷西缘", "coord": { "lat": 36.011, "lng": -113.82 }, "category": "自然", "stayMinutes": 480, "tier": "推荐", "ticket": "约80-120美元（门票+交通套餐）", "best": "全天", "tags": ["玻璃桥", "科罗拉多河", "直升机另计"] }
+      ],
+      "patterns": [
+        "D1 大道酒店群→百乐宫喷泉→看秀；D2 红岩峡谷→胡佛大坝；D3 大峡谷西缘一日游"
+      ],
+      "rules": [
+        "大喷泉表演间隔15-30分钟，20点后最密集，提前占观景位",
+        "赌场酒店周末房价翻倍，周中更划算；看秀与直升机项目官网提前购票有大折扣",
+        "拉斯维加斯部分区域（旧城区以东）夜间治安一般，结伴出行"
+      ],
+      "sources": [
+        "https://tw.trip.com/moments/detail/las-vegas-252-134333516/",
+        "https://www.ly.com/go/journey/4245/3900.html",
+        "https://timtingtravel.com/usa-las-vegas/"
+      ]
+    },
+    {
+      "city": "温哥华",
+      "province": "",
+      "region": "北美洲",
+      "country": "加拿大",
+      "coord": { "lat": 49.28, "lng": -123.12 },
+      "tripDays": "3-4天",
+      "sense": "山海之间半小时切换，雪山、海滩与森林都是城市的后花园",
+      "places": [
+        { "name": "斯坦利公园", "coord": { "lat": 49.302, "lng": -123.144 }, "category": "公园", "stayMinutes": 150, "tier": "必去", "ticket": "免费", "best": "全天", "tags": ["海堤步道", "图腾柱", "城市森林"] },
+        { "name": "卡皮拉诺吊桥", "coord": { "lat": 49.343, "lng": -123.114 }, "category": "自然", "stayMinutes": 120, "tier": "推荐", "ticket": "约70加元", "best": "全天", "tags": ["悬索桥", "树冠漫步", "悬崖步道"] },
+        { "name": "盖士镇", "coord": { "lat": 49.283, "lng": -123.107 }, "category": "古镇", "stayMinutes": 90, "tier": "推荐", "ticket": "免费", "best": "下午", "tags": ["蒸汽钟", "鹅卵石街", "啤酒馆"] },
+        { "name": "格兰维尔岛", "coord": { "lat": 49.271, "lng": -123.134 }, "category": "美食街", "stayMinutes": 120, "tier": "推荐", "ticket": "免费", "best": "上午", "tags": ["公共市场", "手工艺廊", "渡轮"] },
+        { "name": "英吉利湾", "coord": { "lat": 49.286, "lng": -123.144 }, "category": "海滨", "stayMinutes": 90, "tier": "推荐", "ticket": "免费", "best": "傍晚", "tags": ["沙滩", "城市日落"] },
+        { "name": "松鸡山", "coord": { "lat": 49.373, "lng": -123.079 }, "category": "自然", "stayMinutes": 180, "tier": "顺路", "ticket": "免费（缆车另计约60加元）", "best": "全天", "tags": ["温哥华之巅", "灰熊保护区", "冬季滑雪"] },
+        { "name": "加拿大广场", "coord": { "lat": 49.289, "lng": -123.111 }, "category": "城市", "stayMinutes": 60, "tier": "顺路", "ticket": "免费", "best": "全天", "tags": ["五帆地标", "游轮码头"] }
+      ],
+      "patterns": [
+        "D1 斯坦利公园→英吉利湾日落；D2 卡皮拉诺吊桥→松鸡山；D3 格兰维尔岛→盖士镇→加拿大广场"
+      ],
+      "rules": [
+        "卡皮拉诺与松鸡山距市区约20分钟车程，公交可达但报当地观光巴士更省心",
+        "温哥华冬季多雨，全年备雨具；海堤步道骑行租车环斯坦利公园约1小时"
+      ],
+      "sources": [
+        "https://www.getyourguide.com/zh-cn/vancouver-l189/vancouver-city-tour-with-capilano-bridge-and-stanley-park-t1063766/",
+        "https://www.hopetrip.com/news/detail-11115.html",
+        "https://canadacardforum.com/t/topic/3873/4"
+      ]
+    },
+    {
+      "city": "多伦多",
+      "province": "",
+      "region": "北美洲",
+      "country": "加拿大",
+      "coord": { "lat": 43.65, "lng": -79.38 },
+      "tripDays": "2-3天",
+      "sense": "湖滨玻璃大厦与百年前酒厂并存，尼亚加拉就在1.5小时车程外",
+      "places": [
+        { "name": "CN塔", "coord": { "lat": 43.643, "lng": -79.387 }, "category": "城市", "stayMinutes": 120, "tier": "必去", "ticket": "约45加元（观景台）", "best": "傍晚", "tags": ["玻璃地板", "湖景", "553米"] },
+        { "name": "尼亚加拉瀑布", "coord": { "lat": 43.093, "lng": -79.078 }, "category": "自然", "stayMinutes": 480, "tier": "必去", "ticket": "免费（游船约35加元）", "best": "全天", "tags": ["马蹄瀑布", "雾中少女号", "一日往返"] },
+        { "name": "卡萨罗马城堡", "coord": { "lat": 43.678, "lng": -79.409 }, "category": "古迹", "stayMinutes": 90, "tier": "推荐", "ticket": "约40加元", "best": "全天", "tags": ["加拿大首座城堡", "花园", "密室通道"] },
+        { "name": "里普利水族馆", "coord": { "lat": 43.642, "lng": -79.386 }, "category": "科技馆", "stayMinutes": 120, "tier": "推荐", "ticket": "约45加元", "best": "上午", "tags": ["鲨鱼隧道", "亲子", "CN塔旁"] },
+        { "name": "古酿酒厂区", "coord": { "lat": 43.65, "lng": -79.359 }, "category": "古镇", "stayMinutes": 90, "tier": "推荐", "ticket": "免费", "best": "下午", "tags": ["红砖厂房", "艺术画廊", "冬日圣诞市集"] },
+        { "name": "多伦多群岛", "coord": { "lat": 43.62, "lng": -79.38 }, "category": "海滨", "stayMinutes": 120, "tier": "顺路", "ticket": "免费（渡轮另计）", "best": "上午", "tags": ["湖心岛", "回望CN塔"] },
+        { "name": "圣劳伦斯市场", "coord": { "lat": 43.649, "lng": -79.372 }, "category": "美食", "stayMinutes": 60, "tier": "顺路", "ticket": "免费", "best": "上午", "tags": ["百年市场", "枫糖", "肉派"] }
+      ],
+      "patterns": [
+        "D1 CN塔→里普利水族馆→古酿酒厂区；D2 尼亚加拉瀑布一日游（含游船）；D3 卡萨罗马→圣劳伦斯市场"
+      ],
+      "rules": [
+        "尼亚加拉可乘GO巴士/火车当日往返，瀑布船票热门时段建议提前在线买",
+        "CN塔观景台按时段售票，想看日落选傍晚场；冬季瀑布两岸可能结冰注意防滑"
+      ],
+      "sources": [
+        "https://www.keirvannah.com/toronto-trip-sightseeing/",
+        "https://tw.trip.com/moments/detail/toronto-355-130933322/",
+        "https://www.huarenca.com/forum.php?mod=viewthread&tid=131698"
+      ]
+    },
+    {
+      "city": "悉尼",
+      "province": "",
+      "region": "大洋洲",
+      "country": "澳大利亚",
+      "coord": { "lat": -33.87, "lng": 151.21 },
+      "tripDays": "3-4天",
+      "sense": "歌剧院的白帆与海港大桥相望，阳光海滩与城市生活无缝衔接",
+      "places": [
+        { "name": "悉尼歌剧院", "coord": { "lat": -33.857, "lng": 151.215 }, "category": "剧院", "stayMinutes": 90, "tier": "必去", "ticket": "约45澳元（内部导览）", "best": "全天", "tags": ["世界文化遗产", "贝壳屋顶", "外观夜景"] },
+        { "name": "海港大桥", "coord": { "lat": -33.852, "lng": 151.211 }, "category": "城市", "stayMinutes": 90, "tier": "推荐", "ticket": "免费（桥顶攀登约350澳元）", "best": "下午", "tags": ["桥顶攀爬", "对望歌剧院"] },
+        { "name": "邦迪海滩", "coord": { "lat": -33.891, "lng": 151.277 }, "category": "海滨", "stayMinutes": 120, "tier": "推荐", "ticket": "免费", "best": "全天", "tags": ["冲浪海滩", "邦迪-库吉步道"] },
+        { "name": "达令港", "coord": { "lat": -33.873, "lng": 151.199 }, "category": "海滨", "stayMinutes": 60, "tier": "顺路", "ticket": "免费", "best": "晚上", "tags": ["夜景", "水族馆", "餐厅"] },
+        { "name": "塔龙加动物园", "coord": { "lat": -33.843, "lng": 151.242 }, "category": "动物园", "stayMinutes": 180, "tier": "推荐", "ticket": "约50澳元", "best": "上午", "tags": ["考拉", "袋鼠", "对望歌剧院"] },
+        { "name": "岩石区", "coord": { "lat": -33.856, "lng": 151.208 }, "category": "古镇", "stayMinutes": 90, "tier": "顺路", "ticket": "免费", "best": "上午", "tags": ["周六集市", "殖民建筑"] },
+        { "name": "蓝山国家公园", "coord": { "lat": -33.733, "lng": 150.312 }, "category": "自然", "stayMinutes": 480, "tier": "推荐", "ticket": "免费（缆车另计约50澳元）", "best": "全天", "tags": ["三姐妹峰", "桉树蓝雾", "一日游"] }
+      ],
+      "patterns": [
+        "D1 歌剧院导览→岩石区→海港大桥→达令港夜景；D2 邦迪-库吉海岸步道→塔龙加；D3 蓝山一日游"
+      ],
+      "rules": [
+        "歌剧院内部导览需官网提前购票，外观任何时候都值得拍照",
+        "市内渡轮是移动观景台，Opal卡充值按次计费；蓝山当日往返可乘蓝山线火车"
+      ],
+      "sources": [
+        "https://www.travelarbitrage.net/blog/sydney-attractions-guide-2026",
+        "https://www.wingontravel.com/discovery/scenic-tumut-44889/list/scenic-adaminaby-44592/scenic-leura-4042/scenic-sydney-opera-house-10758195",
+        "https://www.jianshu.com/p/19baeade14e2"
+      ]
+    },
+    {
+      "city": "墨尔本",
+      "province": "",
+      "region": "大洋洲",
+      "country": "澳大利亚",
+      "coord": { "lat": -37.81, "lng": 144.96 },
+      "tripDays": "3天",
+      "sense": "咖啡与涂鸦之城，城市中心坐一圈免费电车就去到大洋路的起点",
+      "places": [
+        { "name": "十二门徒岩", "coord": { "lat": -38.663, "lng": 143.105 }, "category": "自然", "stayMinutes": 120, "tier": "必去", "ticket": "免费（大洋路自驾/一日游）", "best": "全天", "tags": ["大洋路", "石灰岩柱", "日落金山"] },
+        { "name": "联邦广场", "coord": { "lat": -37.818, "lng": 144.969 }, "category": "城市", "stayMinutes": 60, "tier": "推荐", "ticket": "免费", "best": "全天", "tags": ["解构建筑", "游客中心"] },
+        { "name": "皇家植物园", "coord": { "lat": -37.829, "lng": 144.98 }, "category": "园林", "stayMinutes": 90, "tier": "推荐", "ticket": "免费", "best": "上午", "tags": ["湖景", "黑天鹅"] },
+        { "name": "墨尔本博物馆", "coord": { "lat": -37.807, "lng": 144.972 }, "category": "科技馆", "stayMinutes": 120, "tier": "推荐", "ticket": "约20澳元", "best": "上午", "tags": ["恐龙骨架", "亲子", "卡尔顿花园旁"] },
+        { "name": "尤里卡观景台", "coord": { "lat": -37.821, "lng": 144.964 }, "category": "城市", "stayMinutes": 60, "tier": "推荐", "ticket": "约30澳元", "best": "晚上", "tags": ["88层", "南半球最高观景台", "悬空玻璃盒"] },
+        { "name": "霍西尔巷涂鸦街", "coord": { "lat": -37.816, "lng": 144.969 }, "category": "城市", "stayMinutes": 45, "tier": "顺路", "ticket": "免费", "best": "全天", "tags": ["街头艺术", "咖啡馆"] },
+        { "name": "弗林德斯街车站", "coord": { "lat": -37.819, "lng": 144.967 }, "category": "古迹", "stayMinutes": 30, "tier": "顺路", "ticket": "免费", "best": "全天", "tags": ["黄铜钟楼", "网红打卡"] }
+      ],
+      "patterns": [
+        "D1 联邦广场→弗林德斯街→霍西尔巷→尤里卡夜景；D2 大洋路十二门徒一日游；D3 皇家植物园→墨尔本博物馆"
+      ],
+      "rules": [
+        "大洋路单程约3小时（中途可停洛恩、阿波罗湾），建议报一日游团或自驾2日",
+        "市中心免费电车区（Free Tram Zone）内乘车免费；墨尔本Cafe文化重，早午餐值得慢吃"
+      ],
+      "sources": [
+        "https://piao.qunar.com/daytrip/detail_4181497.html",
+        "https://www.tickadoo.com/zh-hant-hk/melbourne/melbourne-great-ocean-road-12-apostles-day-tour",
+        "https://csair.com/h5/cn/tourism_strategy/oceania/Melbourne2/1bh1sjnnhif80.shtml"
+      ]
+    },
+    {
+      "city": "奥克兰",
+      "province": "",
+      "region": "大洋洲",
+      "country": "新西兰",
+      "coord": { "lat": -36.85, "lng": 174.76 },
+      "tripDays": "3-4天",
+      "sense": "千帆之城的火山地貌上，天空塔与海港几乎伸手可及",
+      "places": [
+        { "name": "天空塔", "coord": { "lat": -36.843, "lng": 174.762 }, "category": "城市", "stayMinutes": 90, "tier": "必去", "ticket": "约35纽元（观景台）", "best": "下午", "tags": ["328米", "玻璃地板", "俯瞰双海港"] },
+        { "name": "霍比屯（玛塔玛塔）", "coord": { "lat": -37.873, "lng": 175.683 }, "category": "古镇", "stayMinutes": 240, "tier": "推荐", "ticket": "约110纽元（含导览）", "best": "全天", "tags": ["指环王取景地", "地下袋底洞屋", "需班车衔接"] },
+        { "name": "奥克兰博物馆", "coord": { "lat": -36.86, "lng": 174.777 }, "category": "博物馆", "stayMinutes": 120, "tier": "推荐", "ticket": "约30纽元（本地人免费）", "best": "上午", "tags": ["毛利文化", "火山馆", "战争纪念馆"] },
+        { "name": "使命湾", "coord": { "lat": -36.842, "lng": 174.833 }, "category": "海滨", "stayMinutes": 90, "tier": "推荐", "ticket": "免费", "best": "下午", "tags": ["海滩", "远眺天空塔"] },
+        { "name": "伊甸山", "coord": { "lat": -36.877, "lng": 174.764 }, "category": "自然", "stayMinutes": 60, "tier": "推荐", "ticket": "免费", "best": "上午", "tags": ["火山口", "城市全景"] },
+        { "name": "怀赫科岛", "coord": { "lat": -36.79, "lng": 175.02 }, "category": "自然", "stayMinutes": 360, "tier": "顺路", "ticket": "免费（渡轮另计）", "best": "全天", "tags": ["葡萄园", "海滩", "渡轮40分钟"] },
+        { "name": "德文波特·维多利亚山", "coord": { "lat": -36.827, "lng": 174.806 }, "category": "自然", "stayMinutes": 90, "tier": "顺路", "ticket": "免费", "best": "傍晚", "tags": ["军事隧道", "海边小镇"] }
+      ],
+      "patterns": [
+        "D1 天空塔→伊甸山→使命湾；D2 霍比屯一日游；D3 怀赫科岛或德文波特轮渡半日"
+      ],
+      "rules": [
+        "霍比屯导览必须提前官网预订场次，从玛塔玛塔接待中心乘班车进入",
+        "奥克兰多数博物馆和景点下午5点闭馆，行程别排太晚；渡轮旺季提前购票"
+      ],
+      "sources": [
+        "https://you.ctrip.com/attractions-d320-s14108-rdp1/auckland:attractions.html",
+        "https://cooldestinations.com/zh-CN/go/auckland/tours/",
+        "https://tw.trip.com/moments/detail/auckland-320-150229612/"
+      ]
+    },
+    {
+      "city": "皇后镇",
+      "province": "",
+      "region": "大洋洲",
+      "country": "新西兰",
+      "coord": { "lat": -45.03, "lng": 168.66 },
+      "tripDays": "3-4天",
+      "sense": "被雪山与湖泊环抱的极限运动之都，每一步都是明信片",
+      "places": [
+        { "name": "天空缆车·鲍勃峰", "coord": { "lat": -45.032, "lng": 168.659 }, "category": "自然", "stayMinutes": 120, "tier": "必去", "ticket": "约55纽元（往返缆车）", "best": "傍晚", "tags": ["山顶全景", "luge滑板车", "俯瞰瓦卡蒂普湖"] },
+        { "name": "瓦卡蒂普湖", "coord": { "lat": -45.045, "lng": 168.67 }, "category": "自然", "stayMinutes": 120, "tier": "推荐", "ticket": "免费（蒸汽船另计）", "best": "全天", "tags": ["TSS蒸汽船", "湖畔步道", "湖蓝色"] },
+        { "name": "米尔福德峡湾", "coord": { "lat": -44.672, "lng": 167.926 }, "category": "山水", "stayMinutes": 480, "tier": "推荐", "ticket": "免费（游船约120-150纽元）", "best": "全天", "tags": ["峡湾游船", "海豚", "世界第八大奇观"] },
+        { "name": "箭镇", "coord": { "lat": -44.943, "lng": 168.837 }, "category": "古镇", "stayMinutes": 120, "tier": "推荐", "ticket": "免费", "best": "下午", "tags": ["淘金小镇", "秋色", "华人历史遗迹"] },
+        { "name": "卡瓦劳大桥蹦极", "coord": { "lat": -45.009, "lng": 168.9 }, "category": "自然", "stayMinutes": 90, "tier": "顺路", "ticket": "蹦极约200纽元（观看免费）", "best": "上午", "tags": ["43米", "商业蹦极发源地"] },
+        { "name": "格林诺奇", "coord": { "lat": -44.881, "lng": 168.403 }, "category": "自然", "stayMinutes": 180, "tier": "顺路", "ticket": "免费（骑马/徒步另计）", "best": "全天", "tags": ["指环王", "天堂镇", "雪山牧场"] }
+      ],
+      "patterns": [
+        "D1 天空缆车→瓦卡蒂普湖蒸汽船；D2 米尔福德峡湾一日游；D3 箭镇+格林诺奇"
+      ],
+      "rules": [
+        "米尔福德峡湾距皇后镇约4小时车程，务必报团或清晨出发，冬季雪山封路提前查路况",
+        "户外项目（蹦极、喷射快艇、跳伞）官网提前预订常更便宜；滑雪季6-8月",
+        "湖区天气多变，观景受天气影响大，行程可留一天机动"
+      ],
+      "sources": [
+        "https://tw.trip.com/moments/detail/queenstown-684-144545228/",
+        "https://www.travelarbitrage.net/blog/queenstown-nz-7days-2026",
+        "https://nzpublicholidays.co.nz/travel/nz/otago/queenstown"
+      ]
+    }
+  ]
+}

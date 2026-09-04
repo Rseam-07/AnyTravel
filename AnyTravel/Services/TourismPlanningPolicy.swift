@@ -10,6 +10,12 @@ struct TourismPlanningPolicy {
         let endMinute: Int
     }
 
+    enum OpeningState: Equatable, Sendable {
+        case unknown
+        case open(OpeningWindow)
+        case normallyClosed(String)
+    }
+
     struct DayRhythm: Equatable, Sendable {
         let startMinute: Int
         let daytimeEndMinute: Int
@@ -150,11 +156,38 @@ struct TourismPlanningPolicy {
         return remainder == 0 ? "约\(hours)小时" : "约\(hours)小时\(remainder)分钟"
     }
 
-    func primaryOpeningWindow(for place: TravelPlace) -> OpeningWindow? {
-        guard let text = place.openingHoursToday, !text.isEmpty,
-              let expression = try? NSRegularExpression(
-                  pattern: #"(\d{1,2}):(\d{2})\s*[-–—至]\s*(\d{1,2}):(\d{2})"#
-              ) else { return nil }
+    func primaryOpeningWindow(for place: TravelPlace, on date: Date? = nil) -> OpeningWindow? {
+        if case let .open(window) = openingState(for: place, on: date) { return window }
+        return nil
+    }
+
+    func openingState(for place: TravelPlace, on date: Date?) -> OpeningState {
+        if let date, isKnownRegularClosure(place, on: date) {
+            return .normallyClosed("常规闭馆日，节假日安排请出发前复核")
+        }
+
+        if let date,
+           let weekly = place.openingHoursWeek?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !weekly.isEmpty,
+           let segment = weeklySegment(in: weekly, for: date) {
+            if segment.range(of: #"off|closed|闭馆|休息|休业"#, options: [.regularExpression, .caseInsensitive]) != nil {
+                return .normallyClosed("开放资料显示该日休息，临时安排请复核")
+            }
+            if let window = firstOpeningWindow(in: segment) { return .open(window) }
+        }
+
+        let text = date == nil
+            ? place.openingHoursToday ?? place.openingHoursWeek
+            : place.openingHoursWeek ?? place.openingHoursToday
+        guard let text, !text.isEmpty else { return .unknown }
+        if let window = firstOpeningWindow(in: text) { return .open(window) }
+        return .unknown
+    }
+
+    private func firstOpeningWindow(in text: String) -> OpeningWindow? {
+        guard let expression = try? NSRegularExpression(
+            pattern: #"(\d{1,2}):(\d{2})\s*[-–—至]\s*(\d{1,2}):(\d{2})"#
+        ) else { return nil }
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
         guard let match = expression.firstMatch(in: text, range: range), match.numberOfRanges == 5 else {
             return nil
@@ -168,6 +201,53 @@ struct TourismPlanningPolicy {
         let end = values[2] * 60 + values[3]
         guard start < end, end <= 24 * 60 else { return nil }
         return OpeningWindow(startMinute: start, endMinute: end)
+    }
+
+    private func weeklySegment(in text: String, for date: Date) -> String? {
+        let segments = text.components(separatedBy: CharacterSet(charactersIn: ";；\n"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        if let match = segments.first(where: { dayExpression($0, includes: date) }) { return match }
+        return segments.count == 1 && !containsWeekdayExpression(segments[0]) ? segments[0] : nil
+    }
+
+    private func dayExpression(_ segment: String, includes date: Date) -> Bool {
+        let weekday = Calendar.current.component(.weekday, from: date)
+        let englishDays = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
+        let chineseDays = ["日", "一", "二", "三", "四", "五", "六"]
+
+        if let match = segment.range(of: #"(Mo|Tu|We|Th|Fr|Sa|Su)(?:\s*[-–—至]\s*(Mo|Tu|We|Th|Fr|Sa|Su))?"#, options: .regularExpression) {
+            let expression = String(segment[match])
+            let endpoints = expression.components(separatedBy: CharacterSet(charactersIn: "-–—至 ")).filter { !$0.isEmpty }
+            guard let start = englishDays.firstIndex(of: endpoints[0]) else { return false }
+            let end = endpoints.count > 1 ? englishDays.firstIndex(of: endpoints[1]) ?? start : start
+            return dayIndex(weekday - 1, isBetween: start, and: end)
+        }
+
+        if let match = segment.range(of: #"(?:周|星期)([一二三四五六日天])(?:\s*[-–—至]\s*(?:周|星期)?([一二三四五六日天]))?"#, options: .regularExpression) {
+            let expression = String(segment[match]).replacingOccurrences(of: "星期", with: "周")
+            let tokens = expression.compactMap { character -> Int? in
+                let value = character == "天" ? "日" : String(character)
+                return chineseDays.firstIndex(of: value)
+            }
+            guard let start = tokens.first else { return false }
+            return dayIndex(weekday - 1, isBetween: start, and: tokens.last ?? start)
+        }
+        return !containsWeekdayExpression(segment)
+    }
+
+    private func containsWeekdayExpression(_ text: String) -> Bool {
+        text.range(of: #"Mo|Tu|We|Th|Fr|Sa|Su|周[一二三四五六日天]|星期[一二三四五六日天]"#, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    private func dayIndex(_ value: Int, isBetween start: Int, and end: Int) -> Bool {
+        start <= end ? (start...end).contains(value) : value >= start || value <= end
+    }
+
+    private func isKnownRegularClosure(_ place: TravelPlace, on date: Date) -> Bool {
+        guard Calendar.current.component(.weekday, from: date) == 2 else { return false }
+        let names = ["故宫博物院", "中国国家博物馆", "国家博物馆", "苏州博物馆"]
+        return names.contains(where: place.name.contains)
     }
 
     private func roundedToFive(_ value: Int) -> Int {

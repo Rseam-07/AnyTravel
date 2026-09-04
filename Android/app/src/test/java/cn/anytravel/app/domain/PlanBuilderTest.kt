@@ -58,6 +58,26 @@ class PlanBuilderTest {
     }
 
     @Test
+    fun regularMondayClosureMovesMuseumToAnOpenDay() {
+        val plan = builder.build(
+            TripDraft(
+                destination = "苏州",
+                startDate = "2026-09-07",
+                dayCount = 2,
+                pace = TripPace.RELAXED
+            ),
+            suzhou
+        )
+
+        assertTrue(plan.days.first().stops.none { it.name == "苏州博物馆" })
+        assertTrue(plan.days.drop(1).flatMap { it.stops }.any { it.name == "苏州博物馆" })
+        assertEquals(
+            plan.days.flatMap { it.stops }.map { it.id }.toSet(),
+            plan.days.flatMap { it.schedule }.mapNotNull { it.placeId }.toSet()
+        )
+    }
+
+    @Test
     fun liveTransportReplacesPlaceholderAndMergesSameServiceQuotes() {
         val plan = builder.build(TripDraft(origin = "上海", destination = "苏州"), suzhou)
         val service = TransportOption(

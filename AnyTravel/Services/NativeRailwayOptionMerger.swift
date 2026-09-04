@@ -20,6 +20,7 @@ enum NativeRailwayOptionMerger {
                 output[index].arrivalTime = candidate.arrivalTime ?? output[index].arrivalTime
                 output[index].arrivalAccessPoint = candidate.arrivalAccessPoint ?? output[index].arrivalAccessPoint
                 output[index].hotelTransferMeters = candidate.hotelTransferMeters ?? output[index].hotelTransferMeters
+                output[index].isRecommended = output[index].isRecommended || candidate.isRecommended
                 output[index].title = candidate.title
                 output[index].originName = candidate.originName
                 output[index].destinationName = candidate.destinationName
@@ -79,6 +80,7 @@ enum NativeRailwayOptionMerger {
     private static func compare(_ lhs: TransportOption, _ rhs: TransportOption) -> Bool {
         if lhs.journeyDirection != rhs.journeyDirection { return lhs.journeyDirection == .outbound }
         if hasCurrentPrice(lhs) != hasCurrentPrice(rhs) { return hasCurrentPrice(lhs) }
+        if lhs.isRecommended != rhs.isRecommended { return lhs.isRecommended }
         if lhs.mode != rhs.mode { return lhs.mode.rawValue < rhs.mode.rawValue }
         let lhsPrice = lhs.quotes.filter(\.isCurrentPrice).compactMap(\.amountCNY).min() ?? .max
         let rhsPrice = rhs.quotes.filter(\.isCurrentPrice).compactMap(\.amountCNY).min() ?? .max

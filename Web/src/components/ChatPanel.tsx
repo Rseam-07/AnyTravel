@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Send, Sparkles, X } from "lucide-react";
 import { useApp } from "../store";
 
 interface Message {
@@ -52,9 +53,9 @@ export default function ChatPanel() {
   return (
     <div className="chat-panel">
       <div className="chat-head">
-        <span>✨ 智能向导 · DeepSeek</span>
+        <span><Sparkles size={17} aria-hidden="true" />智能向导</span>
         <button className="chat-close" onClick={closeChat} aria-label="关闭对话">
-          ✕
+          <X size={18} aria-hidden="true" />
         </button>
       </div>
       <div className="chat-messages" ref={scrollRef}>
@@ -65,8 +66,8 @@ export default function ChatPanel() {
         ))}
         {chatStream != null && <div className="chat-msg assistant">{chatStream || "…"}</div>}
         {busy && chatStream == null && <div className="chat-msg assistant">思考中…</div>}
-        {!state.settings.deepseekKey && (
-          <div className="chat-msg system">还没有 DeepSeek Key：请到设置里粘贴（默认取构建配置，也可以自己填）。</div>
+        {!state.backendReachable && !state.settings.deepseekKey && (
+          <div className="chat-msg system">智能服务未连接；天数、人数、预算、节奏和常见目的地仍可在本机识别。</div>
         )}
       </div>
       {messages.length <= 1 && (
@@ -81,14 +82,15 @@ export default function ChatPanel() {
       <div className="chat-input-row">
         <input
           value={input}
+          aria-label="告诉智能向导你的旅行需求"
           placeholder="比如：苏州 3 天 2 人，带爸妈，预算每人 2500"
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") void send();
+            if (e.key === "Enter" && !busy) void send();
           }}
         />
         <button className="chat-send" disabled={busy} onClick={() => void send()} aria-label="发送">
-          ➤
+          <Send size={18} aria-hidden="true" />
         </button>
       </div>
     </div>

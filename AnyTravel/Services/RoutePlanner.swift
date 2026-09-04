@@ -13,16 +13,20 @@ struct RoutePlanner {
         let uniquePlaces = deduplicatedPlaces(places)
         guard !uniquePlaces.isEmpty else { return [] }
         let dayCount = min(max(draft.dayCount, 1), uniquePlaces.count)
-        let groups = spatiallyBalancedGroups(uniquePlaces, dayCount: dayCount, center: center)
+        var groups = spatiallyBalancedGroups(uniquePlaces, dayCount: dayCount, center: center)
             .sorted {
                 distance(from: center, to: centroid(of: $0))
                     < distance(from: center, to: centroid(of: $1))
             }
+        groups = avoidingRegularClosures(groups, draft: draft)
 
         return groups.enumerated().map { dayIndex, group in
-            ItineraryDay(
+            let date = draft.logistics.startDate.flatMap {
+                Calendar.current.date(byAdding: .day, value: dayIndex, to: $0)
+            }
+            return ItineraryDay(
                 index: dayIndex,
-                stops: orderWithinDay(group, from: centroid(of: group))
+                stops: orderWithinDay(group, from: centroid(of: group), on: date)
             )
         }
     }
@@ -191,7 +195,8 @@ struct RoutePlanner {
 
     private func orderWithinDay(
         _ places: [TravelPlace],
-        from start: Coordinate
+        from start: Coordinate,
+        on date: Date?
     ) -> [TravelPlace] {
         var ordinary = places.filter { $0.interest != .food && $0.interest != .night }
         var foods = places.filter { $0.interest == .food }
@@ -200,7 +205,7 @@ struct RoutePlanner {
         var cursor = start
 
         if !ordinary.isEmpty {
-            let first = removeNearest(from: cursor, in: &ordinary)
+            let first = removeNearest(from: cursor, in: &ordinary, on: date)
             ordered.append(first)
             cursor = first.coordinate
         }
@@ -208,43 +213,91 @@ struct RoutePlanner {
         // A food stop after the first main visit naturally becomes lunch and
         // prevents a duplicate generic meal break in the timeline.
         if !foods.isEmpty {
-            let meal = removeNearest(from: cursor, in: &foods)
+            let meal = removeNearest(from: cursor, in: &foods, on: date)
             ordered.append(meal)
             cursor = meal.coordinate
         }
 
         while !ordinary.isEmpty {
-            let next = removeNearest(from: cursor, in: &ordinary)
+            let next = removeNearest(from: cursor, in: &ordinary, on: date)
             ordered.append(next)
             cursor = next.coordinate
         }
         while !foods.isEmpty {
-            let next = removeNearest(from: cursor, in: &foods)
+            let next = removeNearest(from: cursor, in: &foods, on: date)
             ordered.append(next)
             cursor = next.coordinate
         }
         while !nights.isEmpty {
-            let next = removeNearest(from: cursor, in: &nights)
+            let next = removeNearest(from: cursor, in: &nights, on: date)
             ordered.append(next)
             cursor = next.coordinate
         }
         return ordered
     }
 
-    private func removeNearest(from coordinate: Coordinate, in places: inout [TravelPlace]) -> TravelPlace {
+    private func removeNearest(
+        from coordinate: Coordinate,
+        in places: inout [TravelPlace],
+        on date: Date?
+    ) -> TravelPlace {
         let index = places.indices.min {
-            nextStopCost(places[$0], from: coordinate) < nextStopCost(places[$1], from: coordinate)
+            nextStopCost(places[$0], from: coordinate, on: date)
+                < nextStopCost(places[$1], from: coordinate, on: date)
         } ?? places.startIndex
         return places.remove(at: index)
     }
 
-    private func nextStopCost(_ place: TravelPlace, from coordinate: Coordinate) -> Double {
+    private func nextStopCost(_ place: TravelPlace, from coordinate: Coordinate, on date: Date?) -> Double {
         let spatial = distance(from: coordinate, to: place.coordinate)
-        guard let window = policy.primaryOpeningWindow(for: place) else { return spatial + 1_800 }
+        if case .normallyClosed = policy.openingState(for: place, on: date) { return spatial + 100_000 }
+        guard let window = policy.primaryOpeningWindow(for: place, on: date) else { return spatial + 1_800 }
         // A venue closing earlier may move ahead of a slightly nearer venue.
         // The penalty is deliberately bounded so geography still dominates.
         let minutesAfterFive = max(window.endMinute - 17 * 60, 0)
         return spatial + Double(min(minutesAfterFive * 8, 3_600))
+    }
+
+    private func avoidingRegularClosures(
+        _ groups: [[TravelPlace]],
+        draft: TripDraft
+    ) -> [[TravelPlace]] {
+        guard let startDate = draft.logistics.startDate, groups.count > 1 else { return groups }
+        var result = groups
+        for dayIndex in result.indices {
+            guard let currentDate = Calendar.current.date(byAdding: .day, value: dayIndex, to: startDate) else { continue }
+            for stopIndex in result[dayIndex].indices {
+                let closedPlace = result[dayIndex][stopIndex]
+                guard case .normallyClosed = policy.openingState(for: closedPlace, on: currentDate) else { continue }
+
+                var bestSwap: (day: Int, stop: Int, cost: Double)?
+                for otherDay in result.indices where otherDay != dayIndex {
+                    guard let otherDate = Calendar.current.date(byAdding: .day, value: otherDay, to: startDate),
+                          !isClosed(closedPlace, on: otherDate) else { continue }
+                    for otherStop in result[otherDay].indices {
+                        let replacement = result[otherDay][otherStop]
+                        guard !isClosed(replacement, on: currentDate) else { continue }
+                        let interestPenalty = replacement.interest == closedPlace.interest ? 0.0 : 4_000.0
+                        let cost = distance(from: replacement.coordinate, to: centroid(of: result[dayIndex]))
+                            + distance(from: closedPlace.coordinate, to: centroid(of: result[otherDay]))
+                            + interestPenalty
+                        if bestSwap == nil || cost < bestSwap!.cost {
+                            bestSwap = (otherDay, otherStop, cost)
+                        }
+                    }
+                }
+                if let bestSwap {
+                    result[dayIndex][stopIndex] = result[bestSwap.day][bestSwap.stop]
+                    result[bestSwap.day][bestSwap.stop] = closedPlace
+                }
+            }
+        }
+        return result
+    }
+
+    private func isClosed(_ place: TravelPlace, on date: Date) -> Bool {
+        if case .normallyClosed = policy.openingState(for: place, on: date) { return true }
+        return false
     }
 
     private func minimumDistance(from place: TravelPlace, to seeds: [TravelPlace]) -> Double {

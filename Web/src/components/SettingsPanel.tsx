@@ -1,40 +1,55 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { X } from "lucide-react";
 import { useApp } from "../store";
 import { DEFAULT_BACKEND_URL } from "../api";
 
 export default function SettingsPanel({ onClose }: { onClose: () => void }) {
-  const { state, saveSettings, refreshChannels, loadTrip, deleteTrip } = useApp();
+  const { state, saveSettings, refreshChannels } = useApp();
   const [backendURL, setBackendURL] = useState(state.settings.backendURL);
   const [deepseekKey, setDeepseekKey] = useState(state.settings.deepseekKey);
   const [model, setModel] = useState(state.settings.deepseekModel);
   const [saved, setSaved] = useState(false);
 
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <h2>设置与价格渠道</h2>
-        <div className="sub-text">密钥只保存在本机浏览器或构建配置中，不会上传或写进 Git。</div>
+      <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="settings-title" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <h2 id="settings-title">设置与价格渠道</h2>
+          <button className="chat-close" onClick={onClose} aria-label="关闭设置"><X size={18} aria-hidden="true" /></button>
+        </div>
+        <div className="sub-text">报价与智能服务密钥应放在 Backend/.env，由伴随服务保管，不会打进网页代码。</div>
 
         <div className="setting-field">
-          <label>伴随服务节点地址（报价/门票/智能向导代理）</label>
+          <label htmlFor="backend-url">伴随服务节点地址（报价/门票/智能向导代理）</label>
           <input
+            id="backend-url"
             value={backendURL}
             placeholder={DEFAULT_BACKEND_URL}
             onChange={(e) => setBackendURL(e.target.value)}
           />
         </div>
         <div className="setting-field">
-          <label>DeepSeek API Key（对话用，可留空用构建配置）</label>
+          <label htmlFor="deepseek-key">浏览器直连 DeepSeek 备用 Key（不推荐）</label>
           <input
+            id="deepseek-key"
             type="password"
             value={deepseekKey}
             placeholder="sk-…"
             onChange={(e) => setDeepseekKey(e.target.value)}
           />
+          <div className="sub-text">只在伴随服务不可用时使用；仅保留到当前标签页关闭，浏览器直连仍无法像服务端那样保护密钥。</div>
         </div>
         <div className="setting-field">
-          <label>对话模型</label>
-          <input value={model} onChange={(e) => setModel(e.target.value)} />
+          <label htmlFor="deepseek-model">备用对话模型</label>
+          <input id="deepseek-model" value={model} onChange={(e) => setModel(e.target.value)} />
         </div>
         <button
           className="generate-btn"
@@ -71,19 +86,6 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
           ))}
         </div>
 
-        <h2 style={{ marginTop: 20 }}>旅册</h2>
-        {state.savedTrips.length === 0 && <div className="empty-note">还没有保存的行程。</div>}
-        {state.savedTrips.map((trip) => (
-          <div key={trip.id} className="trip-row">
-            <span className="t-title">{trip.title}</span>
-            <button className="mini-btn" onClick={() => loadTrip(trip.id)}>
-              打开
-            </button>
-            <button className="mini-btn" onClick={() => deleteTrip(trip.id)}>
-              删除
-            </button>
-          </div>
-        ))}
       </div>
     </div>
   );

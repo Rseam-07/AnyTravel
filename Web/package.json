@@ -1,14 +1,19 @@
 {
   "name": "anytravel-web",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.8.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "check:knowledge": "node scripts/validate-knowledge.mjs",
+    "assemble:knowledge": "node scripts/assemble-knowledge.mjs",
+    "harvest:domestic": "node scripts/harvest-domestic.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
+    "lucide-react": "^1.39.0",
     "maplibre-gl": "^5.6.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
@@ -18,6 +23,7 @@
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.5.0",
     "typescript": "^5.8.3",
-    "vite": "^6.3.5"
+    "vite": "^6.3.5",
+    "vitest": "^4.1.11"
   }
 }

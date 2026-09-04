@@ -27,13 +27,23 @@ export async function interpretAssistantRequest(request, options = {}) {
   const env = options.env || process.env;
   const fetchImpl = options.fetchImpl || globalThis.fetch;
   const now = options.now || (() => new Date());
-  const apiKey = String(env.ZAI_API_KEY || "").trim();
+  const deepseekKey = String(env.DEEPSEEK_API_KEY || "").trim();
+  const zaiKey = String(env.ZAI_API_KEY || "").trim();
+  const apiKey = deepseekKey || zaiKey;
   if (!apiKey) throw new AssistantError("assistant_not_configured", 503, "智能服务尚未配置");
   if (typeof fetchImpl !== "function") throw new AssistantError("assistant_unavailable", 503, "当前运行环境无法联网");
 
   const cleanRequest = validateAssistantRequest(request);
-  const baseURL = normalizeHTTPSBaseURL(env.ZAI_BASE_URL || "https://open.bigmodel.cn/api/paas/v4");
-  const model = String(env.ZAI_MODEL || "glm-5.3-flash").trim();
+  const baseURL = normalizeHTTPSBaseURL(
+    deepseekKey
+      ? env.DEEPSEEK_BASE_URL || "https://api.deepseek.com"
+      : env.ZAI_BASE_URL || "https://open.bigmodel.cn/api/paas/v4"
+  );
+  const model = String(
+    deepseekKey
+      ? env.DEEPSEEK_MODEL || "deepseek-chat"
+      : env.ZAI_MODEL || "glm-5.3-flash"
+  ).trim();
   const endpoint = new URL("chat/completions", baseURL);
 
   let response;
