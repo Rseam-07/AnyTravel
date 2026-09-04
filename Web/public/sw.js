@@ -1,4 +1,4 @@
-const CACHE_NAME = "anytravel-shell-v0.8.0";
+const CACHE_NAME = "anytravel-shell-v0.8.1";
 const APP_SHELL = ["./", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {

@@ -20,6 +20,7 @@ class TravelAssistantClientTest {
                 actions = listOf(
                     TravelAssistantAction("set_day_count", "99"),
                     TravelAssistantAction("set_budget", "100"),
+                    TravelAssistantAction("set_skip_transport", "TRUE"),
                     TravelAssistantAction("focus_place", " 苏州博物馆 "),
                     TravelAssistantAction("remove_place", "不存在的地点"),
                     TravelAssistantAction("unsafe_action", "anything")
@@ -31,6 +32,7 @@ class TravelAssistantClientTest {
         assertEquals("已经替你放慢脚步。", result.reply)
         assertEquals("7", result.actions.first { it.type == "set_day_count" }.value)
         assertEquals("1000", result.actions.first { it.type == "set_budget" }.value)
+        assertEquals("true", result.actions.first { it.type == "set_skip_transport" }.value)
         assertEquals("苏州博物馆", result.actions.first { it.type == "focus_place" }.value)
         assertFalse(result.actions.any { it.type == "remove_place" || it.type == "unsafe_action" })
     }

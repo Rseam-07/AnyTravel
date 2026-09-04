@@ -120,6 +120,8 @@ final class PlannerViewModel {
     @ObservationIgnored private let scheduleBuilder: ScheduleBuilder
     @ObservationIgnored private let pricingBackendClient: PricingBackendClient
     @ObservationIgnored private let rollingGoDirectClient: RollingGoDirectClient
+    @ObservationIgnored private let accorOfficialDirectClient: AccorOfficialDirectClient
+    @ObservationIgnored private let hiltonOfficialDirectClient: HiltonOfficialDirectClient
     @ObservationIgnored private let railway12306DirectClient: Railway12306DirectClient
     @ObservationIgnored private let fliggyFlightDirectClient: FliggyFlightDirectClient
     @ObservationIgnored private let qunarFlightDirectClient: QunarFlightDirectClient
@@ -154,6 +156,8 @@ final class PlannerViewModel {
         scheduleBuilder: ScheduleBuilder = ScheduleBuilder(),
         pricingBackendClient: PricingBackendClient = PricingBackendClient(),
         rollingGoDirectClient: RollingGoDirectClient = RollingGoDirectClient(),
+        accorOfficialDirectClient: AccorOfficialDirectClient = AccorOfficialDirectClient(),
+        hiltonOfficialDirectClient: HiltonOfficialDirectClient = HiltonOfficialDirectClient(),
         railway12306DirectClient: Railway12306DirectClient = Railway12306DirectClient(),
         fliggyFlightDirectClient: FliggyFlightDirectClient = FliggyFlightDirectClient(),
         qunarFlightDirectClient: QunarFlightDirectClient = QunarFlightDirectClient(),
@@ -174,6 +178,8 @@ final class PlannerViewModel {
         self.scheduleBuilder = scheduleBuilder
         self.pricingBackendClient = pricingBackendClient
         self.rollingGoDirectClient = rollingGoDirectClient
+        self.accorOfficialDirectClient = accorOfficialDirectClient
+        self.hiltonOfficialDirectClient = hiltonOfficialDirectClient
         self.railway12306DirectClient = railway12306DirectClient
         self.fliggyFlightDirectClient = fliggyFlightDirectClient
         self.qunarFlightDirectClient = qunarFlightDirectClient
@@ -2025,7 +2031,10 @@ final class PlannerViewModel {
 
         let wantsLiveQuotes = draft.logistics.hasDates
         let trimmedOrigin = draft.logistics.origin.trimmingCharacters(in: .whitespacesAndNewlines)
-        let hasAccommodationPriceSource = pricingBackendClient.isConfigured || rollingGoDirectClient.isConfigured
+        let hasAccommodationPriceSource = pricingBackendClient.isConfigured
+            || rollingGoDirectClient.isConfigured
+            || accorOfficialDirectClient.isAvailable
+            || hiltonOfficialDirectClient.isAvailable
         let hasTransportPriceSource = !draft.logistics.skipTransport && !trimmedOrigin.isEmpty
         let hasAnyPriceSource = hasAccommodationPriceSource || hasTransportPriceSource
         let canRequestAccommodationQuotes = wantsLiveQuotes && hasAccommodationPriceSource
@@ -2057,13 +2066,10 @@ final class PlannerViewModel {
                     visitDate: draft.logistics.startDate
                 )
                 guard !Task.isCancelled else { return }
-                if UIAccessibility.isReduceMotionEnabled {
-                    itineraryDays = result.value
-                } else {
-                    withAnimation(.spring(response: 0.46, dampingFraction: 0.86)) {
-                        itineraryDays = result.value
-                    }
-                }
+                // Quote refreshes can replace many rows and map annotations at once.
+                // Publish the data atomically; local card transitions still explain
+                // selections without forcing MapKit to animate the whole result set.
+                itineraryDays = result.value
                 receivedQuoteCount += result.receivedCount
                 latestCapture = max(latestCapture ?? result.capturedAt, result.capturedAt)
                 allResultsCached = allResultsCached && result.isCached
@@ -2125,54 +2131,69 @@ final class PlannerViewModel {
                 : "正在沿景点整理合适的落脚处"
             if canRequestAccommodationQuotes {
                 let anchors = itineraryDays.compactMap { $0.stops.first?.name }
-                // The embedded source is normally the quickest path to a visible
-                // price, so publish it before waiting for an optional companion.
-                if rollingGoDirectClient.isConfigured {
-                    do {
-                        let catalog = try await rollingGoDirectClient.searchAccommodationCatalog(
+                // Start every source together, then publish in product priority:
+                // RollingGo first, selected-date brand rates next, broad backend
+                // aggregation after that. This keeps the fastest useful result on
+                // screen without making later sources block one another.
+                let rollingTask: Task<PricingEnrichmentResult<[AccommodationCatalogEntry]>?, Never>? =
+                    rollingGoDirectClient.isConfigured ? Task { [rollingGoDirectClient] in
+                        try? await rollingGoDirectClient.searchAccommodationCatalog(
                             destination: draft.destination,
                             logistics: draft.logistics,
                             anchors: anchors
                         )
-                        discovery = await logisticsSearchService.mergingCatalog(
-                            catalog.value,
-                            into: discovery,
-                            around: destination,
-                            itineraryDays: itineraryDays,
-                            draft: draft
-                        )
-                        publishAccommodationDiscovery(discovery, preserving: previousAccommodationName)
-                        receivedQuoteCount += catalog.receivedCount
-                        latestCapture = max(latestCapture ?? catalog.capturedAt, catalog.capturedAt)
-                        allResultsCached = allResultsCached && catalog.isCached
-                        pricingIssues.append(contentsOf: catalog.issues.map(\.message))
-                    } catch {
-                        pricingFailures.append(Self.pricingFailureText(error))
-                    }
+                    } : nil
+                let accorTask = Task { [accorOfficialDirectClient] in
+                    try? await accorOfficialDirectClient.searchAccommodationCatalog(
+                        destination: draft.destination,
+                        logistics: draft.logistics
+                    )
                 }
-
-                if pricingBackendClient.isConfigured {
-                    do {
-                        let catalog = try await pricingBackendClient.searchAccommodationCatalog(
+                let hiltonTask = Task { [hiltonOfficialDirectClient] in
+                    try? await hiltonOfficialDirectClient.searchAccommodationCatalog(
+                        destination: draft.destination,
+                        logistics: draft.logistics
+                    )
+                }
+                let backendCatalogTask: Task<PricingEnrichmentResult<[AccommodationCatalogEntry]>?, Never>? =
+                    pricingBackendClient.isConfigured ? Task { [pricingBackendClient] in
+                        try? await pricingBackendClient.searchAccommodationCatalog(
                             destination: draft.destination,
                             logistics: draft.logistics,
                             anchors: anchors
                         )
-                        discovery = await logisticsSearchService.mergingCatalog(
-                            catalog.value,
-                            into: discovery,
-                            around: destination,
-                            itineraryDays: itineraryDays,
-                            draft: draft
-                        )
-                        publishAccommodationDiscovery(discovery, preserving: previousAccommodationName)
-                        receivedQuoteCount += catalog.receivedCount
-                        latestCapture = max(latestCapture ?? catalog.capturedAt, catalog.capturedAt)
-                        allResultsCached = allResultsCached && catalog.isCached
-                        pricingIssues.append(contentsOf: catalog.issues.map(\.message))
-                    } catch {
-                        pricingFailures.append(Self.pricingFailureText(error))
+                    } : nil
+                defer {
+                    rollingTask?.cancel()
+                    accorTask.cancel()
+                    hiltonTask.cancel()
+                    backendCatalogTask?.cancel()
+                }
+                let orderedCatalogTasks: [(String, Task<PricingEnrichmentResult<[AccommodationCatalogEntry]>?, Never>?)] = [
+                    ("道旅 RollingGo", rollingTask),
+                    ("雅高集团官网", accorTask),
+                    ("希尔顿官网", hiltonTask),
+                    ("多渠道报价节点", backendCatalogTask)
+                ]
+                for (sourceName, task) in orderedCatalogTasks {
+                    guard let task else { continue }
+                    guard let catalog = await task.value else {
+                        if !Task.isCancelled { pricingFailures.append("\(sourceName)本次没有返回结果") }
+                        continue
                     }
+                    guard !Task.isCancelled else { return }
+                    discovery = await logisticsSearchService.mergingCatalog(
+                        catalog.value,
+                        into: discovery,
+                        around: destination,
+                        itineraryDays: itineraryDays,
+                        draft: draft
+                    )
+                    publishAccommodationDiscovery(discovery, preserving: previousAccommodationName)
+                    receivedQuoteCount += catalog.receivedCount
+                    latestCapture = max(latestCapture ?? catalog.capturedAt, catalog.capturedAt)
+                    allResultsCached = allResultsCached && catalog.isCached
+                    pricingIssues.append(contentsOf: catalog.issues.map(\.message))
                 }
             }
             if canRequestBackendQuotes {
@@ -2253,13 +2274,9 @@ final class PlannerViewModel {
         _ discovery: AccommodationDiscoveryResult,
         preserving previousName: String?
     ) {
-        if UIAccessibility.isReduceMotionEnabled {
-            accommodations = discovery.options
-        } else {
-            withAnimation(.spring(response: 0.48, dampingFraction: 0.86)) {
-                accommodations = discovery.options
-            }
-        }
+        // Catalog refreshes may contain dozens of hotels. A broad array animation
+        // makes every Map annotation interpolate together and stalls older devices.
+        accommodations = discovery.options
         accessPoints = discovery.accessPoints
         let manualChoice = manuallySelectedAccommodationID.flatMap { currentID in
             accommodations.first(where: { $0.id == currentID })
@@ -2485,17 +2502,12 @@ final class PlannerViewModel {
         guard !Task.isCancelled else { return }
 
         let newRoutes = outboundResult.routesByOptionID.merging(returnResult.routesByOptionID) { _, latest in latest }
-        if UIAccessibility.isReduceMotionEnabled {
-            outboundTransferOptions = outboundResult.options
-            returnTransferOptions = returnResult.options
-            transferRoutesByOptionID = newRoutes
-        } else {
-            withAnimation(.spring(response: 0.48, dampingFraction: 0.86)) {
-                outboundTransferOptions = outboundResult.options
-                returnTransferOptions = returnResult.options
-                transferRoutesByOptionID = newRoutes
-            }
-        }
+        // Replacing several routes in one animated transaction asks MapKit and
+        // every transport card to interpolate at the same time. Publish the
+        // snapshot atomically; choosing one option still has a local transition.
+        outboundTransferOptions = outboundResult.options
+        returnTransferOptions = returnResult.options
+        transferRoutesByOptionID = newRoutes
         selectedOutboundTransferID = outboundTransferOptions.first(where: { $0.mode == previousOutboundMode })?.id
             ?? outboundTransferOptions.first(where: \.isRecommended)?.id
             ?? outboundTransferOptions.first?.id
@@ -2639,15 +2651,10 @@ final class PlannerViewModel {
         guard !Task.isCancelled else { throw CancellationError() }
         let outboundOptions = result.value.filter { $0.journeyDirection == .outbound }
         let inboundOptions = result.value.filter { $0.journeyDirection == .returnTrip }
-        if UIAccessibility.isReduceMotionEnabled {
-            transportOptions = outboundOptions
-            returnTransportOptions = inboundOptions
-        } else {
-            withAnimation(.spring(response: 0.46, dampingFraction: 0.88)) {
-                transportOptions = outboundOptions
-                returnTransportOptions = inboundOptions
-            }
-        }
+        // A search can replace dozens of fares. Keep that data update atomic so
+        // it cannot hitch the map while the user is dragging the panel.
+        transportOptions = outboundOptions
+        returnTransportOptions = inboundOptions
         let selectedOutbound = transportOptions.first(where: { $0.id == selectedTransportID })
         if selectedOutbound == nil
             || (!selectedOutbound!.quotes.contains(where: \.isCurrentPrice)
@@ -3000,19 +3007,21 @@ final class PlannerViewModel {
             guard let self else { return }
             for index in legs.indices {
                 do {
-                    try await Task.sleep(for: .milliseconds(index == 0 ? 180 : 520))
+                    try await Task.sleep(for: .milliseconds(index == 0 ? 120 : 280))
                 } catch {
                     return
                 }
                 guard !Task.isCancelled else { return }
-                withAnimation(.spring(response: 0.46, dampingFraction: 0.80)) {
+                withAnimation(.spring(response: 0.34, dampingFraction: 0.92)) {
                     visibleLegCount = index + 1
                 }
-                setCamera(.rect(padded(legs[index].route.polyline.boundingMapRect)), animated: true)
+                if index == legs.startIndex {
+                    setCamera(.rect(padded(legs[index].route.polyline.boundingMapRect)), animated: true)
+                }
             }
 
             do {
-                try await Task.sleep(for: .milliseconds(620))
+                try await Task.sleep(for: .milliseconds(320))
             } catch {
                 return
             }
@@ -3086,7 +3095,7 @@ final class PlannerViewModel {
 
     private func setCamera(_ position: MapCameraPosition, animated: Bool) {
         if animated, !UIAccessibility.isReduceMotionEnabled {
-            withAnimation(.smooth(duration: 0.72)) {
+            withAnimation(.spring(response: 0.52, dampingFraction: 0.92)) {
                 cameraPosition = position
             }
         } else {

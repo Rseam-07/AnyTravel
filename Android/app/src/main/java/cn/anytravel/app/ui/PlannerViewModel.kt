@@ -3,10 +3,12 @@ package cn.anytravel.app.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.compose.runtime.Immutable
 import cn.anytravel.app.data.AppRepository
 import cn.anytravel.app.data.AssistantConfiguration
 import cn.anytravel.app.data.AssistantProviderMode
 import cn.anytravel.app.data.DirectPricingClient
+import cn.anytravel.app.data.OpenRouteClient
 import cn.anytravel.app.data.PricingClient
 import cn.anytravel.app.data.PricingRefreshResult
 import cn.anytravel.app.data.TravelAssistantAction
@@ -15,7 +17,9 @@ import cn.anytravel.app.data.TravelAssistantContext
 import cn.anytravel.app.domain.DestinationResolver
 import cn.anytravel.app.domain.PlanBuilder
 import cn.anytravel.app.model.CompletePlan
+import cn.anytravel.app.model.Coordinate
 import cn.anytravel.app.model.DestinationPack
+import cn.anytravel.app.model.ItineraryDay
 import cn.anytravel.app.model.TripDraft
 import cn.anytravel.app.model.TravelPlace
 import cn.anytravel.app.model.LongDistanceMode
@@ -24,17 +28,27 @@ import cn.anytravel.app.model.TripInterest
 import cn.anytravel.app.model.TripPace
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
 
 enum class PlanTab(val title: String) {
     DAYS("日程"),
     STAYS("住宿"),
     TRANSPORT("交通"),
     COSTS("费用")
+}
+
+enum class MapAppearance(val title: String) {
+    SYSTEM("随系统"),
+    STREET("街道"),
+    QUIET("素色"),
+    NIGHT("夜色")
 }
 
 enum class AccommodationSort(val title: String) {
@@ -45,6 +59,15 @@ enum class AccommodationSort(val title: String) {
     RATING("评分更高")
 }
 
+enum class AccommodationAmenity(val title: String, val terms: Set<String>) {
+    BREAKFAST("含早餐", setOf("早餐", "breakfast")),
+    WIFI("无线网络", setOf("wifi", "wi-fi", "无线", "网络")),
+    PARKING("停车", setOf("停车", "parking")),
+    POOL("泳池", setOf("泳池", "游泳", "pool")),
+    FAMILY("亲子", setOf("亲子", "儿童", "family", "kids"))
+}
+
+@Immutable
 data class PlannerUiState(
     val onboardingComplete: Boolean,
     val draft: TripDraft,
@@ -61,9 +84,17 @@ data class PlannerUiState(
     val selectedDay: Int = 0,
     val panelFraction: Float = 0.62f,
     val autoCamera: Boolean = true,
+    val cameraRequestToken: Int = 0,
+    val northRequestToken: Int = 0,
+    val mapAppearance: MapAppearance = MapAppearance.SYSTEM,
     val focusedPlaceID: String? = null,
+    val canUndoItinerary: Boolean = false,
+    val canRedoItinerary: Boolean = false,
     val accommodationMaxNightlyPrice: Int? = null,
     val accommodationSort: AccommodationSort = AccommodationSort.RECOMMENDED,
+    val accommodationMinimumRating: Double? = null,
+    val accommodationMaximumAttractionDistanceMeters: Int? = null,
+    val accommodationAmenity: AccommodationAmenity? = null,
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
     val settingsVisible: Boolean = false,
@@ -83,11 +114,20 @@ class PlannerViewModel(
     private val builder: PlanBuilder = PlanBuilder(),
     private val pricingClient: PricingClient = PricingClient(),
     private val directPricingClient: DirectPricingClient = DirectPricingClient(),
-    private val assistantClient: TravelAssistantClient = TravelAssistantClient()
+    private val assistantClient: TravelAssistantClient = TravelAssistantClient(),
+    private val routeClient: OpenRouteClient = OpenRouteClient()
 ) : ViewModel() {
     private var pricingRefreshToken = 0
+    private var routeRefreshToken = 0
+    private var planningJob: Job? = null
+    private var pricingRefreshJob: Job? = null
+    private var routeRefreshJob: Job? = null
+    private var assistantJob: Job? = null
+    private var mapPinJob: Job? = null
     private var manuallySelectedAccommodationId: String? = null
     private var manuallySelectedTransportId: String? = null
+    private val itineraryUndo = java.util.ArrayDeque<CompletePlan>()
+    private val itineraryRedo = java.util.ArrayDeque<CompletePlan>()
     private val initialAssistantConfiguration = repository.assistantConfiguration()
     private val _state = MutableStateFlow(
         PlannerUiState(
@@ -136,11 +176,13 @@ class PlannerViewModel(
             _state.update { it.copy(errorMessage = "先告诉我想去哪里，其他选择都可以稍后再补") }
             return
         }
-        viewModelScope.launch {
+        routeRefreshToken += 1
+        routeRefreshJob?.cancel()
+        planningJob?.cancel()
+        planningJob = viewModelScope.launch {
             _state.update { it.copy(isLoading = true, errorMessage = null, noticeMessage = null, autoCamera = true) }
-            runCatching {
-                resolver.resolve(draft)
-            }.onSuccess { pack ->
+            try {
+                val pack = resolver.resolve(draft)
                 _state.update {
                     it.copy(
                         isLoading = false,
@@ -152,7 +194,9 @@ class PlannerViewModel(
                         noticeMessage = null
                     )
                 }
-            }.onFailure { error ->
+            } catch (_: CancellationException) {
+                return@launch
+            } catch (error: Throwable) {
                 _state.update { it.copy(isLoading = false, errorMessage = error.message ?: "暂时无法生成路线，请稍后重试") }
             }
         }
@@ -181,6 +225,36 @@ class PlannerViewModel(
         _state.update { it.copy(attractionPickerVisible = false, pendingDestinationPack = null) }
     }
 
+    fun editAttractions() {
+        val currentPlan = _state.value.plan ?: return
+        planningJob?.cancel()
+        planningJob = viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, errorMessage = null, noticeMessage = null) }
+            try {
+                val pack = resolver.resolve(currentPlan.draft)
+                val currentNames = currentPlan.days.flatMap { it.stops }
+                    .mapTo(mutableSetOf()) { normalizedPlaceName(it.name) }
+                val selected = pack.places
+                    .filter { normalizedPlaceName(it.name) in currentNames }
+                    .mapTo(mutableSetOf()) { it.id }
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        attractionPickerVisible = true,
+                        attractionCandidates = pack.places.sortedBy { place -> place.popularityRank },
+                        selectedAttractionIDs = selected,
+                        pendingDestinationPack = pack,
+                        noticeMessage = "已把现在的停靠点重新摊开"
+                    )
+                }
+            } catch (_: CancellationException) {
+                return@launch
+            } catch (error: Throwable) {
+                _state.update { it.copy(isLoading = false, errorMessage = error.message ?: "暂时无法重新寻找景点") }
+            }
+        }
+    }
+
     private fun finishPlanning(selectionWasSkipped: Boolean) {
         val current = _state.value
         val pack = current.pendingDestinationPack ?: return
@@ -188,6 +262,7 @@ class PlannerViewModel(
         val plan = builder.build(current.draft, pack, selected, selectionWasSkipped)
         manuallySelectedAccommodationId = null
         manuallySelectedTransportId = null
+        clearItineraryHistory()
         _state.update {
             it.copy(
                 plan = plan,
@@ -195,6 +270,8 @@ class PlannerViewModel(
                 pendingDestinationPack = null,
                 selectedTab = PlanTab.DAYS,
                 selectedDay = 0,
+                canUndoItinerary = false,
+                canRedoItinerary = false,
                 panelFraction = 0.58f,
                 noticeMessage = if (selectionWasSkipped) {
                     "已按热度、兴趣与距离补齐一条轻松路线"
@@ -204,17 +281,187 @@ class PlannerViewModel(
             )
         }
         startPricingRefresh(plan)
+        startRouteRefresh(plan)
     }
 
     fun returnToDraft() {
         pricingRefreshToken += 1
+        routeRefreshToken += 1
+        planningJob?.cancel()
+        pricingRefreshJob?.cancel()
+        routeRefreshJob?.cancel()
+        assistantJob?.cancel()
+        mapPinJob?.cancel()
         manuallySelectedAccommodationId = null
         manuallySelectedTransportId = null
-        _state.update { it.copy(plan = null, panelFraction = 0.62f, isRefreshing = false, errorMessage = null, noticeMessage = null) }
+        clearItineraryHistory()
+        _state.update {
+            it.copy(
+                plan = null,
+                panelFraction = 0.62f,
+                isRefreshing = false,
+                canUndoItinerary = false,
+                canRedoItinerary = false,
+                errorMessage = null,
+                noticeMessage = null
+            )
+        }
     }
 
     fun selectDay(index: Int) {
         _state.update { it.copy(selectedDay = index, selectedTab = PlanTab.DAYS, panelFraction = 0.58f, autoCamera = true, focusedPlaceID = null) }
+    }
+
+    fun beginMapPinSelection() {
+        if (_state.value.plan == null) {
+            _state.update { it.copy(noticeMessage = "先生成一段行程，再从地图上拾取停靠点") }
+            return
+        }
+        _state.update {
+            it.copy(
+                panelFraction = 0.18f,
+                autoCamera = false,
+                noticeMessage = "长按地图上的位置，它会成为当前一天的新停靠"
+            )
+        }
+    }
+
+    fun addMapPin(coordinate: Coordinate) {
+        val original = _state.value.plan ?: return
+        if (original.days.isEmpty()) {
+            _state.update { it.copy(errorMessage = "这段行程还没有可放置地点的日期") }
+            return
+        }
+        mapPinJob?.cancel()
+        mapPinJob = viewModelScope.launch {
+            _state.update { it.copy(noticeMessage = "正在辨认你从地图上拾起的位置…") }
+            val place = resolver.reverse(coordinate)
+            val current = _state.value.plan?.takeIf { it.id == original.id } ?: return@launch
+            val dayIndex = _state.value.selectedDay.coerceIn(current.days.indices)
+            val duplicate = current.days.flatMap { it.stops }.any { existing ->
+                existing.coordinate.distanceTo(place.coordinate) <= 45 ||
+                    (existing.coordinate.distanceTo(place.coordinate) <= 250 &&
+                        normalizedPlaceName(existing.name) == normalizedPlaceName(place.name))
+            }
+            if (duplicate) {
+                _state.update { it.copy(errorMessage = "这个位置已经在行程里了", noticeMessage = null) }
+                return@launch
+            }
+            val days = current.days.toMutableList()
+            val day = days[dayIndex]
+            days[dayIndex] = day.copy(stops = day.stops + place)
+            commitItineraryEdit(current, days, dayIndex, "已把${place.name}放进第${dayIndex + 1}天")
+            _state.update { it.copy(focusedPlaceID = place.id) }
+        }
+    }
+
+    fun movePlaceWithinDay(dayIndex: Int, placeID: String, offset: Int) {
+        val plan = _state.value.plan ?: return
+        val day = plan.days.getOrNull(dayIndex) ?: return
+        val sourceIndex = day.stops.indexOfFirst { it.id == placeID }
+        if (sourceIndex < 0) return
+        val targetIndex = (sourceIndex + offset).coerceIn(0, day.stops.lastIndex)
+        if (targetIndex == sourceIndex) return
+        val stops = day.stops.toMutableList()
+        val place = stops.removeAt(sourceIndex)
+        stops.add(targetIndex, place)
+        val days = plan.days.toMutableList().apply { this[dayIndex] = day.copy(stops = stops) }
+        commitItineraryEdit(plan, days, dayIndex, "已调整${place.name}在第${dayIndex + 1}天的先后顺序")
+    }
+
+    fun movePlaceToAdjacentDay(dayIndex: Int, placeID: String, offset: Int) {
+        val plan = _state.value.plan ?: return
+        val targetDay = dayIndex + offset
+        if (targetDay !in plan.days.indices) return
+        val source = plan.days.getOrNull(dayIndex) ?: return
+        val place = source.stops.firstOrNull { it.id == placeID } ?: return
+        val days = plan.days.toMutableList()
+        days[dayIndex] = source.copy(stops = source.stops.filterNot { it.id == placeID })
+        val target = days[targetDay]
+        days[targetDay] = target.copy(stops = (target.stops + place).distinctBy { it.id })
+        commitItineraryEdit(plan, days, targetDay, "已把${place.name}移到第${targetDay + 1}天，并重新计算当天时间")
+    }
+
+    fun removePlace(dayIndex: Int, placeID: String) {
+        val plan = _state.value.plan ?: return
+        if (plan.days.sumOf { it.stops.size } <= 1) {
+            _state.update { it.copy(errorMessage = "至少留下一处想去的地方") }
+            return
+        }
+        val source = plan.days.getOrNull(dayIndex) ?: return
+        val place = source.stops.firstOrNull { it.id == placeID } ?: return
+        val days = plan.days.toMutableList().apply {
+            this[dayIndex] = source.copy(stops = source.stops.filterNot { it.id == placeID })
+        }
+        commitItineraryEdit(plan, days, dayIndex, "已移去${place.name}，路线和费用正在随之收拢")
+    }
+
+    fun undoItineraryEdit() {
+        val current = _state.value.plan ?: return
+        val previous = itineraryUndo.pollLast() ?: return
+        pushHistory(itineraryRedo, current)
+        publishRestoredPlan(previous, "已撤回上一次行程修改")
+    }
+
+    fun redoItineraryEdit() {
+        val current = _state.value.plan ?: return
+        val next = itineraryRedo.pollLast() ?: return
+        pushHistory(itineraryUndo, current)
+        publishRestoredPlan(next, "已重新应用这次行程修改")
+    }
+
+    private fun commitItineraryEdit(
+        original: CompletePlan,
+        days: List<ItineraryDay>,
+        selectedDay: Int,
+        message: String
+    ) {
+        pushHistory(itineraryUndo, original)
+        itineraryRedo.clear()
+        val revised = builder.updateItinerary(original, days, message)
+        _state.update {
+            it.copy(
+                plan = revised,
+                selectedDay = selectedDay.coerceIn(revised.days.indices),
+                selectedTab = PlanTab.DAYS,
+                panelFraction = 0.72f,
+                autoCamera = true,
+                focusedPlaceID = null,
+                canUndoItinerary = itineraryUndo.isNotEmpty(),
+                canRedoItinerary = false,
+                noticeMessage = message
+            )
+        }
+        startRouteRefresh(revised)
+        startPricingRefresh(revised)
+    }
+
+    private fun publishRestoredPlan(plan: CompletePlan, message: String) {
+        _state.update {
+            it.copy(
+                plan = plan,
+                selectedDay = it.selectedDay.coerceIn(plan.days.indices),
+                selectedTab = PlanTab.DAYS,
+                panelFraction = 0.72f,
+                autoCamera = true,
+                focusedPlaceID = null,
+                canUndoItinerary = itineraryUndo.isNotEmpty(),
+                canRedoItinerary = itineraryRedo.isNotEmpty(),
+                noticeMessage = message
+            )
+        }
+        startRouteRefresh(plan)
+        startPricingRefresh(plan)
+    }
+
+    private fun pushHistory(stack: java.util.ArrayDeque<CompletePlan>, plan: CompletePlan) {
+        if (stack.size >= 30) stack.pollFirst()
+        stack.addLast(plan)
+    }
+
+    private fun clearItineraryHistory() {
+        itineraryUndo.clear()
+        itineraryRedo.clear()
     }
 
     fun selectTab(tab: PlanTab) {
@@ -258,7 +505,8 @@ class PlannerViewModel(
             _state.update { it.copy(noticeMessage = "已把往返班次与价格铺开") }
             return
         }
-        viewModelScope.launch {
+        assistantJob?.cancel()
+        assistantJob = viewModelScope.launch {
             val before = _state.value
             _state.update {
                 it.copy(
@@ -268,17 +516,17 @@ class PlannerViewModel(
                 )
             }
             val configuration = repository.assistantConfiguration()
-            val interpretation = runCatching {
-                assistantClient.interpret(
+            try {
+                val interpretation = assistantClient.interpret(
                     input = text,
                     context = TravelAssistantContext.from(before.draft, before.plan, before.selectedDay),
                     configuration = configuration,
                     managedServiceURL = before.backendURL
                 )
-            }
-            interpretation.onSuccess { result ->
-                applyAssistantActions(text, result.actions, result.reply)
-            }.onFailure { error ->
+                applyAssistantActions(text, interpretation.actions, interpretation.reply)
+            } catch (_: CancellationException) {
+                return@launch
+            } catch (error: Throwable) {
                 val local = locallyAdjustedDraft(text, before.draft)
                 if (local != before.draft) {
                     rebuildAfterAssistant(
@@ -332,6 +580,14 @@ class PlannerViewModel(
                 "set_long_distance_mode" -> {
                     val mode = LongDistanceMode.entries.firstOrNull { it.name.equals(action.value, true) }
                     next = next.copy(preferredLongDistanceMode = if (action.value == "auto") null else mode)
+                    shouldRegenerate = true
+                }
+                "set_skip_accommodation" -> {
+                    next = next.copy(skipAccommodation = action.value.equals("true", true))
+                    shouldRegenerate = true
+                }
+                "set_skip_transport" -> {
+                    next = next.copy(skipTransport = action.value.equals("true", true))
                     shouldRegenerate = true
                 }
                 "set_day_count" -> action.value.toIntOrNull()?.let {
@@ -423,6 +679,10 @@ class PlannerViewModel(
             text.contains("自驾") -> next.copy(preferredLongDistanceMode = LongDistanceMode.DRIVING)
             else -> next
         }
+        if (listOf("不要住宿", "不住酒店", "跳过住宿").any(text::contains)) next = next.copy(skipAccommodation = true)
+        if (listOf("需要住宿", "安排住宿", "要住酒店").any(text::contains)) next = next.copy(skipAccommodation = false)
+        if (listOf("不要大交通", "跳过交通", "不安排交通", "不用查车票", "不用查机票").any(text::contains)) next = next.copy(skipTransport = true)
+        if (listOf("安排交通", "需要交通", "查车票", "查机票").any(text::contains)) next = next.copy(skipTransport = false)
         return next
     }
 
@@ -432,46 +692,49 @@ class PlannerViewModel(
         removePlaceName: String? = null,
         focusPlaceName: String? = null
     ) {
-        runCatching { resolver.resolve(draft) }
-            .onSuccess { pack ->
-                val previous = _state.value.plan
-                val selectedNames = previous?.days.orEmpty().flatMap { it.stops }
-                    .filter { it.id in previous?.selectedPlaceIDs.orEmpty() }
-                    .mapTo(mutableSetOf()) { it.name }
-                val selectedIDs = pack.places.filter { it.name in selectedNames }.mapTo(mutableSetOf()) { it.id }
-                var plan = builder.build(draft, pack, selectedIDs, selectedIDs.isEmpty())
-                if (!removePlaceName.isNullOrBlank()) plan = removingPlace(plan, removePlaceName)
-                val focus = focusPlaceName?.let { name -> plan.days.flatMap { it.stops }.firstOrNull { it.name == name } }
-                val day = focus?.let { place -> plan.days.firstOrNull { route -> route.stops.any { it.id == place.id } } }
-                _state.update {
-                    it.copy(
-                        plan = plan,
-                        selectedDay = day?.index ?: it.selectedDay.coerceIn(0, (plan.days.size - 1).coerceAtLeast(0)),
-                        selectedTab = PlanTab.DAYS,
-                        panelFraction = 0.58f,
-                        autoCamera = true,
-                        focusedPlaceID = focus?.id,
-                        isAssistantResponding = false,
-                        assistantStatusMessage = null,
-                        noticeMessage = reply,
-                        errorMessage = null
-                    )
-                }
-                startPricingRefresh(plan)
+        try {
+            val pack = resolver.resolve(draft)
+            val previous = _state.value.plan
+            val selectedNames = previous?.days.orEmpty().flatMap { it.stops }
+                .filter { it.id in previous?.selectedPlaceIDs.orEmpty() }
+                .mapTo(mutableSetOf()) { it.name }
+            val selectedIDs = pack.places.filter { it.name in selectedNames }.mapTo(mutableSetOf()) { it.id }
+            var plan = builder.build(draft, pack, selectedIDs, selectedIDs.isEmpty())
+            if (!removePlaceName.isNullOrBlank()) plan = removingPlace(plan, removePlaceName)
+            val focus = focusPlaceName?.let { name -> plan.days.flatMap { it.stops }.firstOrNull { it.name == name } }
+            val day = focus?.let { place -> plan.days.firstOrNull { route -> route.stops.any { it.id == place.id } } }
+            _state.update {
+                it.copy(
+                    plan = plan,
+                    selectedDay = day?.index ?: it.selectedDay.coerceIn(0, (plan.days.size - 1).coerceAtLeast(0)),
+                    selectedTab = PlanTab.DAYS,
+                    panelFraction = 0.58f,
+                    autoCamera = true,
+                    focusedPlaceID = focus?.id,
+                    isAssistantResponding = false,
+                    assistantStatusMessage = null,
+                    noticeMessage = reply,
+                    errorMessage = null
+                )
             }
-            .onFailure { error ->
-                _state.update {
-                    it.copy(
-                        isAssistantResponding = false,
-                        assistantStatusMessage = null,
-                        errorMessage = error.message ?: "这句话已经听懂，但地图暂时没能重新展开"
-                    )
-                }
+            startPricingRefresh(plan)
+            startRouteRefresh(plan)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            _state.update {
+                it.copy(
+                    isAssistantResponding = false,
+                    assistantStatusMessage = null,
+                    errorMessage = error.message ?: "这句话已经听懂，但地图暂时没能重新展开"
+                )
             }
+        }
     }
 
     private fun updatePlanPlaces(removePlaceName: String?, focusPlaceName: String?, reply: String) {
-        var plan = _state.value.plan
+        val originalPlan = _state.value.plan
+        var plan = originalPlan
         if (plan != null && !removePlaceName.isNullOrBlank()) plan = removingPlace(plan, removePlaceName)
         val focus = focusPlaceName?.let { name -> plan?.days.orEmpty().flatMap { it.stops }.firstOrNull { it.name == name } }
         val day = focus?.let { place -> plan?.days?.firstOrNull { route -> route.stops.any { it.id == place.id } } }
@@ -488,6 +751,7 @@ class PlannerViewModel(
                 noticeMessage = reply
             )
         }
+        if (plan != null && plan != originalPlan) startRouteRefresh(plan)
     }
 
     private fun removingPlace(plan: CompletePlan, name: String): CompletePlan {
@@ -515,12 +779,38 @@ class PlannerViewModel(
         else -> null
     }
 
+    private fun normalizedPlaceName(value: String): String = value
+        .trim().lowercase().replace("（", "(").replace("）", ")").replace(" ", "")
+
     fun userMovedMap() {
         _state.update { it.copy(autoCamera = false) }
     }
 
     fun resumeAutoCamera() {
-        _state.update { it.copy(autoCamera = true) }
+        _state.update {
+            it.copy(
+                autoCamera = true,
+                cameraRequestToken = it.cameraRequestToken + 1,
+                noticeMessage = "地图已回到当前路线"
+            )
+        }
+    }
+
+    fun cycleMapAppearance() {
+        _state.update { state ->
+            val values = MapAppearance.entries
+            val next = values[(state.mapAppearance.ordinal + 1) % values.size]
+            state.copy(mapAppearance = next, noticeMessage = "地图已换成${next.title}样式")
+        }
+    }
+
+    fun orientMapNorth() {
+        _state.update {
+            it.copy(
+                northRequestToken = it.northRequestToken + 1,
+                noticeMessage = "地图已回到北向"
+            )
+        }
     }
 
     fun selectAccommodation(id: String) {
@@ -579,64 +869,145 @@ class PlannerViewModel(
         }
     }
 
+    fun setAccommodationMinimumRating(value: Double?) {
+        _state.update {
+            it.copy(
+                accommodationMinimumRating = value,
+                selectedTab = PlanTab.STAYS,
+                panelFraction = 0.67f
+            )
+        }
+    }
+
+    fun setAccommodationMaximumDistance(value: Int?) {
+        _state.update {
+            it.copy(
+                accommodationMaximumAttractionDistanceMeters = value,
+                selectedTab = PlanTab.STAYS,
+                panelFraction = 0.67f,
+                autoCamera = true
+            )
+        }
+    }
+
+    fun setAccommodationAmenity(value: AccommodationAmenity?) {
+        _state.update {
+            it.copy(
+                accommodationAmenity = value,
+                selectedTab = PlanTab.STAYS,
+                panelFraction = 0.67f
+            )
+        }
+    }
+
     private fun startPricingRefresh(basePlan: CompletePlan) {
         val token = ++pricingRefreshToken
+        pricingRefreshJob?.cancel()
         val hubs = basePlan.transports.mapNotNull { it.arrivalAccessPoint }
             .distinctBy { "${it.kind}-${it.name}" }
         val operations = buildList<suspend () -> PricingRefreshResult> {
             add { directPricingClient.refresh(basePlan, hubs) }
             _state.value.backendURL.takeIf(String::isNotBlank)?.let { backendURL ->
-                add { pricingClient.refresh(backendURL, basePlan.draft, basePlan.accommodations, hubs) }
+                add { pricingClient.refresh(backendURL, basePlan, hubs) }
             }
         }
-        var remaining = operations.size
-        var successes = 0
-        val failures = mutableListOf<String>()
         _state.update { it.copy(isRefreshing = true, errorMessage = null, noticeMessage = "正在沿公开数据源寻找当日价格与班次…") }
-        operations.forEach { operation ->
-            viewModelScope.launch {
-                val outcome = runCatching { operation() }
-                if (token != pricingRefreshToken) return@launch
-                outcome.onSuccess { result ->
-                    successes += 1
-                    _state.update { current ->
-                        val currentPlan = current.plan ?: return@update current
-                        var merged = builder.mergeLiveData(
-                            currentPlan,
-                            result.accommodationQuotes,
-                            result.transports,
-                            result.discoveredAccommodations
-                        )
-                        manuallySelectedAccommodationId?.takeIf { id -> merged.accommodations.any { it.id == id } }?.let { id ->
-                            merged = builder.selectAccommodation(merged, id)
+        pricingRefreshJob = viewModelScope.launch {
+            var successes = 0
+            val failures = mutableListOf<String>()
+            try {
+                supervisorScope {
+                    operations.forEach { operation ->
+                        launch {
+                            val outcome = try {
+                                Result.success(operation())
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (error: Throwable) {
+                                Result.failure(error)
+                            }
+                            if (token != pricingRefreshToken) return@launch
+                            outcome.onSuccess { result ->
+                                successes += 1
+                                _state.update { current ->
+                                    val currentPlan = current.plan ?: return@update current
+                                    var merged = builder.mergeLiveData(
+                                        currentPlan,
+                                        result.accommodationQuotes,
+                                        result.transports,
+                                        result.discoveredAccommodations
+                                    )
+                                    manuallySelectedAccommodationId
+                                        ?.takeIf { id -> merged.accommodations.any { it.id == id } }
+                                        ?.let { id -> merged = builder.selectAccommodation(merged, id) }
+                                    manuallySelectedTransportId
+                                        ?.takeIf { id -> merged.transports.any { it.id == id } }
+                                        ?.let { id -> merged = builder.selectTransport(merged, id) }
+                                    current.copy(
+                                        plan = merged,
+                                        noticeMessage = result.message,
+                                        autoCamera = true
+                                    )
+                                }
+                            }.onFailure { error ->
+                                failures += (error.message ?: "一个价格源暂时没有回应")
+                            }
                         }
-                        manuallySelectedTransportId?.takeIf { id -> merged.transports.any { it.id == id } }?.let { id ->
-                            merged = builder.selectTransport(merged, id)
-                        }
-                        current.copy(
-                            plan = merged,
-                            noticeMessage = result.message,
-                            autoCamera = true
-                        )
                     }
-                }.onFailure { error ->
-                    failures += (error.message ?: "一个价格源暂时没有回应")
                 }
-                remaining -= 1
-                if (remaining == 0) {
-                    _state.update { current ->
-                        when {
-                            successes == 0 -> current.copy(
-                                isRefreshing = false,
-                                errorMessage = failures.firstOrNull() ?: "实时价格与班次暂时没有抵达"
-                            )
-                            failures.isNotEmpty() -> current.copy(
-                                isRefreshing = false,
-                                noticeMessage = listOfNotNull(current.noticeMessage, "另有一个补充渠道暂时未返回").joinToString("；")
-                            )
-                            else -> current.copy(isRefreshing = false)
-                        }
-                    }
+            } catch (_: CancellationException) {
+                return@launch
+            }
+            if (token != pricingRefreshToken) return@launch
+            _state.update { current ->
+                when {
+                    successes == 0 -> current.copy(
+                        isRefreshing = false,
+                        errorMessage = failures.firstOrNull() ?: "实时价格与班次暂时没有抵达"
+                    )
+                    failures.isNotEmpty() -> current.copy(
+                        isRefreshing = false,
+                        noticeMessage = listOfNotNull(current.noticeMessage, "另有一个补充渠道暂时未返回").joinToString("；")
+                    )
+                    else -> current.copy(isRefreshing = false)
+                }
+            }
+        }
+    }
+
+    private fun startRouteRefresh(basePlan: CompletePlan) {
+        val token = ++routeRefreshToken
+        routeRefreshJob?.cancel()
+        routeRefreshJob = viewModelScope.launch {
+            try {
+                val result = routeClient.routes(basePlan)
+                if (token != routeRefreshToken) return@launch
+                _state.update { current ->
+                    val currentPlan = current.plan ?: return@update current
+                    if (currentPlan.id != basePlan.id) return@update current
+                    current.copy(
+                        plan = currentPlan.copy(
+                            routeSegments = result.segments,
+                            failedRouteSegmentCount = result.failedSegmentCount,
+                            routeIsSchematic = result.segments.isEmpty() || result.failedSegmentCount > 0
+                        )
+                    )
+                }
+            } catch (_: CancellationException) {
+                return@launch
+            } catch (_: Throwable) {
+                if (token != routeRefreshToken) return@launch
+                _state.update { current ->
+                    val currentPlan = current.plan ?: return@update current
+                    if (currentPlan.id != basePlan.id) return@update current
+                    val expectedSegments = currentPlan.days.sumOf { (it.stops.size - 1).coerceAtLeast(0) }
+                    current.copy(
+                        plan = currentPlan.copy(
+                            routeSegments = emptyList(),
+                            failedRouteSegmentCount = expectedSegments,
+                            routeIsSchematic = true
+                        )
+                    )
                 }
             }
         }
@@ -650,6 +1021,7 @@ class PlannerViewModel(
 
     fun loadPlan(plan: CompletePlan) {
         repository.saveDraft(plan.draft)
+        clearItineraryHistory()
         _state.update {
             it.copy(
                 draft = plan.draft,
@@ -657,11 +1029,15 @@ class PlannerViewModel(
                 libraryVisible = false,
                 selectedTab = PlanTab.DAYS,
                 selectedDay = 0,
+                canUndoItinerary = false,
+                canRedoItinerary = false,
                 panelFraction = 0.58f,
                 autoCamera = true,
                 noticeMessage = "已回到${plan.draft.destination}的路线"
             )
         }
+        if (plan.routeSegments.isEmpty() || plan.routeIsSchematic) startRouteRefresh(plan)
+        startPricingRefresh(plan)
     }
 
     fun deletePlan(id: String) {

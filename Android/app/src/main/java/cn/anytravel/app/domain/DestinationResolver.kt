@@ -28,6 +28,37 @@ class DestinationResolver(
         return withContext(Dispatchers.IO) { resolveFromSystem(draft) }
     }
 
+    /** Turns a point the traveller picked on the map into an editable stop. */
+    @Suppress("DEPRECATION")
+    suspend fun reverse(coordinate: Coordinate): TravelPlace = withContext(Dispatchers.IO) {
+        val address = try {
+            geocoder.getFromLocation(coordinate.latitude, coordinate.longitude, 1)?.firstOrNull()
+        } catch (_: IOException) {
+            null
+        } catch (_: IllegalArgumentException) {
+            null
+        }
+        val name = listOfNotNull(
+            address?.featureName,
+            address?.premises,
+            address?.thoroughfare,
+            address?.subLocality
+        ).firstOrNull { candidate -> candidate.isNotBlank() && !candidate.all(Char::isDigit) }
+            ?: "地图上的新停靠"
+        TravelPlace(
+            name = name,
+            address = address?.getAddressLine(0).orEmpty().ifBlank {
+                "${"%.5f".format(coordinate.latitude)}, ${"%.5f".format(coordinate.longitude)}"
+            },
+            coordinate = coordinate,
+            interest = TripInterest.CULTURE,
+            introduction = "你从地图上亲手拾起的地点，可以继续调整顺序、跨天移动或移除。",
+            source = "Android 地图长按 · 系统逆地理编码",
+            popularityRank = 998,
+            suggestedVisitMinutes = 75
+        )
+    }
+
     private fun mergeCuratedAndGuide(curated: DestinationPack, guide: DestinationPack?): DestinationPack {
         if (guide == null) return curated
         val names = curated.places.mapTo(mutableSetOf()) { normalizedName(it.name) }

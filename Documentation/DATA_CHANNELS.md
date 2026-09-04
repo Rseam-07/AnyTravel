@@ -32,6 +32,16 @@ iOS 0.7 起也可以在 App 内直连同一 MCP：`RollingGoDirectClient` 复用
 
 项目资料：[RollingGo 酒店 Skill CN](https://github.com/RollingGo-AI/rollinggo-hotel-skill-cn)。
 
+### 雅高集团官网
+
+iOS、Android 与 Backend 都能读取 `all.accor.com` 当前公开网页使用的酒店目录，并按用户选择的入住、离店日期查询 `api.accor.com` 的公开房价响应。请求携带目的地、日期和成人人数；最多并行核对 10 家酒店，并保存房型代码、餐食、取消政策、每晚价、总价、抓取时间和带日期的集团官网预订链接。RollingGo 仍排在首位，雅高结果作为品牌直营价并入同一酒店卡。
+
+2026-09-05 实查苏州所选日期时，目录返回 5 家酒店，其中 4 家获得数字选日价格；自动化测试确认至少一张雅高卡同时具有大于零的每晚价、总价和集团官网购买入口。该网页契约可能调整，因此失败会作为独立诊断显示，不会阻断 RollingGo、铁路或航班结果。实现参考了 MIT 许可的 [accor-mcp](https://github.com/puneet-mehta/accor-mcp)，并在三端各自实现、测试当前公开契约。
+
+### 希尔顿官网
+
+iOS、Android 与 Backend 会读取希尔顿中国官网当前公开城市搜索载荷，补充酒店名称、品牌、地址、坐标、图片、卖点和官网深链。目录中的 `minPrice` 无法证明属于用户选择的日期，所以只标为“官网公开起价/参考价”；预订链接会带入行程日期和人数，用户可继续在希尔顿官网核对房型与库存。没有数字时仍保留直营入口，不会伪造成实时价。
+
 ### 携程
 
 `Backend/src/adapters/ctrip.mjs` 使用 Playwright 持久化用户浏览器会话。节点先调用公开酒店联想端点，将每个 Apple Maps 候选严格解析为携程酒店 ID，再打开带真实日期且只指向该酒店的公开列表；运行 `npm run login:ctrip` 后，用户自行在携程页面完成登录。节点只接收名称强匹配的数字价格，不读取密码，也不会把评论数等数字误认成价格。
@@ -54,9 +64,9 @@ iOS 0.7 起也可以在 App 内直连同一 MCP：`RollingGoDirectClient` 复用
 
 `Backend/src/adapters/onebound-ctrip.mjs` 使用万邦（OneBound）的 `item_search_hotel` 接口补充携程酒店目录与参考价（`ONEBOUND_API_KEY` / `ONEBOUND_API_SECRET`）。该接口不保证指定入住日期价格，因此只接受明确数字展示价并标记为参考价/目录价，绝不冒充实时价；未配置凭据时健康检查显示 `disabled`。
 
-### 去哪儿、Trip.com 与住宿官网
+### 去哪儿、Trip.com 与其他住宿官网
 
-App 已提供应用内登录、Cookie 会话复用和购买页入口。iOS 会在保存前确认对应平台域名已有有效 Cookie，并在 Cookie 失效后撤销会话状态。去哪儿当前公开桌面酒店搜索入口会回到综合首页，其开放平台主要面向酒店供应商，因此没有把它写成已验证的实时价格源。节点接口保留独立适配器位置，后续接入不会改变 iOS 数据模型。
+App 已提供应用内登录、Cookie 会话复用和购买页入口。iOS 会在保存前确认对应平台域名已有有效 Cookie，并在 Cookie 失效后撤销会话状态。去哪儿当前公开桌面酒店搜索入口会回到综合首页，其开放平台主要面向酒店供应商，因此没有把它写成已验证的实时价格源。雅高与希尔顿以外的品牌官网目前先保留按品牌识别的直营入口；后续每个选日价格适配器都可并入现有 `offers`，不会改变客户端卡片结构。
 
 平台资料：[去哪儿酒店开放平台](https://open.hotel.qunar.com/)、[携程开放平台](https://developer.ctrip.com/)、[携程商旅 OpenAPI](https://openapi.ctripbiz.com/)。
 

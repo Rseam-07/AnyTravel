@@ -9,6 +9,8 @@ const allowedActionTypes = new Set([
   "set_pace",
   "set_travel_mode",
   "set_long_distance_mode",
+  "set_skip_accommodation",
+  "set_skip_transport",
   "set_day_count",
   "set_travelers",
   "set_budget",
@@ -122,6 +124,8 @@ export function validateAssistantRequest(request) {
       startDate: validDay(source.startDate) ? source.startDate : null,
       endDate: validDay(source.endDate) ? source.endDate : null,
       longDistanceMode: allowedLongDistanceModes.has(source.longDistanceMode) ? source.longDistanceMode : null,
+      skipAccommodation: Boolean(source.skipAccommodation),
+      skipTransport: Boolean(source.skipTransport),
       accommodationMaxNightlyPrice: clampInteger(source.accommodationMaxNightlyPrice, 100, 10_000, null),
       accommodationSort: allowedAccommodationSorts.has(source.accommodationSort)
         ? source.accommodationSort
@@ -154,6 +158,9 @@ export function normalizeAssistantPayload(content, places = []) {
       actions.push({ type, value: candidate.value });
     } else if (type === "set_long_distance_mode" && allowedLongDistanceModes.has(candidate.value)) {
       actions.push({ type, value: candidate.value });
+    } else if ((type === "set_skip_accommodation" || type === "set_skip_transport")
+      && ["true", "false"].includes(String(candidate.value).toLowerCase())) {
+      actions.push({ type, value: String(candidate.value).toLowerCase() });
     } else if (type === "set_day_count") {
       const value = clampInteger(candidate.value, 1, 7, null);
       if (value !== null) actions.push({ type, value: String(value) });
@@ -223,6 +230,7 @@ const systemPrompt = `你是 AnyTravel 的旅行意图控制器。用户可以�
 - set_pace: relaxed | balanced | full
 - set_travel_mode: walking | transit | driving
 - set_long_distance_mode: auto | train | flight | driving | coach
+- set_skip_accommodation / set_skip_transport: true | false
 - set_budget: 1000 到 30000 的整数
 - set_start_date / set_end_date: yyyy-MM-dd
 - set_accommodation_max_price: 100 到 10000 的每晚价格

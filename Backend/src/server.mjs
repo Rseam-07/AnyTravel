@@ -39,6 +39,8 @@ const server = http.createServer(async (request, response) => {
         elongOpenAPI: process.env.ELONG_USER && process.env.ELONG_APP_KEY && process.env.ELONG_SECRET_KEY
           ? "configured"
           : "disabled",
+        accorOfficial: "public",
+        hiltonOfficial: "public",
         qunarTickets: "public",
         time: new Date().toISOString()
       });

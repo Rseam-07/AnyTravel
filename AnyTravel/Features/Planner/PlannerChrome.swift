@@ -156,7 +156,6 @@ struct PlannerChrome: View {
         .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: model.routeStatusText)
         .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: model.topSubtitle)
         .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: model.mapAppearance)
-        .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: panelDetent)
     }
 }
 

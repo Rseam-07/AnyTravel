@@ -45,12 +45,20 @@ class AppRepository(context: Context) {
         preferences.edit { putString(KEY_DRAFT, json.encodeToString(TripDraft.serializer(), draft)) }
     }
 
-    fun loadPlans(): List<CompletePlan> = preferences.getString(KEY_PLANS, null)?.let { encoded ->
-        runCatching { json.decodeFromString(ListSerializer(CompletePlan.serializer()), encoded) }.getOrNull()
-    }.orEmpty()
+    fun loadPlans(): List<CompletePlan> {
+        val decoded = preferences.getString(KEY_PLANS, null)?.let { encoded ->
+            runCatching { json.decodeFromString(ListSerializer(CompletePlan.serializer()), encoded) }.getOrNull()
+        }.orEmpty()
+        val compact = decoded.map(::compactForStorage)
+        // Earlier previews persisted every decoded route coordinate. Migrating
+        // once keeps startup and backup sizes bounded even for twelve trips.
+        if (compact != decoded) writePlans(compact)
+        return compact
+    }
 
     fun savePlan(plan: CompletePlan): List<CompletePlan> {
-        val updated = (listOf(plan) + loadPlans().filterNot { it.id == plan.id }).take(12)
+        val storedPlan = compactForStorage(plan)
+        val updated = (listOf(storedPlan) + loadPlans().filterNot { it.id == plan.id }).take(12)
         writePlans(updated)
         return updated
     }
@@ -99,6 +107,15 @@ class AppRepository(context: Context) {
 
     private fun writePlans(plans: List<CompletePlan>) {
         preferences.edit { putString(KEY_PLANS, json.encodeToString(ListSerializer(CompletePlan.serializer()), plans)) }
+    }
+
+    private fun compactForStorage(plan: CompletePlan): CompletePlan {
+        val expectedSegments = plan.days.sumOf { (it.stops.size - 1).coerceAtLeast(0) }
+        return plan.copy(
+            routeSegments = emptyList(),
+            failedRouteSegmentCount = expectedSegments,
+            routeIsSchematic = expectedSegments > 0
+        )
     }
 
     companion object {

@@ -25,6 +25,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
@@ -33,6 +34,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.add
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URLEncoder
@@ -62,12 +64,26 @@ class DirectPricingClient {
     private val railwaySocketFactory: SSLSocketFactory? by lazy(::buildRailwaySocketFactory)
 
     suspend fun refresh(plan: CompletePlan, accessPoints: List<AccessPoint>): PricingRefreshResult = coroutineScope {
-        val hotels = async {
+        val rollingGoHotels = async {
             if (plan.draft.skipAccommodation) DirectHotels() else searchRollingGo(plan, accessPoints)
         }
-        val railway = async { searchRailway(plan, accessPoints) }
-        val flights = async { searchFlights(plan, accessPoints) }
-        val hotelResult = hotels.await()
+        val accorHotels = async {
+            if (plan.draft.skipAccommodation) DirectHotels() else searchAccorOfficial(plan, accessPoints)
+        }
+        val officialHotels = async {
+            if (plan.draft.skipAccommodation) DirectHotels() else searchHiltonOfficial(plan, accessPoints)
+        }
+        val railway = async { if (plan.draft.skipTransport) DirectTransport() else searchRailway(plan, accessPoints) }
+        val flights = async { if (plan.draft.skipTransport) DirectTransport() else searchFlights(plan, accessPoints) }
+        val rollingGoResult = rollingGoHotels.await()
+        val accorResult = accorHotels.await()
+        val officialResult = officialHotels.await()
+        val hotelResult = DirectHotels(
+            // RollingGo remains first so its live inventory wins the primary
+            // card position; official sites add comparable quotes and fallback.
+            options = deduplicateHotels(rollingGoResult.options + accorResult.options + officialResult.options),
+            issues = rollingGoResult.issues + accorResult.issues + officialResult.issues
+        )
         val railResult = railway.await()
         val flightResult = flights.await()
         val transports = deduplicateTransports(railResult.options + flightResult.options)
@@ -83,6 +99,293 @@ class DirectPricingClient {
                 if (issueText.isNotEmpty()) append("；${issueText.joinToString("；")}")
             }
         )
+    }
+
+    /** Selected-date public rates from the current Accor web search and booking flow. */
+    private suspend fun searchAccorOfficial(plan: CompletePlan, accessPoints: List<AccessPoint>): DirectHotels {
+        val draft = plan.draft
+        val checkIn = runCatching { LocalDate.parse(draft.startDate) }.getOrNull()
+            ?: return DirectHotels(issues = listOf("雅高官网入住日期无法识别"))
+        val nights = draft.nights.coerceAtLeast(1)
+        val checkOut = checkIn.plusDays(nights.toLong())
+        return runCatching {
+            val index = if (draft.destination.any { it.code in 0x3400..0x9FFF }) "prod_hotels_zh" else "prod_hotels_en"
+            val catalogBody = buildJsonObject {
+                put("query", draft.destination.trim())
+                put("hitsPerPage", 8)
+                put("attributesToRetrieve", buildJsonArray {
+                    listOf(
+                        "objectID", "name", "brandLabel", "brand", "stars", "rating", "localization",
+                        "freeAmenities", "paidAmenities", "mediaCatalog", "medias", "description",
+                        "enhancedDescription", "labels", "thematics"
+                    ).forEach { add(it) }
+                })
+                put("filters", "status:OPEN")
+            }.toString()
+            val catalog = request(
+                URL("https://${ACCOR_ALGOLIA_APP_ID}-dsn.algolia.net/1/indexes/$index/query"),
+                method = "POST",
+                body = catalogBody,
+                headers = mapOf(
+                    "X-Algolia-Application-Id" to ACCOR_ALGOLIA_APP_ID,
+                    "X-Algolia-API-Key" to ACCOR_ALGOLIA_SEARCH_KEY,
+                    "Content-Type" to "application/json",
+                    "Origin" to "https://all.accor.com",
+                    "Referer" to "https://all.accor.com/"
+                ),
+                readTimeout = 15_000
+            )
+            val rows = json.parseToJsonElement(catalog.body).asObject()?.get("hits")?.asArray().orEmpty().take(8)
+            val capturedAt = Instant.now().toString()
+            val stopCoordinates = plan.days.flatMap { it.stops }.map { it.coordinate }
+            val options = coroutineScope {
+                rows.map { row ->
+                    async {
+                        val hotel = row.asObject() ?: return@async null
+                        val code = hotel["objectID"]?.stringValue()?.trim().orEmpty()
+                        val name = hotel["name"]?.stringValue()?.trim().orEmpty()
+                        if (code.isBlank() || name.length < 2) return@async null
+                        val rate = runCatching { accorRate(code, checkIn, checkOut, draft.travelers) }.getOrNull()
+                        accorHotelOption(
+                            hotel = hotel,
+                            code = code,
+                            name = name,
+                            rate = rate,
+                            nights = nights,
+                            checkIn = checkIn,
+                            checkOut = checkOut,
+                            travelers = draft.travelers,
+                            capturedAt = capturedAt,
+                            stopCoordinates = stopCoordinates,
+                            accessPoints = accessPoints
+                        )
+                    }
+                }.awaitAll().filterNotNull()
+            }
+            val priced = options.count { option -> option.quotes.any { it.amountCNY != null } }
+            DirectHotels(
+                options = options,
+                issues = when {
+                    options.isEmpty() -> listOf("雅高官网暂未返回匹配酒店")
+                    priced == 0 -> listOf("雅高官网已有酒店目录，所选日期暂未见公开房价")
+                    else -> emptyList()
+                }
+            )
+        }.getOrElse { DirectHotels(issues = listOf("雅高官网暂时没有回应：${shortError(it)}")) }
+    }
+
+    private suspend fun accorRate(code: String, checkIn: LocalDate, checkOut: LocalDate, travelers: Int): JsonObject? {
+        val body = buildJsonObject {
+            put("operationName", "HotelPageHot")
+            put("query", ACCOR_HOTEL_OFFERS_QUERY)
+            put("variables", buildJsonObject {
+                put("hotelOffersHotelId", code)
+                put("dateIn", checkIn.toString())
+                put("dateOut", checkOut.toString())
+                put("nbAdults", travelers.coerceIn(1, 8))
+                put("childrenAges", buildJsonArray { })
+                put("selectionStep", 0)
+                put("countryMarket", "CN")
+                put("currency", "CNY")
+                put("offersSelectionFilters", buildJsonObject {
+                    put("cancellationPolicies", JsonNull)
+                    put("isAccessible", false)
+                    put("mealPlans", JsonNull)
+                })
+                put("concession", JsonNull)
+                put("use", "NIGHT")
+                put("hideMemberRate", false)
+                put("selection", buildJsonArray { })
+            })
+        }.toString()
+        val response = request(
+            URL(ACCOR_BFF_ENDPOINT),
+            method = "POST",
+            body = body,
+            headers = mapOf(
+                "apikey" to ACCOR_BFF_API_KEY,
+                "app-id" to "all.accor",
+                "app-version" to "1.39.1",
+                "clientid" to "all.accor",
+                "lang" to "zh",
+                "Content-Type" to "application/json",
+                "Origin" to "https://all.accor.com",
+                "Referer" to "https://all.accor.com/"
+            ),
+            readTimeout = 15_000
+        )
+        val root = json.parseToJsonElement(response.body).asObject()
+        val hotelOffers = root?.get("data")?.asObject()?.get("hotelOffers")?.asObject() ?: return null
+        val status = hotelOffers["availability"]?.asObject()?.get("status")?.stringValue()
+        if (status != "AVAILABLE") return null
+        return hotelOffers["offersSelection"]?.asObject()?.get("offers")?.asArray().orEmpty()
+            .mapNotNull(JsonElement::asObject)
+            .filter { it["pricing"]?.asObject()?.get("main")?.asObject()?.get("amount")?.numberValue()?.let { amount -> amount > 0 } == true }
+            .minByOrNull { it["pricing"]?.asObject()?.get("main")?.asObject()?.get("amount")?.numberValue() ?: Double.MAX_VALUE }
+    }
+
+    private fun accorHotelOption(
+        hotel: JsonObject,
+        code: String,
+        name: String,
+        rate: JsonObject?,
+        nights: Int,
+        checkIn: LocalDate,
+        checkOut: LocalDate,
+        travelers: Int,
+        capturedAt: String,
+        stopCoordinates: List<Coordinate>,
+        accessPoints: List<AccessPoint>
+    ): AccommodationOption? {
+        val localization = hotel["localization"]?.asObject()
+        val coordinateValue = localization?.get("gps")?.asObject()
+        val latitude = coordinateValue?.get("lat")?.numberValue() ?: return null
+        val longitude = coordinateValue["lng"]?.numberValue() ?: return null
+        if (latitude !in -90.0..90.0 || longitude !in -180.0..180.0) return null
+        val coordinate = Coordinate(latitude, longitude)
+        val averageDistance = stopCoordinates.ifEmpty { listOf(coordinate) }
+            .map { it.distanceTo(coordinate) }.average().roundToInt()
+        val hubDistance = accessPoints.minOfOrNull { it.coordinate.distanceTo(coordinate) }?.roundToInt() ?: 0
+        val pricing = rate?.get("pricing")?.asObject()?.get("main")?.asObject()
+        val totalAmount = pricing?.get("amount")?.numberValue()?.takeIf { it > 0 }?.roundToInt()
+        val amount = totalAmount?.let { (it.toDouble() / nights).roundToInt().coerceAtLeast(1) }
+        val mealPlan = rate?.get("mealPlan")?.asObject()?.get("label")?.stringValue()
+        val cancellation = pricing?.get("simplifiedPolicies")?.asObject()
+            ?.get("cancellation")?.asObject()?.get("label")?.stringValue()
+        val address = localization["address"]?.asObject()
+        val bookingURL = URI("https://all.accor.com/ssr/app/accor/rates").withQuery(
+            mapOf(
+                "hotelCode" to code,
+                "checkIn" to checkIn.toString(),
+                "checkOut" to checkOut.toString(),
+                "numberOfRooms" to "1",
+                "adults" to travelers.coerceIn(1, 8).toString()
+            )
+        ).toString()
+        val brand = hotel.first("brandLabel", "brand")?.stringValue()
+        return AccommodationOption(
+            id = "accor-$code",
+            name = name,
+            address = listOfNotNull(
+                address?.first("street", "line1")?.stringValue(),
+                address?.get("city")?.stringValue()
+            ).filter { it.isNotBlank() }.joinToString("，"),
+            coordinate = coordinate,
+            averageAttractionDistanceMeters = averageDistance,
+            hubDistanceMeters = hubDistance,
+            quotes = listOf(
+                PriceQuote(
+                    provider = "住宿官网",
+                    amountCNY = amount,
+                    unit = QuoteUnit.PER_NIGHT,
+                    kind = if (amount == null) QuoteKind.CHECK_ON_PROVIDER else QuoteKind.LIVE,
+                    capturedAt = capturedAt,
+                    bookingURL = bookingURL,
+                    note = if (amount == null) "前往雅高集团官网查看所选日期房型"
+                    else "雅高官网所选日期公开价${mealPlan?.let { " · $it" }.orEmpty()}；结算前请复核税费与库存",
+                    displayPriceText = amount?.let { "¥${it}起" },
+                    sourceLabel = "雅高集团官网",
+                    totalAmountCNY = totalAmount,
+                    roomName = rate?.get("accommodation")?.asObject()?.get("code")?.stringValue(),
+                    mealPlan = mealPlan,
+                    cancellationPolicy = cancellation,
+                    availability = amount?.let { "所选日期有公开报价" }
+                )
+            ),
+            recommendationReasons = buildList {
+                add("到已选景点平均${averageDistance.distanceText()}")
+                if (hubDistance > 0) add("距最近枢纽${hubDistance.distanceText()}")
+            },
+            isRecommended = false,
+            brand = brand,
+            starRating = hotel["stars"]?.numberValue(),
+            guestRating = hotel["rating"]?.asObject()?.get("score")?.numberValue(),
+            imageURL = hotel["mediaCatalog"]?.asObject()?.get("1024x768")?.stringValue()?.validURL()
+                ?: hotel["medias"]?.asObject()?.get("dmUrlCrop3by2")?.stringValue()?.validURL(),
+            officialWebsiteURL = bookingURL,
+            amenities = (hotel["freeAmenities"].stringArray() + hotel["paidAmenities"].stringArray()).distinct().take(16),
+            tags = (hotel["labels"].stringArray() + hotel["thematics"].stringArray()).distinct().take(16),
+            sources = listOf("雅高集团官网")
+        )
+    }
+
+    /** Public Hilton China catalog fallback; its visible minPrice is kept indicative. */
+    private suspend fun searchHiltonOfficial(plan: CompletePlan, accessPoints: List<AccessPoint>): DirectHotels {
+        val draft = plan.draft
+        val checkIn = runCatching { LocalDate.parse(draft.startDate) }.getOrNull()
+            ?: return DirectHotels(issues = listOf("希尔顿官网入住日期无法识别"))
+        return runCatching {
+            val url = URI("https://console-lls.hilton.com.cn/cgi/api/app/hotel/zh-CN/search")
+                .withQuery(mapOf("keywords" to draft.destination))
+                .toURL()
+            val root = json.parseToJsonElement(
+                request(url, headers = mapOf("Accept" to "application/json", "Accept-Language" to "zh-CN,zh;q=0.9")).body
+            ).jsonObject
+            val rows = root["data"]?.asObject()?.get("hotels")?.asArray().orEmpty()
+            val capturedAt = Instant.now().toString()
+            val stops = plan.days.flatMap { it.stops }.map { it.coordinate }
+            val options = rows.mapNotNull { value ->
+                val hotel = value.asObject() ?: return@mapNotNull null
+                val name = hotel.first("hotelName", "name")?.stringValue()?.trim().orEmpty()
+                val code = hotel.first("hotelCode", "id")?.stringValue()?.trim().orEmpty()
+                val location = hotel["location"]?.asObject()
+                val coordinateValue = location?.get("coordinate")?.asObject() ?: hotel["coordinate"]?.asObject()
+                val latitude = coordinateValue?.first("latitude", "lat")?.numberValue()
+                val longitude = coordinateValue?.first("longitude", "lng")?.numberValue()
+                if (name.length < 2 || code.isBlank() || latitude == null || longitude == null || latitude !in -90.0..90.0 || longitude !in -180.0..180.0) {
+                    return@mapNotNull null
+                }
+                val coordinate = Coordinate(latitude, longitude)
+                val averageDistance = stops.ifEmpty { listOf(coordinate) }.map { it.distanceTo(coordinate) }.average().roundToInt()
+                val hubDistance = accessPoints.minOfOrNull { it.coordinate.distanceTo(coordinate) }?.roundToInt() ?: 0
+                val amount = hotel["minPrice"]?.numberValue()?.takeIf { it > 0 }?.roundToInt()
+                val bookingURL = URI("https://www.hilton.com/zh-hans/book/reservation/deeplink/").withQuery(
+                    mapOf(
+                        "ctyhocn" to code,
+                        "arrivalDate" to checkIn.toString(),
+                        "departureDate" to checkIn.plusDays(draft.nights.coerceAtLeast(1).toLong()).toString(),
+                        "room1NumAdults" to draft.travelers.coerceIn(1, 8).toString()
+                    )
+                ).toString()
+                val brand = hiltonBrandName(hotel["brandCode"]?.stringValue())
+                val sellingPoints = hotel["sellingPoints"].stringArray()
+                val tags = hotel["tags"].stringArray()
+                AccommodationOption(
+                    id = "hilton-$code",
+                    name = name,
+                    address = location?.get("address")?.stringValue().orEmpty(),
+                    coordinate = coordinate,
+                    averageAttractionDistanceMeters = averageDistance,
+                    hubDistanceMeters = hubDistance,
+                    quotes = listOf(
+                        PriceQuote(
+                            provider = "希尔顿官网",
+                            amountCNY = amount,
+                            unit = QuoteUnit.PER_NIGHT,
+                            kind = if (amount == null) QuoteKind.CHECK_ON_PROVIDER else QuoteKind.INDICATIVE,
+                            capturedAt = capturedAt,
+                            bookingURL = bookingURL,
+                            note = if (amount == null) "进入官网查看所选日期房型" else "官网公开参考起价；购买页已带入行程日期，请复核房型与库存",
+                            displayPriceText = amount?.let { "¥${it}起" },
+                            sourceLabel = "希尔顿官网",
+                            availability = amount?.let { "官网公开起价" }
+                        )
+                    ),
+                    recommendationReasons = buildList {
+                        add("到已选景点平均${averageDistance.distanceText()}")
+                        if (hubDistance > 0) add("距最近枢纽${hubDistance.distanceText()}")
+                    },
+                    isRecommended = false,
+                    brand = brand,
+                    imageURL = hotel["masterCover"]?.asObject()?.get("url")?.stringValue()?.validURL(),
+                    officialWebsiteURL = bookingURL,
+                    amenities = hotel["amenities"].stringArray().take(12),
+                    tags = (sellingPoints + tags).distinct().take(12),
+                    sources = listOf("希尔顿官网")
+                )
+            }.distinctBy { normalizedHotelName(it.name) }.take(30)
+            DirectHotels(options, if (options.isEmpty()) listOf("希尔顿官网暂未返回匹配酒店") else emptyList())
+        }.getOrElse { DirectHotels(issues = listOf("希尔顿官网暂时没有回应：${shortError(it)}")) }
     }
 
     private suspend fun searchRollingGo(plan: CompletePlan, accessPoints: List<AccessPoint>): DirectHotels {
@@ -219,6 +522,7 @@ class DirectPricingClient {
             starRating = hotel.first("starRating", "star", "starLevel")?.numberValue(),
             guestRating = hotel.first("rating", "guestRating", "score", "reviewScore")?.numberValue(),
             imageURL = hotel.first("imageUrl", "imageURL", "coverImage", "cover")?.stringValue()?.validURL(),
+            officialWebsiteURL = officialWebsite(name, hotel.first("brand", "brandName", "hotelBrand")?.stringValue()),
             amenities = hotel.first("hotelAmenities", "amenities", "facilities", "facilityList", "services").stringArray().take(12),
             tags = hotel.first("tags", "labels", "themes").stringArray().take(10),
             sources = listOf("RollingGo")
@@ -644,6 +948,37 @@ class DirectPricingClient {
         )
     }
 
+    private fun deduplicateHotels(options: List<AccommodationOption>): List<AccommodationOption> {
+        val result = mutableListOf<AccommodationOption>()
+        options.forEach { option ->
+            val normalized = normalizedHotelName(option.name)
+            val family = hotelBrandFamily(option)
+            val existingIndex = result.indexOfFirst { current ->
+                val distance = current.coordinate.distanceTo(option.coordinate)
+                (normalizedHotelName(current.name) == normalized && distance <= 250) || distance <= 35 ||
+                    (distance <= 120 && family != null && family == hotelBrandFamily(current))
+            }
+            if (existingIndex < 0) {
+                result += option
+                return@forEach
+            }
+            val current = result[existingIndex]
+            result[existingIndex] = current.copy(
+                quotes = (current.quotes + option.quotes)
+                    .distinctBy {
+                        "${it.provider}|${it.unit}|${it.amountCNY}|${it.kind}|${it.roomName}|${it.bedType}|${it.mealPlan}|${it.cancellationPolicy}"
+                    }
+                    .sortedBy { it.amountCNY ?: Int.MAX_VALUE },
+                officialWebsiteURL = current.officialWebsiteURL ?: option.officialWebsiteURL,
+                imageURL = current.imageURL ?: option.imageURL,
+                amenities = (current.amenities + option.amenities).distinct(),
+                tags = (current.tags + option.tags).distinct(),
+                sources = (current.sources + option.sources).distinct()
+            )
+        }
+        return result
+    }
+
     private fun railwayHeaders() = mapOf(
         "Accept" to "application/json,text/plain,*/*",
         "Accept-Language" to "zh-CN,zh;q=0.9",
@@ -656,6 +991,47 @@ class DirectPricingClient {
 
     private fun normalizedHotelName(value: String) = value.lowercase().replace(Regex("[\\s·,，()（）-]+"), "")
         .replace("酒店", "").replace("宾馆", "").replace("民宿", "")
+
+    private fun hotelBrandFamily(option: AccommodationOption): String? {
+        val value = "${option.name} ${option.brand.orEmpty()}".lowercase()
+        return when {
+            listOf("雅高", "铂尔曼", "pullman", "诺富特", "novotel", "美居", "mercure", "宜必思", "ibis", "索菲特", "sofitel", "费尔蒙", "fairmont").any(value::contains) -> "accor"
+            listOf("希尔顿", "康莱德", "华尔道夫", "欢朋", "hilton", "conrad", "waldorf").any(value::contains) -> "hilton"
+            listOf("万豪", "喜来登", "威斯汀", "丽思卡尔顿", "艾美", "marriott", "sheraton", "westin", "ritz").any(value::contains) -> "marriott"
+            listOf("洲际", "皇冠假日", "智选假日", "英迪格", "voco", "ihg", "intercontinental").any(value::contains) -> "ihg"
+            else -> null
+        }
+    }
+
+    private fun officialWebsite(name: String, brand: String?): String? {
+        val value = "$name ${brand.orEmpty()}".lowercase()
+        return when {
+            listOf("希尔顿", "康莱德", "华尔道夫", "欢朋", "hilton", "conrad").any(value::contains) -> "https://www.hilton.com.cn/zh-CN/"
+            listOf("万豪", "喜来登", "威斯汀", "丽思卡尔顿", "艾美", "marriott", "sheraton").any(value::contains) -> "https://www.marriott.com.cn/"
+            listOf("洲际", "皇冠假日", "智选假日", "英迪格", "voco", "ihg").any(value::contains) -> "https://www.ihg.com.cn/"
+            listOf("全季", "汉庭", "桔子", "星程", "海友", "华住").any(value::contains) -> "https://www.huazhu.com/"
+            listOf("亚朵", "atour").any(value::contains) -> "https://www.atour.cn/"
+            listOf("锦江", "维也纳", "麗枫", "喆啡").any(value::contains) -> "https://www.jinjianghotels.com/"
+            else -> null
+        }
+    }
+
+    private fun hiltonBrandName(code: String?): String = when (code?.uppercase()) {
+        "WA" -> "华尔道夫"
+        "CH" -> "康莱德"
+        "LX" -> "LXR"
+        "HI" -> "希尔顿"
+        "QQ" -> "嘉悦里"
+        "DT" -> "希尔顿逸林"
+        "UP" -> "格芮精选"
+        "PY" -> "启缤精选"
+        "ES" -> "希尔顿安泊"
+        "HT", "RU" -> "希尔顿欢朋"
+        "GI" -> "希尔顿花园"
+        "HW" -> "欣庭"
+        "UA" -> "希尔顿惠庭"
+        else -> "希尔顿集团"
+    }
 
     private fun normalizedStation(value: String) = value.trim().replace(Regex("(?:省|市|自治区|特别行政区|站)$"), "").replace(" ", "").lowercase()
     private fun normalizedCity(value: String) = value.trim().replace(Regex("特别行政区|壮族自治区|回族自治区|维吾尔自治区|自治区|省|市|国际机场|机场|航站楼|T\\d+|\\s"), "")
@@ -690,6 +1066,37 @@ class DirectPricingClient {
     )
 
     companion object {
+        private const val ACCOR_ALGOLIA_APP_ID = "TEBW21BCFZ"
+        private const val ACCOR_ALGOLIA_SEARCH_KEY = "1a6f0c3b77791a299d98f6b981f2715d"
+        private const val ACCOR_BFF_API_KEY = "l7xx5b9f4a053aaf43d8bc05bcc266dd8532"
+        private const val ACCOR_BFF_ENDPOINT = "https://api.accor.com/bff/v1/graphql"
+        private const val ACCOR_HOTEL_OFFERS_QUERY = """
+            query HotelPageHot(
+              ${'$'}hotelOffersHotelId: String!, ${'$'}dateIn: Date!, ${'$'}dateOut: Date!,
+              ${'$'}nbAdults: PositiveInt!, ${'$'}childrenAges: [NonNegativeInt!],
+              ${'$'}countryMarket: String!, ${'$'}currency: String!,
+              ${'$'}offersSelectionFilters: OffersSelectionFilters,
+              ${'$'}use: BestOfferUse, ${'$'}selectionStep: Int,
+              ${'$'}concession: BestOfferConcession, ${'$'}hideMemberRate: Boolean,
+              ${'$'}selection: [OfferSelectionInput!]
+            ) {
+              hotelOffers(
+                hotelId: ${'$'}hotelOffersHotelId, dateIn: ${'$'}dateIn, dateOut: ${'$'}dateOut,
+                nbAdults: ${'$'}nbAdults, childrenAges: ${'$'}childrenAges,
+                countryMarket: ${'$'}countryMarket, currency: ${'$'}currency,
+                use: ${'$'}use, concession: ${'$'}concession, hideMemberRate: ${'$'}hideMemberRate
+              ) {
+                offersSelection(selectionStep: ${'$'}selectionStep, filters: ${'$'}offersSelectionFilters, selection: ${'$'}selection) {
+                  offers {
+                    accommodation { code }
+                    pricing { main { amount simplifiedPolicies { cancellation { label } } } }
+                    mealPlan { label }
+                  }
+                }
+                availability { status }
+              }
+            }
+        """
         private val airportCodes = linkedMapOf(
             "苏南硕放" to "WUX", "上海虹桥" to "SHA", "上海浦东" to "SHA", "北京大兴" to "BJS", "北京首都" to "BJS",
             "成都天府" to "CTU", "成都双流" to "CTU", "西双版纳" to "JHG", "香格里拉" to "DIG", "乌鲁木齐" to "URC",

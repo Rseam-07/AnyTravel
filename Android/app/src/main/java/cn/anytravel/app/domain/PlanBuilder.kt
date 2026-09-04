@@ -35,7 +35,7 @@ class PlanBuilder {
         val days = buildDays(draft, orderedPlaces, selectedPlaceIDs, pack.center)
         val accommodations = buildAccommodations(draft, pack, days)
         val selectedAccommodation = accommodations.firstOrNull()
-        val transports = buildTransports(draft, pack.accessPoints, selectedAccommodation)
+        val transports = if (draft.skipTransport) emptyList() else buildTransports(draft, pack.accessPoints, selectedAccommodation)
         val selectedTransport = transports.firstOrNull()
         return CompletePlan(
             draft = draft,
@@ -74,6 +74,51 @@ class PlanBuilder {
             selectedTransportId = id,
             expenses = buildExpenses(plan.draft, plan.selectedAccommodation, transport)
         )
+    }
+
+    fun updateItinerary(
+        plan: CompletePlan,
+        updatedDays: List<ItineraryDay>,
+        note: String
+    ): CompletePlan {
+        val tripStart = runCatching { LocalDate.parse(plan.draft.startDate) }.getOrNull()
+        val days = updatedDays.mapIndexed { index, day ->
+            val stops = day.stops.distinctBy { normalizedPlaceName(it.name) }
+            ItineraryDay(
+                index = index,
+                stops = stops,
+                schedule = buildSchedule(
+                    dayIndex = index,
+                    stops = stops,
+                    pace = plan.draft.pace,
+                    localTravelMode = plan.draft.localTravelMode,
+                    hasAccommodation = !plan.draft.skipAccommodation,
+                    selectedPlaceIDs = plan.selectedPlaceIDs,
+                    plannedDate = tripStart?.plusDays(index.toLong())
+                )
+            )
+        }
+        val remainingIDs = days.flatMap { it.stops }.mapTo(mutableSetOf()) { it.id }
+        val referenceCoordinates = days.flatMap { it.stops }.map { it.coordinate }
+        val accommodations = plan.accommodations.map { option ->
+            val average = referenceCoordinates.takeIf { it.isNotEmpty() }
+                ?.map { it.distanceTo(option.coordinate) }
+                ?.average()?.roundToInt()
+                ?: option.averageAttractionDistanceMeters
+            option.copy(averageAttractionDistanceMeters = average)
+        }
+        val expectedSegments = days.sumOf { (it.stops.size - 1).coerceAtLeast(0) }
+        var revised = plan.copy(
+            days = days,
+            accommodations = accommodations,
+            routeSegments = emptyList(),
+            failedRouteSegmentCount = expectedSegments,
+            routeIsSchematic = true,
+            selectedPlaceIDs = plan.selectedPlaceIDs.intersect(remainingIDs),
+            planningNotes = (plan.planningNotes + note).takeLast(24)
+        )
+        plan.selectedAccommodationId?.let { id -> revised = selectAccommodation(revised, id) }
+        return revised
     }
 
     fun mergeLiveData(
@@ -410,16 +455,20 @@ class PlanBuilder {
                 coordinate = seed.coordinate,
                 averageAttractionDistanceMeters = average,
                 hubDistanceMeters = hubDistance,
-                quotes = listOf(
-                    PriceQuote("携程", unit = QuoteUnit.PER_NIGHT, kind = QuoteKind.CHECK_ON_PROVIDER, bookingURL = "https://hotels.ctrip.com/hotels/list?city=14&searchWord=$encoded", note = "选择日期与房型后核价"),
-                    PriceQuote("去哪儿", unit = QuoteUnit.PER_NIGHT, kind = QuoteKind.CHECK_ON_PROVIDER, bookingURL = "https://hotel.qunar.com/", note = "选择日期与房型后核价"),
-                    PriceQuote("RollingGo", unit = QuoteUnit.PER_NIGHT, kind = QuoteKind.CHECK_ON_PROVIDER, note = "配置开源报价节点后刷新")
-                ),
+                quotes = buildList {
+                    add(PriceQuote("携程", unit = QuoteUnit.PER_NIGHT, kind = QuoteKind.CHECK_ON_PROVIDER, bookingURL = "https://hotels.ctrip.com/hotels/list?city=14&searchWord=$encoded", note = "选择日期与房型后核价"))
+                    add(PriceQuote("去哪儿", unit = QuoteUnit.PER_NIGHT, kind = QuoteKind.CHECK_ON_PROVIDER, bookingURL = "https://hotel.qunar.com/", note = "选择日期与房型后核价"))
+                    add(PriceQuote("RollingGo", unit = QuoteUnit.PER_NIGHT, kind = QuoteKind.CHECK_ON_PROVIDER, note = "正在读取所选日期报价"))
+                    officialWebsite(seed.name)?.let { url ->
+                        add(PriceQuote("住宿官网", unit = QuoteUnit.PER_NIGHT, kind = QuoteKind.CHECK_ON_PROVIDER, bookingURL = url, note = "前往品牌官网复核所选日期"))
+                    }
+                },
                 recommendationReasons = listOf(
                     "到已选景点平均${average.distanceText()}",
                     railHub?.let { "${it.name}到酒店${hubDistance.distanceText()}" } ?: "等待枢纽距离"
                 ),
-                isRecommended = false
+                isRecommended = false,
+                officialWebsiteURL = officialWebsite(seed.name)
             )
         }.sortedBy { it.averageAttractionDistanceMeters * 0.7 + it.hubDistanceMeters * 0.3 }
             .mapIndexed { index, option -> option.copy(isRecommended = index == 0) }
@@ -650,6 +699,7 @@ class PlanBuilder {
                     starRating = option.starRating ?: current.starRating,
                     guestRating = option.guestRating ?: current.guestRating,
                     imageURL = option.imageURL ?: current.imageURL,
+                    officialWebsiteURL = option.officialWebsiteURL ?: current.officialWebsiteURL,
                     amenities = (current.amenities + option.amenities).distinct().take(12),
                     tags = (current.tags + option.tags).distinct().take(10),
                     sources = (current.sources + option.sources).distinct()
@@ -697,6 +747,19 @@ class PlanBuilder {
         .replace("民宿", "")
         .replace(Regex("[\\s()（）·—_-]"), "")
 
+    private fun officialWebsite(name: String): String? {
+        val value = name.lowercase()
+        return when {
+            listOf("希尔顿", "康莱德", "华尔道夫", "欢朋", "hilton", "conrad").any(value::contains) -> "https://www.hilton.com.cn/zh-CN/"
+            listOf("万豪", "喜来登", "威斯汀", "丽思卡尔顿", "艾美", "marriott", "sheraton").any(value::contains) -> "https://www.marriott.com.cn/"
+            listOf("洲际", "皇冠假日", "智选假日", "英迪格", "voco", "ihg").any(value::contains) -> "https://www.ihg.com.cn/"
+            listOf("全季", "汉庭", "桔子", "星程", "海友", "华住").any(value::contains) -> "https://www.huazhu.com/"
+            listOf("亚朵", "atour").any(value::contains) -> "https://www.atour.cn/"
+            listOf("锦江", "维也纳", "麗枫", "喆啡").any(value::contains) -> "https://www.jinjianghotels.com/"
+            else -> null
+        }
+    }
+
     private fun timeRange(start: Int, end: Int): String = "${clock(start)}–${clock(end)}"
 
     private fun clock(minutes: Int): String {
@@ -719,14 +782,14 @@ class PlanBuilder {
         val rooms = ((draft.travelers + 1) / 2).coerceAtLeast(1)
         val liveHotel = accommodation?.quotes?.filter { it.kind == QuoteKind.LIVE }?.minByOrNull { it.amountCNY ?: Int.MAX_VALUE }
         val liveTransport = transport?.quotes?.filter { it.kind == QuoteKind.LIVE }?.minByOrNull { it.amountCNY ?: Int.MAX_VALUE }
-        val transportAmount = liveTransport?.amountCNY?.let { amount ->
+        val transportAmount = if (draft.skipTransport) 0 else liveTransport?.amountCNY?.let { amount ->
             if (liveTransport.unit == QuoteUnit.PER_PERSON) amount * draft.travelers else amount
         } ?: (totalBudget * 0.24).roundToInt()
         val hotelAmount = if (draft.skipAccommodation) 0 else liveHotel?.amountCNY?.let { amount ->
             if (liveHotel.unit == QuoteUnit.TOTAL) amount else amount * draft.nights * rooms
         } ?: (totalBudget * 0.34).roundToInt()
         return listOf(
-            ExpenseLine("transport", "往返大交通", liveTransport?.let { "${it.provider} · ${it.kind.title}" } ?: "先留出总预算的24%", transportAmount, if (liveTransport != null) ExpenseSource.LIVE else ExpenseSource.BUDGET),
+            ExpenseLine("transport", "往返大交通", if (draft.skipTransport) "已跳过大交通" else liveTransport?.let { "${it.provider} · ${it.kind.title}" } ?: "先留出总预算的24%", transportAmount, if (liveTransport != null) ExpenseSource.LIVE else ExpenseSource.BUDGET),
             ExpenseLine("hotel", "住宿", if (draft.skipAccommodation) "已跳过住宿" else liveHotel?.let { "${draft.nights}晚 × ${rooms}间 · ${it.provider}" } ?: "${draft.nights}晚 · 等待多渠道报价", hotelAmount, if (liveHotel != null) ExpenseSource.LIVE else ExpenseSource.BUDGET),
             ExpenseLine("tickets", "景点与预约", "逐项核价前的额度", (totalBudget * 0.13).roundToInt(), ExpenseSource.BUDGET),
             ExpenseLine("meals", "餐饮", "正餐、茶歇与不赶时间的余量", (totalBudget * 0.17).roundToInt(), ExpenseSource.BUDGET),

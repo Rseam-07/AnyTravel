@@ -58,6 +58,24 @@ class PlanBuilderTest {
     }
 
     @Test
+    fun skippingLongDistanceTransportRemovesOptionsAndItsBudgetLine() {
+        val plan = builder.build(
+            TripDraft(
+                origin = "宁波",
+                destination = "苏州",
+                skipTransport = true
+            ),
+            suzhou
+        )
+
+        assertTrue(plan.transports.isEmpty())
+        assertEquals(null, plan.selectedTransportId)
+        val transport = plan.expenses.single { it.id == "transport" }
+        assertEquals(0, transport.amountCNY)
+        assertEquals("已跳过大交通", transport.detail)
+    }
+
+    @Test
     fun regularMondayClosureMovesMuseumToAnOpenDay() {
         val plan = builder.build(
             TripDraft(
@@ -75,6 +93,33 @@ class PlanBuilderTest {
             plan.days.flatMap { it.stops }.map { it.id }.toSet(),
             plan.days.flatMap { it.schedule }.mapNotNull { it.placeId }.toSet()
         )
+    }
+
+    @Test
+    fun itineraryEditRebuildsSchedulesWithoutDuplicatingPlaces() {
+        val plan = builder.build(
+            TripDraft(destination = "苏州", dayCount = 3, pace = TripPace.RELAXED),
+            suzhou
+        )
+        val moved = plan.days.first().stops.first()
+        val editedDays = plan.days.mapIndexed { index, day ->
+            when (index) {
+                0 -> day.copy(stops = day.stops.drop(1))
+                1 -> day.copy(stops = day.stops + moved)
+                else -> day
+            }
+        }
+
+        val updated = builder.updateItinerary(plan, editedDays, "把${moved.name}移到第二天")
+
+        assertEquals(1, updated.days.flatMap { it.stops }.count { it.id == moved.id })
+        assertEquals(updated.days[1].stops.last().id, moved.id)
+        assertEquals(
+            updated.days.flatMap { it.stops }.map { it.id }.toSet(),
+            updated.days.flatMap { it.schedule }.mapNotNull { it.placeId }.toSet()
+        )
+        assertTrue(updated.routeIsSchematic)
+        assertTrue(updated.planningNotes.last().contains(moved.name))
     }
 
     @Test

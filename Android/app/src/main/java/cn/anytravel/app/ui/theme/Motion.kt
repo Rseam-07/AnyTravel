@@ -10,16 +10,16 @@ object AnyTravelMotion {
     fun <T> snappy() = if (LocalReduceMotion.current) {
         tween<T>(durationMillis = 120)
     } else {
-        spring<T>(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
+        spring<T>(dampingRatio = 0.88f, stiffness = Spring.StiffnessMedium)
     }
 
     @Composable
     fun <T> settle() = if (LocalReduceMotion.current) {
         tween<T>(durationMillis = 160)
     } else {
-        spring<T>(dampingRatio = 0.84f, stiffness = Spring.StiffnessLow)
+        spring<T>(dampingRatio = 0.92f, stiffness = Spring.StiffnessLow)
     }
 
     @Composable
-    fun routeDuration(): Int = if (LocalReduceMotion.current) 0 else 850
+    fun routeDuration(): Int = if (LocalReduceMotion.current) 0 else 560
 }

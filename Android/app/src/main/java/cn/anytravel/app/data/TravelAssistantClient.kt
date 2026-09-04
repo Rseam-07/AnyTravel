@@ -50,6 +50,8 @@ data class TravelAssistantContext(
     val startDate: String?,
     val endDate: String?,
     val longDistanceMode: String?,
+    val skipAccommodation: Boolean,
+    val skipTransport: Boolean,
     val accommodationMaxNightlyPrice: Int? = null,
     val accommodationSort: String = "recommended"
 ) {
@@ -78,7 +80,9 @@ data class TravelAssistantContext(
                 travelers = draft.travelers.coerceIn(1, 8),
                 startDate = start?.toString(),
                 endDate = start?.plusDays((draft.dayCount - 1).coerceAtLeast(0).toLong())?.toString(),
-                longDistanceMode = draft.preferredLongDistanceMode?.name?.lowercase()
+                longDistanceMode = draft.preferredLongDistanceMode?.name?.lowercase(),
+                skipAccommodation = draft.skipAccommodation,
+                skipTransport = draft.skipTransport
             )
         }
     }
@@ -197,7 +201,7 @@ class TravelAssistantClient {
             doOutput = true
             setRequestProperty("Accept", "application/json")
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
-            setRequestProperty("User-Agent", "AnyTravel-Android/0.8 (+https://github.com/Rseam-07/AnyTravel)")
+            setRequestProperty("User-Agent", "AnyTravel-Android/0.8.1 (+https://github.com/Rseam-07/AnyTravel)")
             if (!apiKey.isNullOrBlank()) setRequestProperty("Authorization", "Bearer $apiKey")
         }
         try {
@@ -242,6 +246,7 @@ class TravelAssistantClient {
                 "set_pace" -> value.takeIf { it in setOf("relaxed", "balanced", "full") }
                 "set_travel_mode" -> value.takeIf { it in setOf("walking", "transit", "driving") }
                 "set_long_distance_mode" -> value.takeIf { it in setOf("auto", "train", "flight", "driving", "coach") }
+                "set_skip_accommodation", "set_skip_transport" -> value.lowercase().takeIf { it in setOf("true", "false") }
                 "set_day_count" -> value.toIntOrNull()?.coerceIn(1, 7)?.toString()
                 "set_travelers" -> value.toIntOrNull()?.coerceIn(1, 8)?.toString()
                 "set_budget" -> value.toIntOrNull()?.coerceIn(1_000, 30_000)?.toString()
@@ -272,7 +277,7 @@ class TravelAssistantClient {
         private val systemPrompt = """
             你是 AnyTravel 的旅行意图控制器。用户可以用完全自由的中文开始或修改旅行。只返回 JSON：
             {"reply":"简洁、温暖、略有诗意的中文回应","actions":[{"type":"动作","value":"值"}]}
-            允许动作：set_destination、set_origin、set_day_count(1...7)、set_travelers(1...8)、set_budget(1000...30000)、set_pace(relaxed|balanced|full)、set_travel_mode(walking|transit|driving)、set_long_distance_mode(auto|train|flight|driving|coach)、set_start_date/set_end_date(yyyy-MM-dd)、set_accommodation_max_price(100...10000)、set_accommodation_sort(recommended|lowestPrice|closestToAttractions|closestToTransit)、add_interest/remove_interest(gardens|culture|food|nature|family|night)、generate_plan(true|false)、focus_place/remove_place（地点名必须来自 context.places）。
+            允许动作：set_destination、set_origin、set_day_count(1...7)、set_travelers(1...8)、set_budget(1000...30000)、set_pace(relaxed|balanced|full)、set_travel_mode(walking|transit|driving)、set_long_distance_mode(auto|train|flight|driving|coach)、set_skip_accommodation/set_skip_transport(true|false)、set_start_date/set_end_date(yyyy-MM-dd)、set_accommodation_max_price(100...10000)、set_accommodation_sort(recommended|lowestPrice|closestToAttractions|closestToTransit)、add_interest/remove_interest(gardens|culture|food|nature|family|night)、generate_plan(true|false)、focus_place/remove_place（地点名必须来自 context.places）。
             明确要求规划时返回 generate_plan=true。不要臆造地点，不要返回链接、代码或额外字段；无法安全执行时 actions 为空。回复不超过 120 个汉字。
         """.trimIndent()
     }

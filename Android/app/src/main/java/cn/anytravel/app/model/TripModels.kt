@@ -1,5 +1,6 @@
 package cn.anytravel.app.model
 
+import androidx.compose.runtime.Immutable
 import java.time.LocalDate
 import java.util.UUID
 import kotlinx.serialization.Serializable
@@ -9,6 +10,7 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 @Serializable
+@Immutable
 data class Coordinate(val latitude: Double, val longitude: Double) {
     fun distanceTo(other: Coordinate): Double {
         val earthRadius = 6_371_000.0
@@ -54,6 +56,7 @@ enum class LongDistanceMode(val title: String) {
 }
 
 @Serializable
+@Immutable
 data class TripDraft(
     val origin: String = "上海",
     val destination: String = "苏州",
@@ -65,12 +68,14 @@ data class TripDraft(
     val pace: TripPace = TripPace.RELAXED,
     val localTravelMode: LocalTravelMode = LocalTravelMode.WALKING,
     val preferredLongDistanceMode: LongDistanceMode? = null,
-    val skipAccommodation: Boolean = false
+    val skipAccommodation: Boolean = false,
+    val skipTransport: Boolean = false
 ) {
     val nights: Int get() = if (skipAccommodation) 0 else (dayCount - 1).coerceAtLeast(1)
 }
 
 @Serializable
+@Immutable
 data class TravelPlace(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
@@ -85,6 +90,7 @@ data class TravelPlace(
 )
 
 @Serializable
+@Immutable
 data class ScheduleItem(
     val id: String,
     val timeText: String,
@@ -94,6 +100,7 @@ data class ScheduleItem(
 )
 
 @Serializable
+@Immutable
 data class ItineraryDay(
     val index: Int,
     val stops: List<TravelPlace>,
@@ -101,6 +108,19 @@ data class ItineraryDay(
 ) {
     val title: String get() = "第 ${index + 1} 天"
 }
+
+@Serializable
+@Immutable
+data class RouteSegment(
+    val id: String,
+    val dayIndex: Int,
+    val fromPlaceID: String,
+    val toPlaceID: String,
+    val coordinates: List<Coordinate>,
+    val distanceMeters: Int,
+    val durationMinutes: Int,
+    val source: String
+)
 
 @Serializable
 enum class QuoteKind(val title: String) {
@@ -118,6 +138,7 @@ enum class QuoteUnit(val title: String) {
 }
 
 @Serializable
+@Immutable
 data class PriceQuote(
     val provider: String,
     val amountCNY: Int? = null,
@@ -129,10 +150,16 @@ data class PriceQuote(
     val displayPriceText: String? = null,
     val sourceLabel: String? = null,
     val totalAmountCNY: Int? = null,
+    val roomName: String? = null,
+    val bedType: String? = null,
+    val mealPlan: String? = null,
+    val cancellationPolicy: String? = null,
+    val taxesIncluded: Boolean? = null,
     val availability: String? = null
 )
 
 @Serializable
+@Immutable
 data class AccommodationOption(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
@@ -147,12 +174,14 @@ data class AccommodationOption(
     val starRating: Double? = null,
     val guestRating: Double? = null,
     val imageURL: String? = null,
+    val officialWebsiteURL: String? = null,
     val amenities: List<String> = emptyList(),
     val tags: List<String> = emptyList(),
     val sources: List<String> = emptyList()
 )
 
 @Serializable
+@Immutable
 data class AccessPoint(
     val name: String,
     val kind: LongDistanceMode,
@@ -166,6 +195,7 @@ enum class TransportDirection(val title: String) {
 }
 
 @Serializable
+@Immutable
 data class TransportOption(
     val id: String = UUID.randomUUID().toString(),
     val mode: LongDistanceMode,
@@ -190,6 +220,7 @@ enum class ExpenseSource(val title: String) {
 }
 
 @Serializable
+@Immutable
 data class ExpenseLine(
     val id: String,
     val title: String,
@@ -199,6 +230,7 @@ data class ExpenseLine(
 )
 
 @Serializable
+@Immutable
 data class DestinationPack(
     val canonicalName: String,
     val center: Coordinate,
@@ -209,6 +241,7 @@ data class DestinationPack(
 )
 
 @Serializable
+@Immutable
 data class AccommodationSeed(
     val name: String,
     val address: String,
@@ -216,6 +249,7 @@ data class AccommodationSeed(
 )
 
 @Serializable
+@Immutable
 data class CompletePlan(
     val id: String = UUID.randomUUID().toString(),
     val createdAt: String = java.time.Instant.now().toString(),
@@ -229,6 +263,8 @@ data class CompletePlan(
     val expenses: List<ExpenseLine>,
     val sourceNote: String,
     val routeIsSchematic: Boolean = true,
+    val routeSegments: List<RouteSegment> = emptyList(),
+    val failedRouteSegmentCount: Int = 0,
     val selectedPlaceIDs: Set<String> = emptySet(),
     val planningNotes: List<String> = emptyList()
 ) {

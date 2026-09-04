@@ -1,6 +1,8 @@
 import { CtripAdapter } from "./adapters/ctrip.mjs";
 import { CtripFlightAdapter } from "./adapters/ctrip-flight.mjs";
+import { AccorOfficialAdapter } from "./adapters/accor-official.mjs";
 import { ElongHotelAdapter } from "./adapters/elong.mjs";
+import { HiltonOfficialAdapter } from "./adapters/hilton-official.mjs";
 import { OneBoundCtripAdapter } from "./adapters/onebound-ctrip.mjs";
 import { RollingGoAdapter } from "./adapters/rollinggo.mjs";
 import { Railway12306Adapter } from "./adapters/railway12306.mjs";
@@ -13,11 +15,17 @@ import { mergeTransportOptions } from "./lib/transport-merge.mjs";
 
 const cache = new Map();
 const rollingGoAdapter = new RollingGoAdapter();
+const accorOfficialAdapter = new AccorOfficialAdapter();
 const ctripAdapter = new CtripAdapter();
 const tongchengAdapter = new TongchengAdapter();
-const adapters = [rollingGoAdapter, ctripAdapter, tongchengAdapter];
+const hiltonOfficialAdapter = new HiltonOfficialAdapter();
+// Keep RollingGo first so its selected-date inventory remains the preferred
+// quote when more than one channel returns the same hotel and price.
+const adapters = [rollingGoAdapter, accorOfficialAdapter, ctripAdapter, tongchengAdapter, hiltonOfficialAdapter];
 const catalogAdapters = [
   rollingGoAdapter,
+  accorOfficialAdapter,
+  hiltonOfficialAdapter,
   ctripAdapter,
   tongchengAdapter,
   new OneBoundCtripAdapter(),

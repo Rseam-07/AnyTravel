@@ -32,5 +32,6 @@ Android/local.properties
 Android/secrets.properties
 Android/**/build/
 Android/.kotlin/
+Android/diagnostics/
 .gradle-user-home/
 *.iml

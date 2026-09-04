@@ -41,7 +41,6 @@ struct PlannerPanel: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .anyTravelGlassCard(cornerRadius: 31)
         .animation(AnyTravelMotion.settle(reduceMotion: reduceMotion), value: model.phase)
-        .animation(AnyTravelMotion.settle(reduceMotion: reduceMotion), value: panelDetent)
     }
 
     private var handle: some View {
@@ -674,7 +673,6 @@ struct PlannerPanel: View {
             }
         }
         .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: model.planMapFocus)
-        .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: panelDetent)
     }
 
     private var planSectionTabs: some View {

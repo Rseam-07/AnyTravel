@@ -37,6 +37,8 @@ struct PricingProviderIssue: Hashable, Sendable {
     private var providerDisplayName: String {
         switch provider.lowercased() {
         case "rollinggo": "道旅 RollingGo"
+        case "accor-official": "雅高集团官网"
+        case "hilton-official": "希尔顿官网"
         case "ctrip", "ctrip-flight": "携程"
         case "onebound-ctrip": "万邦携程目录"
         case "elong-open-api": "艺龙开放平台"
@@ -216,7 +218,8 @@ struct PricingBackendClient {
                     id: $0.id,
                     name: $0.name,
                     latitude: $0.coordinate.latitude,
-                    longitude: $0.coordinate.longitude
+                    longitude: $0.coordinate.longitude,
+                    officialWebsiteURL: $0.officialWebsiteURL
                 )
             }
         )
@@ -659,6 +662,8 @@ struct PricingBackendClient {
         case "elong-open-api": "艺龙开放平台"
         case "qunar-session": "登录会话"
         case "rollinggo": "RollingGo"
+        case "accor-official": "雅高集团官网"
+        case "hilton-official": "希尔顿官网"
         case .some(let value) where !value.isEmpty: value
         default: nil
         }
@@ -705,6 +710,7 @@ private struct AccommodationQuoteRequest: Codable {
         let name: String
         let latitude: Double
         let longitude: Double
+        let officialWebsiteURL: URL?
     }
 
     let destination: String
@@ -918,7 +924,7 @@ private extension TravelProvider {
         case "skyscanner": self = .skyscanner
         case "rollinggo", "dida": self = .rollingGo
         case "12306", "railway12306": self = .railway12306
-        case "official", "propertyofficial": self = .propertyOfficial
+        case "official", "propertyofficial", "hilton-official", "accor-official": self = .propertyOfficial
         default: return nil
         }
     }

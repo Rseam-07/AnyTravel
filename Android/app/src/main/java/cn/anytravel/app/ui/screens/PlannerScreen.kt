@@ -1,6 +1,8 @@
 package cn.anytravel.app.ui.screens
 
 import android.content.Intent
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.core.net.toUri
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -8,7 +10,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
@@ -48,14 +53,20 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.AltRoute
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.Launch
+import androidx.compose.material.icons.automirrored.rounded.Redo
+import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.ArrowDownward
+import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Bed
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.DirectionsBus
 import androidx.compose.material.icons.rounded.EditLocationAlt
 import androidx.compose.material.icons.rounded.ExpandLess
@@ -64,13 +75,16 @@ import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.FlightTakeoff
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Payments
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Route
+import androidx.compose.material.icons.rounded.Navigation
 import androidx.compose.material.icons.rounded.Save
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Train
 import androidx.compose.material3.AssistChip
@@ -98,6 +112,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -136,10 +151,12 @@ import cn.anytravel.app.model.distanceText
 import cn.anytravel.app.model.durationText
 import cn.anytravel.app.domain.DestinationCatalog
 import cn.anytravel.app.ui.PlanTab
+import cn.anytravel.app.ui.AccommodationAmenity
 import cn.anytravel.app.ui.AccommodationSort
 import cn.anytravel.app.ui.PlannerUiState
 import cn.anytravel.app.ui.PlannerViewModel
 import cn.anytravel.app.data.AssistantProviderMode
+import cn.anytravel.app.data.PlanExportService
 import cn.anytravel.app.ui.components.PlannerMap
 import cn.anytravel.app.ui.theme.AnyTravelMotion
 import cn.anytravel.app.ui.theme.HorizonTeal
@@ -152,28 +169,28 @@ import java.time.ZoneOffset
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlannerScreen(state: PlannerUiState, viewModel: PlannerViewModel) {
-    var panelDragging by remember { mutableStateOf(false) }
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val containerHeightPx = with(LocalDensity.current) { maxHeight.toPx() }.coerceAtLeast(1f)
-        val targetHeight = maxHeight * state.panelFraction
-        val panelHeight by animateDpAsState(
-            targetValue = targetHeight,
-            animationSpec = if (panelDragging) snap() else AnyTravelMotion.settle(),
-            label = "planner panel height"
-        )
-        val dragModifier = Modifier.panelDrag(
-            onStart = { panelDragging = true },
-            onDelta = { pixels -> viewModel.resizePanelBy(-pixels / containerHeightPx) },
-            onEnd = { panelDragging = false }
-        )
+    BackHandler(
+        enabled = state.plan != null &&
+            !state.settingsVisible &&
+            !state.libraryVisible &&
+            !state.attractionPickerVisible
+    ) {
+        viewModel.returnToDraft()
+    }
+
+    Box(Modifier.fillMaxSize()) {
         PlannerMap(
             plan = state.plan,
             draftCenter = DestinationCatalog.find(state.draft.destination)?.center,
             selectedDay = state.selectedDay,
             selectedTab = state.selectedTab,
             autoCamera = state.autoCamera,
+            cameraRequestToken = state.cameraRequestToken,
+            northRequestToken = state.northRequestToken,
+            mapAppearance = state.mapAppearance,
             focusedPlaceID = state.focusedPlaceID,
             onUserGesture = viewModel::userMovedMap,
+            onMapLongPress = viewModel::addMapPin,
             modifier = Modifier.fillMaxSize()
         )
 
@@ -220,34 +237,28 @@ fun PlannerScreen(state: PlannerUiState, viewModel: PlannerViewModel) {
             )
         }
 
-        if (state.plan == null) {
-            if (state.panelFraction < 0.30f) {
-                CompactDraftPanel(
-                    state = state,
-                    onDraftChange = viewModel::updateDraft,
-                    onGenerate = viewModel::generatePlan,
-                    dragHandleModifier = dragModifier,
-                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(panelHeight)
-                )
-            } else {
-                DraftPanel(
-                    state = state,
-                    onDraftChange = viewModel::updateDraft,
-                    onGenerate = viewModel::generatePlan,
-                    dragHandleModifier = dragModifier,
-                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(panelHeight)
-                )
-            }
-        } else {
-            PlanPanel(
-                state = state,
-                viewModel = viewModel,
-                compact = state.panelFraction < 0.30f,
-                dragHandleModifier = dragModifier,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(panelHeight)
+        PlannerPanelHost(
+            state = state,
+            viewModel = viewModel,
+            modifier = Modifier.fillMaxSize()
+        )
+
+        AnimatedVisibility(
+            visible = state.panelFraction < 0.85f,
+            enter = slideInHorizontally { it } + fadeIn(),
+            exit = slideOutHorizontally { it } + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(top = 84.dp, end = 14.dp)
+        ) {
+            MapActionRail(
+                autoCamera = state.autoCamera,
+                mapAppearanceTitle = state.mapAppearance.title,
+                onRoute = viewModel::resumeAutoCamera,
+                onAddPlace = viewModel::beginMapPinSelection,
+                onStyle = viewModel::cycleMapAppearance,
+                onNorth = viewModel::orientMapNorth
             )
         }
 
@@ -284,6 +295,126 @@ fun PlannerScreen(state: PlannerUiState, viewModel: PlannerViewModel) {
             onSkip = viewModel::skipAttractionSelection,
             onDismiss = viewModel::dismissAttractionSelection
         )
+    }
+}
+
+@Composable
+private fun MapActionRail(
+    autoCamera: Boolean,
+    mapAppearanceTitle: String,
+    onRoute: () -> Unit,
+    onAddPlace: () -> Unit,
+    onStyle: () -> Unit,
+    onNorth: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        MapActionButton(
+            icon = Icons.Rounded.LocationOn,
+            description = if (autoCamera) "重新聚焦当前路线" else "回到当前路线",
+            onClick = onRoute
+        )
+        MapActionButton(
+            icon = Icons.Rounded.Add,
+            description = "从地图添加当前日停靠点",
+            onClick = onAddPlace
+        )
+        MapActionButton(
+            icon = Icons.Rounded.Layers,
+            description = "切换地图样式，当前为$mapAppearanceTitle",
+            onClick = onStyle
+        )
+        MapActionButton(
+            icon = Icons.Rounded.Navigation,
+            description = "地图回到北向",
+            onClick = onNorth
+        )
+    }
+}
+
+@Composable
+private fun MapActionButton(icon: ImageVector, description: String, onClick: () -> Unit) {
+    Surface(
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+        tonalElevation = 8.dp,
+        shadowElevation = 10.dp
+    ) {
+        IconButton(onClick = onClick, modifier = Modifier.size(50.dp)) {
+            Icon(icon, contentDescription = description)
+        }
+    }
+}
+
+/**
+ * Keeps high-frequency drag state below the map composition boundary. A finger
+ * can track the panel one-to-one without rebuilding the native map on every
+ * pointer sample; the ViewModel receives only the final resting height.
+ */
+@Composable
+private fun PlannerPanelHost(
+    state: PlannerUiState,
+    viewModel: PlannerViewModel,
+    modifier: Modifier = Modifier
+) {
+    var panelDragging by remember { mutableStateOf(false) }
+    var livePanelFraction by remember { mutableStateOf<Float?>(null) }
+
+    BoxWithConstraints(modifier) {
+        val containerHeightPx = with(LocalDensity.current) { maxHeight.toPx() }.coerceAtLeast(1f)
+        val displayedFraction = livePanelFraction ?: state.panelFraction
+        val panelHeight by animateDpAsState(
+            targetValue = maxHeight * displayedFraction,
+            animationSpec = if (panelDragging) snap() else AnyTravelMotion.settle(),
+            label = "planner panel height"
+        )
+        val dragModifier = Modifier.panelDrag(
+            onStart = {
+                panelDragging = true
+                livePanelFraction = state.panelFraction
+            },
+            onDelta = { pixels ->
+                val current = livePanelFraction ?: state.panelFraction
+                livePanelFraction = (current - pixels / containerHeightPx).coerceIn(0.18f, 0.94f)
+            },
+            onEnd = {
+                livePanelFraction?.let(viewModel::resizePanel)
+                panelDragging = false
+                livePanelFraction = null
+            }
+        )
+        val compact = displayedFraction < 0.30f
+        val panelModifier = Modifier
+            .align(Alignment.BottomCenter)
+            .fillMaxWidth()
+            .height(panelHeight)
+
+        if (state.plan == null) {
+            if (compact) {
+                CompactDraftPanel(
+                    state = state,
+                    onDraftChange = viewModel::updateDraft,
+                    onGenerate = viewModel::generatePlan,
+                    dragHandleModifier = dragModifier,
+                    modifier = panelModifier
+                )
+            } else {
+                DraftPanel(
+                    state = state,
+                    onDraftChange = viewModel::updateDraft,
+                    onGenerate = viewModel::generatePlan,
+                    dragHandleModifier = dragModifier,
+                    modifier = panelModifier
+                )
+            }
+        } else {
+            PlanPanel(
+                state = state,
+                viewModel = viewModel,
+                compact = compact,
+                dragHandleModifier = dragModifier,
+                modifier = panelModifier
+            )
+        }
     }
 }
 
@@ -567,6 +698,22 @@ private fun DraftPanel(
                 }
             }
             item {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("这次不安排大交通", style = MaterialTheme.typography.titleMedium)
+                        Text("适合当地集合，或只规划市内脚步", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(
+                        checked = state.draft.skipTransport,
+                        onCheckedChange = { checked -> onDraftChange { it.copy(skipTransport = checked) } }
+                    )
+                }
+            }
+            item {
                 Button(
                     onClick = onGenerate,
                     modifier = Modifier.fillMaxWidth().height(58.dp).testTag("generate-plan"),
@@ -634,6 +781,7 @@ private fun PlanPanel(
     modifier: Modifier = Modifier
 ) {
     val plan = state.plan ?: return
+    val context = LocalContext.current
     Surface(
         modifier = modifier.navigationBarsPadding(),
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
@@ -689,22 +837,53 @@ private fun PlanPanel(
                     label = { Text(if (state.isRefreshing) "正在问价" else "刷新价格") },
                     leadingIcon = { Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp)) }
                 )
+                AssistChip(
+                    onClick = viewModel::editAttractions,
+                    label = { Text("重选景点") },
+                    leadingIcon = { Icon(Icons.Rounded.EditLocationAlt, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                )
+                AssistChip(
+                    onClick = { sharePlan(context, plan) },
+                    label = { Text("分享方案") },
+                    leadingIcon = { Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                )
+                AssistChip(
+                    onClick = { sharePDF(context, plan) },
+                    label = { Text("导出 PDF") },
+                    leadingIcon = { Icon(Icons.Rounded.Description, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                )
+                AssistChip(
+                    onClick = { shareCalendar(context, plan) },
+                    label = { Text("加入日历") },
+                    leadingIcon = { Icon(Icons.Rounded.CalendarMonth, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                )
             }
             if (state.isRefreshing) LinearProgressIndicator(Modifier.fillMaxWidth())
 
             AnimatedContent(
                 targetState = state.selectedTab,
                 modifier = Modifier.weight(1f),
+                transitionSpec = {
+                    val direction = if (targetState.ordinal >= initialState.ordinal) 1 else -1
+                    (slideInHorizontally { it * direction / 5 } + fadeIn(tween(180))) togetherWith
+                        (slideOutHorizontally { -it * direction / 5 } + fadeOut(tween(140)))
+                },
                 label = "plan tabs"
             ) { tab ->
                 when (tab) {
-                    PlanTab.DAYS -> DaysContent(plan, state.selectedDay, viewModel::selectDay)
+                    PlanTab.DAYS -> DaysContent(state, viewModel)
                     PlanTab.STAYS -> StaysContent(
                         plan = plan,
                         priceCeiling = state.accommodationMaxNightlyPrice,
                         sort = state.accommodationSort,
+                        minimumRating = state.accommodationMinimumRating,
+                        maximumDistanceMeters = state.accommodationMaximumAttractionDistanceMeters,
+                        amenity = state.accommodationAmenity,
                         onPriceCeiling = viewModel::setAccommodationPriceCeiling,
                         onSort = viewModel::setAccommodationSort,
+                        onMinimumRating = viewModel::setAccommodationMinimumRating,
+                        onMaximumDistance = viewModel::setAccommodationMaximumDistance,
+                        onAmenity = viewModel::setAccommodationAmenity,
                         onSelect = viewModel::selectAccommodation
                     )
                     PlanTab.TRANSPORT -> TransportContent(plan, viewModel::selectTransport)
@@ -759,18 +938,126 @@ private fun CompactPlanBar(state: PlannerUiState, viewModel: PlannerViewModel, d
 }
 
 @Composable
-private fun DaysContent(plan: CompletePlan, selectedDay: Int, onSelectDay: (Int) -> Unit) {
+private fun DaysContent(state: PlannerUiState, viewModel: PlannerViewModel) {
+    val plan = state.plan ?: return
+    val selectedDay = state.selectedDay
     val day = plan.days.getOrNull(selectedDay) ?: plan.days.firstOrNull()
+    val dayStops = day?.stops.orEmpty()
+    var editing by remember(plan.id, selectedDay) { mutableStateOf(false) }
     LazyColumn(contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(plan.days) { item ->
-                    FilterChip(selected = item.index == selectedDay, onClick = { onSelectDay(item.index) }, label = { Text(item.title) })
+                items(plan.days, key = { it.index }) { item ->
+                    FilterChip(selected = item.index == selectedDay, onClick = { viewModel.selectDay(item.index) }, label = { Text(item.title) })
                 }
             }
         }
-        if (plan.routeIsSchematic) {
-            item { DataBoundaryCard("地图上的彩色线段表示游览顺序；Android 首版尚未取得逐路段导航几何，实际道路请用导航页复核。") }
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("当天脚步", style = MaterialTheme.typography.titleMedium)
+                    Text("调整顺序或跨天移动后，路线与时间会自动重算", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                IconButton(
+                    onClick = viewModel::undoItineraryEdit,
+                    enabled = state.canUndoItinerary,
+                    modifier = Modifier.size(48.dp)
+                ) { Icon(Icons.AutoMirrored.Rounded.Undo, contentDescription = "撤销行程修改") }
+                IconButton(
+                    onClick = viewModel::redoItineraryEdit,
+                    enabled = state.canRedoItinerary,
+                    modifier = Modifier.size(48.dp)
+                ) { Icon(Icons.AutoMirrored.Rounded.Redo, contentDescription = "重做行程修改") }
+                TextButton(onClick = { editing = !editing }, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text(if (editing) "收起" else "编辑")
+                }
+            }
+        }
+        item {
+            AnimatedVisibility(
+                visible = editing,
+                enter = slideInVertically { -it / 5 } + fadeIn(tween(180)),
+                exit = slideOutVertically { -it / 5 } + fadeOut(tween(130))
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(22.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f)
+                ) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        dayStops.forEachIndexed { index, place ->
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)
+                            ) {
+                                Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            "${index + 1}",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = MaterialTheme.colorScheme.onPrimary,
+                                            modifier = Modifier
+                                                .background(MaterialTheme.colorScheme.primary, CircleShape)
+                                                .padding(horizontal = 9.dp, vertical = 5.dp)
+                                        )
+                                        Text(
+                                            place.name,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            modifier = Modifier.weight(1f).padding(start = 10.dp),
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.End,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        IconButton(
+                                            onClick = { viewModel.movePlaceWithinDay(selectedDay, place.id, -1) },
+                                            enabled = index > 0,
+                                            modifier = Modifier.size(44.dp)
+                                        ) { Icon(Icons.Rounded.ArrowUpward, contentDescription = "把${place.name}提前") }
+                                        IconButton(
+                                            onClick = { viewModel.movePlaceWithinDay(selectedDay, place.id, 1) },
+                                            enabled = index < dayStops.lastIndex,
+                                            modifier = Modifier.size(44.dp)
+                                        ) { Icon(Icons.Rounded.ArrowDownward, contentDescription = "把${place.name}延后") }
+                                        IconButton(
+                                            onClick = { viewModel.movePlaceToAdjacentDay(selectedDay, place.id, -1) },
+                                            enabled = selectedDay > 0,
+                                            modifier = Modifier.size(44.dp)
+                                        ) { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, contentDescription = "把${place.name}移到前一天") }
+                                        IconButton(
+                                            onClick = { viewModel.movePlaceToAdjacentDay(selectedDay, place.id, 1) },
+                                            enabled = selectedDay < plan.days.lastIndex,
+                                            modifier = Modifier.size(44.dp)
+                                        ) { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = "把${place.name}移到后一天") }
+                                        IconButton(
+                                            onClick = { viewModel.removePlace(selectedDay, place.id) },
+                                            modifier = Modifier.size(44.dp)
+                                        ) { Icon(Icons.Rounded.DeleteOutline, contentDescription = "移除${place.name}", tint = TravelOrange) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            val routeMessage = when {
+                plan.routeSegments.isNotEmpty() && plan.failedRouteSegmentCount == 0 ->
+                    "彩色路线已按 OpenStreetMap / Valhalla 的道路几何展开；出发前仍请用实时导航复核封路与交通变化。"
+                plan.routeSegments.isNotEmpty() ->
+                    "已取得部分道路路线；另有 ${plan.failedRouteSegmentCount} 段暂以浅色直线表示，请在出发前用实时导航复核。"
+                plan.draft.localTravelMode == LocalTravelMode.TRANSIT ->
+                    "公交优先方案保留游览顺序与换乘时间预算；当前开放路线源在国内不提供可靠公交时刻，地图暂以浅色直线示意。"
+                plan.failedRouteSegmentCount > 0 ->
+                    "道路路线暂时没有返回，地图以浅色直线保留游览顺序；网络恢复后可再次刷新。"
+                else ->
+                    "正在把景点之间的真实道路铺到地图上。"
+            }
+            DataBoundaryCard(routeMessage)
         }
         day?.schedule?.let { schedule ->
             items(schedule, key = { it.id }) { item ->
@@ -795,8 +1082,14 @@ private fun StaysContent(
     plan: CompletePlan,
     priceCeiling: Int?,
     sort: AccommodationSort,
+    minimumRating: Double?,
+    maximumDistanceMeters: Int?,
+    amenity: AccommodationAmenity?,
     onPriceCeiling: (Int?) -> Unit,
     onSort: (AccommodationSort) -> Unit,
+    onMinimumRating: (Double?) -> Unit,
+    onMaximumDistance: (Int?) -> Unit,
+    onAmenity: (AccommodationAmenity?) -> Unit,
     onSelect: (String) -> Unit
 ) {
     if (plan.draft.skipAccommodation) {
@@ -805,7 +1098,12 @@ private fun StaysContent(
     }
     val filtered = plan.accommodations.filter { option ->
         val price = option.quotes.mapNotNull { it.amountCNY }.minOrNull()
-        priceCeiling?.let { ceiling -> price != null && price <= ceiling } ?: true
+        val matchesPrice = priceCeiling?.let { ceiling -> price != null && price <= ceiling } ?: true
+        val matchesRating = minimumRating?.let { floor -> (option.guestRating ?: option.starRating ?: 0.0) >= floor } ?: true
+        val matchesDistance = maximumDistanceMeters?.let { option.averageAttractionDistanceMeters <= it } ?: true
+        val searchableAmenities = (option.amenities + option.tags).joinToString(" ").lowercase()
+        val matchesAmenity = amenity?.terms?.any(searchableAmenities::contains) ?: true
+        matchesPrice && matchesRating && matchesDistance && matchesAmenity
     }.sortedWith(when (sort) {
         AccommodationSort.RECOMMENDED -> compareByDescending<AccommodationOption> { it.id == plan.selectedAccommodationId }
             .thenBy { it.averageAttractionDistanceMeters }
@@ -826,6 +1124,28 @@ private fun StaysContent(
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AccommodationSort.entries.forEach { option ->
                         FilterChip(selected = sort == option, onClick = { onSort(option) }, label = { Text(option.title) })
+                    }
+                }
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf<Double?>(null, 4.0, 4.5).forEach { rating ->
+                        FilterChip(
+                            selected = minimumRating == rating,
+                            onClick = { onMinimumRating(rating) },
+                            label = { Text(rating?.let { "评分 $it+" } ?: "不限评分") }
+                        )
+                    }
+                    listOf<Int?>(null, 2_000, 5_000).forEach { distance ->
+                        FilterChip(
+                            selected = maximumDistanceMeters == distance,
+                            onClick = { onMaximumDistance(distance) },
+                            label = { Text(distance?.let { "景点${it / 1_000}km内" } ?: "不限距离") }
+                        )
+                    }
+                }
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = amenity == null, onClick = { onAmenity(null) }, label = { Text("全部设施") })
+                    AccommodationAmenity.entries.forEach { item ->
+                        FilterChip(selected = amenity == item, onClick = { onAmenity(item) }, label = { Text(item.title) })
                     }
                 }
             }
@@ -876,6 +1196,10 @@ private fun AccommodationCard(option: AccommodationOption, selected: Boolean, on
 
 @Composable
 private fun TransportContent(plan: CompletePlan, onSelect: (String) -> Unit) {
+    if (plan.draft.skipTransport) {
+        EmptyState(Icons.Rounded.Train, "这次不安排大交通", "住宿、景点和市内路线仍会照常展开。")
+        return
+    }
     var direction by remember(plan.id) { mutableStateOf(TransportDirection.OUTBOUND) }
     var mode by remember(plan.id) { mutableStateOf<LongDistanceMode?>(null) }
     val visible = plan.transports.filter { option ->
@@ -959,6 +1283,23 @@ private fun QuoteRow(quote: PriceQuote, onOpen: () -> Unit) {
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
+            val details = buildList {
+                quote.roomName?.takeIf(String::isNotBlank)?.let { add(it) }
+                quote.bedType?.takeIf(String::isNotBlank)?.let { add(it) }
+                quote.mealPlan?.takeIf(String::isNotBlank)?.let { add(it) }
+                quote.cancellationPolicy?.takeIf(String::isNotBlank)?.let { add(it) }
+                quote.availability?.takeIf(String::isNotBlank)?.let { add(it) }
+                quote.totalAmountCNY?.let { add("行程合计 ¥$it") }
+            }.distinct()
+            if (details.isNotEmpty()) {
+                Text(
+                    details.joinToString(" · "),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
         quote.amountCNY?.let {
             Text(quote.priceText(), color = TravelOrange, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 6.dp))
@@ -1359,18 +1700,27 @@ private fun DragHandle(modifier: Modifier = Modifier) {
     }
 }
 
+@Composable
 private fun Modifier.panelDrag(
     onStart: () -> Unit,
     onDelta: (Float) -> Unit,
     onEnd: () -> Unit
-): Modifier = pointerInput(onStart, onDelta, onEnd) {
-    detectVerticalDragGestures(
-        onDragStart = { onStart() },
-        onDragEnd = onEnd,
-        onDragCancel = onEnd
-    ) { change, amount ->
-        change.consume()
-        onDelta(amount)
+): Modifier {
+    // These callbacks close over the live panel fraction and therefore change
+    // after every pointer sample. Keeping them out of pointerInput's keys stops
+    // Compose from cancelling and restarting the active gesture mid-drag.
+    val currentStart by rememberUpdatedState(onStart)
+    val currentDelta by rememberUpdatedState(onDelta)
+    val currentEnd by rememberUpdatedState(onEnd)
+    return pointerInput(Unit) {
+        detectVerticalDragGestures(
+            onDragStart = { currentStart() },
+            onDragEnd = currentEnd,
+            onDragCancel = currentEnd
+        ) { change, amount ->
+            change.consume()
+            currentDelta(amount)
+        }
     }
 }
 
@@ -1402,5 +1752,54 @@ private fun QuoteUnit.shortTitle(): String = when (this) {
 private fun openURL(context: android.content.Context, url: String) {
     runCatching {
         context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }.onFailure {
+        Toast.makeText(context, "暂时没有能打开这个链接的应用", Toast.LENGTH_SHORT).show()
     }
+}
+
+private fun sharePlan(context: android.content.Context, plan: CompletePlan) {
+    val text = buildString {
+        appendLine("${plan.draft.destination} · ${plan.draft.dayCount}天")
+        appendLine("${plan.draft.travelers}人 · ${plan.draft.pace.title} · 预算约¥${plan.totalExpense}")
+        plan.days.forEach { day ->
+            appendLine()
+            appendLine(day.title)
+            day.schedule.forEach { item -> appendLine("${item.timeText}  ${item.title}｜${item.detail}") }
+        }
+        plan.selectedAccommodation?.let { appendLine("\n住宿：${it.name}｜${it.address}") }
+        plan.selectedTransport?.let { appendLine("交通：${it.title}") }
+        appendLine("\n由 AnyTravel · 折叠远方生成")
+    }
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, "${plan.draft.destination}旅行方案")
+        putExtra(Intent.EXTRA_TEXT, text)
+    }
+    runCatching {
+        context.startActivity(Intent.createChooser(intent, "把这段旅程送给…"))
+    }.onFailure {
+        Toast.makeText(context, "暂时无法打开分享面板", Toast.LENGTH_SHORT).show()
+    }
+}
+
+private fun sharePDF(context: android.content.Context, plan: CompletePlan) {
+    runCatching { PlanExportService.exportPDF(context, plan) }
+        .onSuccess { uri -> shareFile(context, uri, "application/pdf", "把完整旅行方案送给…") }
+        .onFailure { Toast.makeText(context, it.message ?: "暂时无法生成 PDF", Toast.LENGTH_SHORT).show() }
+}
+
+private fun shareCalendar(context: android.content.Context, plan: CompletePlan) {
+    runCatching { PlanExportService.exportCalendar(context, plan) }
+        .onSuccess { uri -> shareFile(context, uri, "text/calendar", "把旅程放进日历…") }
+        .onFailure { Toast.makeText(context, it.message ?: "暂时无法生成日历", Toast.LENGTH_SHORT).show() }
+}
+
+private fun shareFile(context: android.content.Context, uri: android.net.Uri, mimeType: String, title: String) {
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = mimeType
+        putExtra(Intent.EXTRA_STREAM, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    runCatching { context.startActivity(Intent.createChooser(intent, title)) }
+        .onFailure { Toast.makeText(context, "暂时无法打开分享面板", Toast.LENGTH_SHORT).show() }
 }

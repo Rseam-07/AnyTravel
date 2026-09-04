@@ -34,12 +34,14 @@ android {
         targetSdk {
             version = release(37)
         }
-        versionCode = 15
-        versionName = "0.8.0"
+        versionCode = 16
+        versionName = "0.8.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
         buildConfigField("String", "MAP_STYLE_URL", "\"https://tiles.openfreemap.org/styles/liberty\"")
+        buildConfigField("String", "MAP_LIGHT_STYLE_URL", "\"https://tiles.openfreemap.org/styles/positron\"")
+        buildConfigField("String", "MAP_DARK_STYLE_URL", "\"https://tiles.openfreemap.org/styles/dark\"")
         buildConfigField("String", "ROLLINGGO_API_KEY", buildConfigString("ROLLINGGO_API_KEY"))
         buildConfigField("String", "AMAP_API_KEY", buildConfigString("AMAP_API_KEY"))
         buildConfigField("String", "ZAI_API_KEY", buildConfigString("ZAI_API_KEY"))
@@ -48,6 +50,10 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            // Public preview builds stay installable without distributing a
+            // private signing key. They run with release compiler settings;
+            // the GitHub release still labels this debug-key signature clearly.
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

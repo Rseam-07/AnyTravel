@@ -76,9 +76,6 @@ struct PlannerMapView: View {
                 model.userMovedMap()
             }
         }
-        .animation(AnyTravelMotion.route(reduceMotion: reduceMotion), value: model.visibleLegCount)
-        .animation(AnyTravelMotion.route(reduceMotion: reduceMotion), value: model.selectedOutboundTransferID)
-        .animation(AnyTravelMotion.route(reduceMotion: reduceMotion), value: model.selectedReturnTransferID)
     }
 }
 
