@@ -4,9 +4,13 @@
 // fallback only; Nominatim / Open-Meteo / OSRM are open services.
 
 import type { ChannelStatus, Coord, Interest, ProviderIssue, WeatherDay } from "./types";
-import { isLegacyLocalService, resolveServiceURL } from "./service-config";
+import { browserServiceFallback, isLegacyLocalService, resolveServiceURL } from "./service-config";
 
-export const DEFAULT_BACKEND_URL = resolveServiceURL("", __ANYTRAVEL_SERVICE_URL__, globalThis.location?.origin ?? "");
+const browserOriginFallback = browserServiceFallback(
+  globalThis.location?.origin ?? "",
+  globalThis.location?.hostname ?? ""
+);
+export const DEFAULT_BACKEND_URL = resolveServiceURL("", __ANYTRAVEL_SERVICE_URL__, browserOriginFallback);
 export const DEEPSEEK_BASE_URL = "https://api.deepseek.com";
 
 const settingsKey = "anytravel-web:settings";
@@ -35,7 +39,7 @@ export function loadSettings(): WebSettings {
       return {
         ...defaultSettings(),
         ...persisted,
-        backendURL: resolveServiceURL(persisted.backendURL ?? "", DEFAULT_BACKEND_URL, globalThis.location?.origin ?? ""),
+        backendURL: resolveServiceURL(persisted.backendURL ?? "", DEFAULT_BACKEND_URL, browserOriginFallback),
         deepseekKey: sessionStorage.getItem(assistantSessionKey) ?? ""
       };
     }
@@ -256,6 +260,7 @@ export async function fetchTickets(
 }
 
 export async function fetchHealth(baseURL: string): Promise<Record<string, string>> {
+  if (!baseURL.trim()) return {};
   try {
     const health = await backendFetch<Record<string, string>>(baseURL, "health");
     return health.service === "anytravel-companion" && health.status === "ok" ? health : {};

@@ -14,6 +14,12 @@ export function resolveServiceURL(override: string, preset: string, origin: stri
   return normalizeServiceURL(override) ?? normalizeServiceURL(preset) ?? normalizeServiceURL(origin) ?? "";
 }
 
+/** GitHub Pages only serves static files, so its origin must never be probed as an API. */
+export function browserServiceFallback(origin: string, hostname: string): string {
+  const host = hostname.trim().toLowerCase().replace(/\.$/, "");
+  return host === "github.io" || host.endsWith(".github.io") ? "" : origin;
+}
+
 export function isLegacyLocalService(value: unknown): boolean {
   return typeof value === "string" && /^http:\/\/(?:127\.0\.0\.1|localhost):8787\/?$/.test(value);
 }

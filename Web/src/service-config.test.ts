@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isLegacyLocalService, normalizeServiceURL, resolveServiceURL } from "./service-config";
+import { browserServiceFallback, isLegacyLocalService, normalizeServiceURL, resolveServiceURL } from "./service-config";
 
 describe("default service routing", () => {
   it("uses the deployed website origin without asking users to configure localhost", () => {
@@ -16,5 +16,9 @@ describe("default service routing", () => {
   it("migrates only the old development default, not users' explicit endpoints", () => {
     expect(isLegacyLocalService("http://127.0.0.1:8787/")).toBe(true);
     expect(isLegacyLocalService("https://my.example/")).toBe(false);
+  });
+  it("does not mistake a static GitHub Pages origin for the companion API", () => {
+    expect(browserServiceFallback("https://rseam-07.github.io", "rseam-07.github.io")).toBe("");
+    expect(browserServiceFallback("https://travel.example", "travel.example")).toBe("https://travel.example");
   });
 });
