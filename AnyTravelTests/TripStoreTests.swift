@@ -93,6 +93,55 @@ final class TripStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testPersistsUserConfirmedExternalBooking() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let fileURL = directory.appendingPathComponent("trips.json")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let hotelID = UUID()
+        let confirmation = BookingConfirmation(
+            id: UUID(),
+            kind: .accommodation,
+            itemID: hotelID,
+            title: "测试酒店",
+            confirmedAt: Date(timeIntervalSince1970: 2_000_000_000),
+            startDate: Date(timeIntervalSince1970: 2_000_086_400),
+            endDate: Date(timeIntervalSince1970: 2_000_259_200),
+            note: "订单尾号 1234"
+        )
+        let snapshot = LogisticsSnapshot(
+            accommodations: [],
+            selectedAccommodationID: hotelID,
+            transportOptions: [],
+            selectedTransportID: nil,
+            bookingConfirmations: [confirmation]
+        )
+        let trip = SavedTrip(
+            title: "苏州 · 已订住宿",
+            draft: TripDraft(destination: "苏州"),
+            destinationCenter: Coordinate(latitude: 31.2989, longitude: 120.5853),
+            days: [],
+            logisticsSnapshot: snapshot
+        )
+
+        try TripStore(fileURL: fileURL).save(trip)
+        let restored = try XCTUnwrap(TripStore(fileURL: fileURL).trips.first?.logisticsSnapshot?.bookingConfirmations?.first)
+
+        XCTAssertEqual(restored.itemID, hotelID)
+        XCTAssertEqual(restored.note, "订单尾号 1234")
+        XCTAssertEqual(restored.kind, .accommodation)
+    }
+
+    @MainActor
+    func testOlderLogisticsSnapshotWithoutBookingFieldStillDecodes() throws {
+        let legacy = Data(#"{"accommodations":[],"transportOptions":[]}"#.utf8)
+
+        let restored = try JSONDecoder().decode(LogisticsSnapshot.self, from: legacy)
+
+        XCTAssertNil(restored.bookingConfirmations)
+    }
+
+    @MainActor
     func testDeletePersists() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

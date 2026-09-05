@@ -75,6 +75,7 @@ final class PlannerViewModel {
     var selectedTransportID: TransportOption.ID?
     var returnTransportOptions: [TransportOption] = []
     var selectedReturnTransportID: TransportOption.ID?
+    var bookingConfirmations: [BookingConfirmation] = []
     var outboundTransferOptions: [LocalTransferOption] = []
     var selectedOutboundTransferID: LocalTransferOption.ID?
     var returnTransferOptions: [LocalTransferOption] = []
@@ -1744,7 +1745,8 @@ final class PlannerViewModel {
                 outboundTransferOptions: outboundTransferOptions,
                 selectedOutboundTransferID: selectedOutboundTransferID,
                 returnTransferOptions: returnTransferOptions,
-                selectedReturnTransferID: selectedReturnTransferID
+                selectedReturnTransferID: selectedReturnTransferID,
+                bookingConfirmations: bookingConfirmations
             )
         )
 
@@ -1815,6 +1817,7 @@ final class PlannerViewModel {
             selectedOutboundTransferID = snapshot.selectedOutboundTransferID
             returnTransferOptions = snapshot.returnTransferOptions ?? []
             selectedReturnTransferID = snapshot.selectedReturnTransferID
+            bookingConfirmations = snapshot.bookingConfirmations ?? []
             transferRoutesByOptionID = [:]
             let snapshotPoints = (snapshot.transportOptions + returnTransportOptions).compactMap(\.arrivalAccessPoint)
                 + snapshot.accommodations.flatMap { Array($0.nearestAccessPoints.values) }
@@ -1835,6 +1838,7 @@ final class PlannerViewModel {
             selectedOutboundTransferID = nil
             returnTransferOptions = []
             selectedReturnTransferID = nil
+            bookingConfirmations = []
             transferRoutesByOptionID = [:]
         }
         originResolution = nil
@@ -2370,6 +2374,40 @@ final class PlannerViewModel {
         refreshLocalTransfersInBackground()
     }
 
+    func bookingConfirmation(kind: BookingItemKind, itemID: UUID) -> BookingConfirmation? {
+        bookingConfirmations.first { $0.kind == kind && $0.itemID == itemID }
+    }
+
+    func confirmBooking(kind: BookingItemKind, itemID: UUID, note: String) {
+        let accommodation = kind == .accommodation ? accommodations.first { $0.id == itemID } : nil
+        let transport = kind == .transport
+            ? (transportOptions + returnTransportOptions).first { $0.id == itemID }
+            : nil
+        guard let title = accommodation?.name ?? transport?.title else { return }
+        let existing = bookingConfirmation(kind: kind, itemID: itemID)
+        let direction = transport?.journeyDirection
+        let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let confirmation = BookingConfirmation(
+            id: existing?.id ?? UUID(),
+            kind: kind,
+            itemID: itemID,
+            title: title,
+            confirmedAt: .now,
+            startDate: direction == .returnTrip ? draft.logistics.endDate : draft.logistics.startDate,
+            endDate: kind == .accommodation ? draft.logistics.endDate : nil,
+            direction: direction,
+            note: trimmedNote.isEmpty ? nil : trimmedNote
+        )
+        bookingConfirmations.removeAll { $0.kind == kind && $0.itemID == itemID }
+        bookingConfirmations.append(confirmation)
+        noticeMessage = "已记录为你在外部平台完成的预订；库存与付款仍以原平台订单为准。"
+    }
+
+    func removeBookingConfirmation(kind: BookingItemKind, itemID: UUID) {
+        bookingConfirmations.removeAll { $0.kind == kind && $0.itemID == itemID }
+        noticeMessage = "已撤销预订确认，当前选择仍然保留。"
+    }
+
     func setTransportDirectionFocus(_ direction: TransportDirection) {
         focusedTransportDirection = direction
         let transfer = direction == .outbound ? selectedOutboundTransfer : selectedReturnTransfer
@@ -2803,6 +2841,7 @@ final class PlannerViewModel {
         planMapFocus = .itinerary
         accommodations = []
         selectedAccommodationID = nil
+        bookingConfirmations = []
         manuallySelectedAccommodationID = nil
         accessPoints = []
         transportOptions = []

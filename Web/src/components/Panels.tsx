@@ -24,7 +24,7 @@ import {
 import { useApp } from "../store";
 import { formatCNY, meterText } from "../types";
 import { bestQuote, distanceMeters } from "../planner";
-import type { AccommodationOption } from "../types";
+import type { AccommodationOption, BookingConfirmation, BookingKind } from "../types";
 import { KNOWLEDGE_STATS, lookupCity } from "../knowledge";
 
 export function WeatherStrip() {
@@ -294,7 +294,7 @@ export function PlanPanel({ compact = false }: { compact?: boolean }) {
 }
 
 export function AccommodationPanel() {
-  const { state, setFocus, selectAccommodation } = useApp();
+  const { state, setFocus, selectAccommodation, confirmBooking, removeBookingConfirmation } = useApp();
   const [filter, setFilter] = useState<"all" | "cheap" | "live" | "near">("all");
   const items = state.accommodations;
 
@@ -403,7 +403,10 @@ export function AccommodationPanel() {
           key={item.id}
           item={item}
           selected={state.selectedAccommodationID === item.id}
+          confirmation={state.bookingConfirmations.find(record => record.kind === "accommodation" && record.itemID === item.id)}
           onSelect={() => selectAccommodation(item.id)}
+          onConfirm={(note) => confirmBooking("accommodation", item.id, note)}
+          onRemoveConfirmation={() => removeBookingConfirmation("accommodation", item.id)}
           onFocus={() => item.coordinate && setFocus({ kind: "accommodation", id: item.id, coordinate: item.coordinate })}
         />
       ))}
@@ -414,18 +417,24 @@ export function AccommodationPanel() {
 function StayCard({
   item,
   selected,
+  confirmation,
   onSelect,
+  onConfirm,
+  onRemoveConfirmation,
   onFocus
 }: {
   item: AccommodationOption;
   selected: boolean;
+  confirmation?: BookingConfirmation;
   onSelect: () => void;
+  onConfirm: (note?: string) => void;
+  onRemoveConfirmation: () => void;
   onFocus: () => void;
 }) {
   const quote = bestQuote(item.quotes);
   const channelCount = new Set(item.quotes.filter((q) => q.amountCNY != null).map((q) => q.provider)).size;
   return (
-    <div className={`stay-card${selected ? " selected" : ""}`} onClick={onSelect}>
+    <div className={`stay-card${selected ? " selected" : ""}${confirmation ? " booked" : ""}`} onClick={onSelect}>
       <div className="stay-thumb" style={item.imageURL ? { backgroundImage: `url(${item.imageURL})` } : undefined}>
         {item.imageURL ? "" : <Hotel size={24} aria-label="住宿" />}
       </div>
@@ -433,6 +442,9 @@ function StayCard({
         <div className="stay-name">
           {item.name}
           {channelCount > 1 && <span className="provider-tag" style={{ marginLeft: 6 }}>{channelCount} 家比价</span>}
+          <span className={`booking-state ${confirmation ? "confirmed" : selected ? "selected" : "suggestion"}`}>
+            {confirmation ? "已确认预订" : selected ? "已选择 · 未预订" : "备选"}
+          </span>
         </div>
         <div className="stay-meta">
           {[item.brand, item.starRating ? `${item.starRating} 星` : null]
@@ -473,13 +485,21 @@ function StayCard({
             在地图上看
           </button>
         </div>
+        {(selected || confirmation) && (
+          <BookingControl
+            kind="accommodation"
+            confirmation={confirmation}
+            onConfirm={onConfirm}
+            onRemove={onRemoveConfirmation}
+          />
+        )}
       </div>
     </div>
   );
 }
 
 export function TransportPanel({ onGoConditions }: { onGoConditions?: () => void }) {
-  const { state, selectTransport } = useApp();
+  const { state, selectTransport, confirmBooking, removeBookingConfirmation } = useApp();
   const [direction, setDirection] = useState<"outbound" | "return">("outbound");
   const outbound = state.transports.filter((t) => t.direction === "outbound");
   const retur = state.transports.filter((t) => t.direction === "return");
@@ -527,13 +547,19 @@ export function TransportPanel({ onGoConditions }: { onGoConditions?: () => void
       {list.map((option) => {
         const quote = bestQuote(option.quotes);
         const selected = direction === "outbound" ? state.selectedOutboundID === option.id : state.selectedReturnID === option.id;
+        const confirmation = state.bookingConfirmations.find(record => record.kind === "transport" && record.itemID === option.id);
         return (
           <div
             key={option.id}
-            className={`train-card${selected ? " selected" : ""}`}
+            className={`train-card${selected ? " selected" : ""}${confirmation ? " booked" : ""}`}
             onClick={() => selectTransport(option.id)}
           >
-            <div className="train-title">{option.title}</div>
+            <div className="train-title">
+              {option.title}
+              <span className={`booking-state ${confirmation ? "confirmed" : selected ? "selected" : "suggestion"}`}>
+                {confirmation ? "已确认预订" : selected ? "已选择 · 未购票" : option.isRecommended ? "推荐" : "备选"}
+              </span>
+            </div>
             <div className="train-meta">
               {option.departureTime ? `${option.departureTime.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} 始发` : ""}
               {option.durationMinutes ? ` · 约 ${Math.round(option.durationMinutes)} 分钟` : ""}
@@ -551,6 +577,14 @@ export function TransportPanel({ onGoConditions }: { onGoConditions?: () => void
                 )}
               </span>
             </div>
+            {(selected || confirmation) && (
+              <BookingControl
+                kind="transport"
+                confirmation={confirmation}
+                onConfirm={(note) => confirmBooking("transport", option.id, note)}
+                onRemove={() => removeBookingConfirmation("transport", option.id)}
+              />
+            )}
           </div>
         );
       })}
@@ -562,6 +596,67 @@ export function TransportPanel({ onGoConditions }: { onGoConditions?: () => void
         </div>
       )}
     </div>
+  );
+}
+
+function BookingControl({
+  kind,
+  confirmation,
+  onConfirm,
+  onRemove
+}: {
+  kind: BookingKind;
+  confirmation?: BookingConfirmation;
+  onConfirm: (note?: string) => void;
+  onRemove: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [note, setNote] = useState(confirmation?.note ?? "");
+  const noun = kind === "accommodation" ? "住宿" : "车票/机票";
+  if (confirmation) {
+    const confirmedAt = new Date(confirmation.confirmedAt);
+    const dateText = Number.isFinite(confirmedAt.getTime())
+      ? confirmedAt.toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
+      : "已记录";
+    const tripDates = confirmation.startDate
+      ? confirmation.endDate && confirmation.endDate !== confirmation.startDate
+        ? `${confirmation.startDate} 至 ${confirmation.endDate}`
+        : confirmation.startDate
+      : null;
+    return (
+      <div className="booking-confirmation" onClick={(event) => event.stopPropagation()}>
+        <div>
+          <strong>你已确认在外部平台订好</strong>
+          <small>{[tripDates, dateText, confirmation.note].filter(Boolean).join(" · ")}</small>
+        </div>
+        <button className="link-btn" onClick={onRemove}>撤销确认</button>
+      </div>
+    );
+  }
+  if (!editing) {
+    return (
+      <div className="booking-pending" onClick={(event) => event.stopPropagation()}>
+        <span>目前只是已选择，AnyTravel 尚未替你下单。</span>
+        <button className="link-btn booking-confirm-btn" onClick={() => setEditing(true)}>我已订好</button>
+      </div>
+    );
+  }
+  return (
+    <form
+      className="booking-editor"
+      onClick={(event) => event.stopPropagation()}
+      onSubmit={(event) => { event.preventDefault(); onConfirm(note); setEditing(false); }}
+    >
+      <label>
+        {noun}订单备注（可留空）
+        <input value={note} onChange={(event) => setNote(event.target.value)} maxLength={80} placeholder="例如：订单尾号、可取消至何时" autoFocus />
+      </label>
+      <small>请勿填写身份证号、银行卡或完整支付信息。</small>
+      <div>
+        <button type="button" className="link-btn" onClick={() => setEditing(false)}>取消</button>
+        <button type="submit" className="link-btn booking-confirm-btn">确认已预订</button>
+      </div>
+    </form>
   );
 }
 

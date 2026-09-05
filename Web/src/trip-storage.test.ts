@@ -28,7 +28,8 @@ function fullTrip() {
     draft, plan, places: plan.days[0].stops.map(stop => stop.place), accommodations: [], tickets: {}, selectedDay: 0,
     transports: [{ id: "G1", mode: "train", title: "G1", originName: "上海", destinationName: "苏州", direction: "outbound",
       departureTime: new Date("2026-09-10T00:00:00Z"), quotes: [{ provider: "rail", providerTitle: "铁路", amountCNY: 39.5, unit: "perPerson", kind: "live" }] }],
-    selectedAccommodationID: null, selectedOutboundID: "G1", selectedReturnID: null
+    selectedAccommodationID: null, selectedOutboundID: "G1", selectedReturnID: null,
+    bookingConfirmations: [{ id: "booking-1", kind: "transport", itemID: "G1", title: "G1", confirmedAt: "2026-09-05T00:00:00Z", startDate: "2026-09-10", note: "订单尾号 1234" }]
   }, "trip-1");
 }
 
@@ -41,6 +42,7 @@ describe("trip storage", () => {
     expect(result.trips[0].snapshot?.plan?.days[0].stops[0].place.name).toBe("拙政园");
     expect(result.trips[0].snapshot?.selectedOutboundID).toBe("G1");
     expect(result.trips[0].snapshot?.transports[0].departureTime).toBeInstanceOf(Date);
+    expect(result.trips[0].snapshot?.bookingConfirmations[0].note).toBe("订单尾号 1234");
   });
 
   it("marks restored prices stale until the user refreshes them", () => {

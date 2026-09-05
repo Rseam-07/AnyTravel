@@ -825,6 +825,8 @@ input::placeholder { color: var(--secondary-ink); opacity: .68; }
 .train-card:hover { transform: translateY(-1px); border-color: rgba(18, 110, 102, .38); box-shadow: var(--shadow-card); }
 .stay-card.selected,
 .train-card.selected { border-color: var(--route); box-shadow: 0 0 0 2px var(--route-soft), var(--shadow-card); }
+.stay-card.booked,
+.train-card.booked { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--route) 64%, transparent), var(--shadow-card); }
 .stay-card { display: flex; gap: 10px; padding: 11px; }
 .stay-thumb { width: 60px; height: 60px; flex: 0 0 60px; display: grid; place-items: center; border-radius: 13px; background: var(--soft-surface) center/cover no-repeat; color: var(--route); }
 .stay-main { min-width: 0; flex: 1; }
@@ -836,6 +838,36 @@ input::placeholder { color: var(--secondary-ink); opacity: .68; }
 .price-unit { color: var(--secondary-ink); font-size: 9.5px; }
 .stay-links { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 6px; }
 .link-btn { display: inline-flex; align-items: center; color: var(--route-dark); font-size: 10.5px; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+
+.booking-state {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 7px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  color: var(--secondary-ink);
+  font-size: 9.5px;
+  font-weight: 750;
+  line-height: 1.2;
+  vertical-align: middle;
+}
+.booking-state.selected { color: var(--route-dark); background: color-mix(in srgb, var(--route) 13%, transparent); }
+.booking-state.confirmed { color: white; background: var(--route); }
+.booking-pending,
+.booking-confirmation,
+.booking-editor { margin-top: 9px; padding-top: 9px; border-top: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); }
+.booking-pending,
+.booking-confirmation { display: flex; align-items: center; justify-content: space-between; gap: 9px; color: var(--secondary-ink); font-size: 11px; }
+.booking-confirmation > div { display: grid; gap: 2px; }
+.booking-confirmation strong { color: var(--route-dark); }
+.booking-confirmation small,
+.booking-editor small { color: var(--secondary-ink); }
+.booking-confirm-btn { padding: 7px 11px; border-radius: 999px; background: var(--route); color: white !important; text-decoration: none !important; white-space: nowrap; }
+.booking-editor { display: grid; gap: 7px; }
+.booking-editor label { display: grid; gap: 5px; color: var(--route-dark); font-size: 11px; font-weight: 700; }
+.booking-editor input { width: 100%; min-height: 42px; padding: 0 11px; border: 1px solid color-mix(in srgb, var(--route) 24%, transparent); border-radius: 12px; background: var(--surface); color: var(--ink); }
+.booking-editor > div { display: flex; justify-content: flex-end; gap: 8px; }
 
 .mode-tabs { display: flex; gap: 7px; margin-bottom: 10px; }
 .transport-source-note { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; padding: 8px 10px; border-radius: 12px; background: var(--route-soft); color: var(--route-dark); font-size: 10.5px; font-weight: 680; }

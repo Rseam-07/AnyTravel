@@ -17,6 +17,8 @@ import cn.anytravel.app.data.TravelAssistantContext
 import cn.anytravel.app.domain.DestinationResolver
 import cn.anytravel.app.domain.PlanBuilder
 import cn.anytravel.app.model.CompletePlan
+import cn.anytravel.app.model.BookingConfirmation
+import cn.anytravel.app.model.BookingKind
 import cn.anytravel.app.model.Coordinate
 import cn.anytravel.app.model.DestinationPack
 import cn.anytravel.app.model.ItineraryDay
@@ -837,6 +839,47 @@ class PlannerViewModel(
                 panelFraction = 0.67f,
                 autoCamera = true,
                 noticeMessage = "已按这段抵达方式保留预算与接驳时间"
+            )
+        }
+    }
+
+    fun confirmBooking(kind: BookingKind, itemId: String, note: String) {
+        val plan = _state.value.plan ?: return
+        val accommodation = plan.accommodations.firstOrNull { kind == BookingKind.ACCOMMODATION && it.id == itemId }
+        val transport = plan.transports.firstOrNull { kind == BookingKind.TRANSPORT && it.id == itemId }
+        val title = accommodation?.name ?: transport?.title ?: return
+        val endDate = runCatching { LocalDate.parse(plan.draft.startDate) }
+            .getOrNull()
+            ?.plusDays((plan.draft.dayCount - 1).coerceAtLeast(1).toLong())
+            ?.toString()
+        val existing = plan.bookingConfirmations.firstOrNull { it.kind == kind && it.itemId == itemId }
+        val confirmation = BookingConfirmation(
+            id = existing?.id ?: java.util.UUID.randomUUID().toString(),
+            kind = kind,
+            itemId = itemId,
+            title = title,
+            startDate = if (transport?.direction == cn.anytravel.app.model.TransportDirection.RETURN) endDate else plan.draft.startDate,
+            endDate = if (kind == BookingKind.ACCOMMODATION) endDate else null,
+            direction = transport?.direction,
+            note = note.trim().takeIf(String::isNotEmpty)
+        )
+        val records = plan.bookingConfirmations
+            .filterNot { it.kind == kind && it.itemId == itemId } + confirmation
+        _state.update {
+            it.copy(
+                plan = plan.copy(bookingConfirmations = records),
+                noticeMessage = "已记录为你在外部平台完成的预订；库存与付款仍以原平台订单为准"
+            )
+        }
+    }
+
+    fun removeBookingConfirmation(kind: BookingKind, itemId: String) {
+        val plan = _state.value.plan ?: return
+        val records = plan.bookingConfirmations.filterNot { it.kind == kind && it.itemId == itemId }
+        _state.update {
+            it.copy(
+                plan = plan.copy(bookingConfirmations = records),
+                noticeMessage = "已撤销预订确认，当前选择仍然保留"
             )
         }
     }

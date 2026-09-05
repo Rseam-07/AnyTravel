@@ -423,6 +423,52 @@ struct TransportOption: Codable, Hashable, Identifiable, Sendable {
     var journeyDirection: TransportDirection { direction ?? .outbound }
 }
 
+enum BookingItemKind: String, Codable, Hashable, Sendable {
+    case accommodation
+    case transport
+}
+
+struct BookingConfirmation: Codable, Hashable, Identifiable, Sendable {
+    let id: UUID
+    let kind: BookingItemKind
+    let itemID: UUID
+    var title: String
+    var confirmedAt: Date
+    var startDate: Date?
+    var endDate: Date?
+    var direction: TransportDirection?
+    var note: String?
+
+    init(
+        id: UUID = UUID(),
+        kind: BookingItemKind,
+        itemID: UUID,
+        title: String,
+        confirmedAt: Date = .now,
+        startDate: Date? = nil,
+        endDate: Date? = nil,
+        direction: TransportDirection? = nil,
+        note: String? = nil
+    ) {
+        self.id = id
+        self.kind = kind
+        self.itemID = itemID
+        self.title = title
+        self.confirmedAt = confirmedAt
+        self.startDate = startDate
+        self.endDate = endDate
+        self.direction = direction
+        self.note = note
+    }
+
+    var dateSummary: String? {
+        guard let startDate else { return nil }
+        let start = startDate.formatted(date: .abbreviated, time: .omitted)
+        guard let endDate, !Calendar.current.isDate(startDate, inSameDayAs: endDate) else { return start }
+        return "\(start) 至 \(endDate.formatted(date: .abbreviated, time: .omitted))"
+    }
+}
+
 enum LocalTransferMode: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
     case publicTransit
     case taxi
@@ -518,6 +564,7 @@ struct LogisticsSnapshot: Codable, Hashable, Sendable {
     var selectedOutboundTransferID: LocalTransferOption.ID? = nil
     var returnTransferOptions: [LocalTransferOption]? = nil
     var selectedReturnTransferID: LocalTransferOption.ID? = nil
+    var bookingConfirmations: [BookingConfirmation]? = nil
 }
 
 enum QuoteRefreshState: Equatable, Sendable {

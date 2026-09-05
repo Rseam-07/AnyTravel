@@ -34,6 +34,8 @@ import { bestQuote, distanceMeters, addDays, planItinerary } from "./planner";
 import {
   PACE_META,
   type AccommodationOption,
+  type BookingConfirmation,
+  type BookingKind,
   type ChannelStatus,
   type Coord,
   type Interest,
@@ -82,6 +84,7 @@ interface AppState {
   selectedAccommodationID: string | null;
   selectedOutboundID: string | null;
   selectedReturnID: string | null;
+  bookingConfirmations: BookingConfirmation[];
   notice: string | null;
   failureDetail: string | null;
   backendReachable: boolean;
@@ -131,6 +134,7 @@ const initialState = (): AppState => ({
   selectedAccommodationID: null,
   selectedOutboundID: null,
   selectedReturnID: null,
+  bookingConfirmations: [],
   notice: null,
   failureDetail: null,
   backendReachable: false,
@@ -197,6 +201,8 @@ interface AppApi {
   setFocus: (focus: Focus | null) => void;
   selectAccommodation: (id: string) => void;
   selectTransport: (id: string) => void;
+  confirmBooking: (kind: BookingKind, itemID: string, note?: string) => void;
+  removeBookingConfirmation: (kind: BookingKind, itemID: string) => void;
   removeStop: (dayIndex: number, stopIndex: number) => Promise<void>;
   relaxPlan: () => Promise<void>;
   saveSettings: (settings: WebSettings) => void;
@@ -723,6 +729,32 @@ function summarizeTransport<T extends { title: string; quotes: { amountCNY?: num
     if (coordinate) setFocus({ kind: "station", id, coordinate });
   }, [setFocus]);
 
+  const confirmBooking = useCallback((kind: BookingKind, itemID: string, note?: string) => {
+    const current = stateRef.current;
+    const item = kind === "accommodation"
+      ? current.accommodations.find(option => option.id === itemID)
+      : current.transports.find(option => option.id === itemID);
+    if (!item) return;
+    const existing = current.bookingConfirmations.find(record => record.kind === kind && record.itemID === itemID);
+    const direction = kind === "transport" ? (item as TransportOption).direction : undefined;
+    const outboundDate = current.draft.startDate;
+    const returnDate = outboundDate ? hotelCheckOut(outboundDate, current.draft.dayCount) : undefined;
+    const startDate = direction === "return" ? returnDate : outboundDate;
+    const record: BookingConfirmation = {
+      id: existing?.id ?? crypto.randomUUID(), kind, itemID, title: kind === "accommodation" ? (item as AccommodationOption).name : (item as TransportOption).title,
+      confirmedAt: new Date().toISOString(), startDate,
+      endDate: kind === "accommodation" ? returnDate : undefined,
+      direction, note: note?.trim() || undefined
+    };
+    const bookingConfirmations = [...current.bookingConfirmations.filter(value => !(value.kind === kind && value.itemID === itemID)), record];
+    dispatch({ type: "patch", patch: { bookingConfirmations, notice: "已记录为你在外部平台完成的预订；库存与付款仍以原平台订单为准。" } });
+  }, []);
+
+  const removeBookingConfirmation = useCallback((kind: BookingKind, itemID: string) => {
+    const bookingConfirmations = stateRef.current.bookingConfirmations.filter(record => !(record.kind === kind && record.itemID === itemID));
+    dispatch({ type: "patch", patch: { bookingConfirmations, notice: "已撤销预订确认，当前选择仍然保留。" } });
+  }, []);
+
   const rePlanFromPlaces = useCallback(async () => {
     await generatePlan();
   }, [generatePlan]);
@@ -1030,7 +1062,8 @@ function summarizeTransport<T extends { title: string; quotes: { amountCNY?: num
     const timer = window.setTimeout(persistCurrentSession, 500);
     return () => window.clearTimeout(timer);
   }, [state.draft, state.plan, state.places, state.accommodations, state.transports, state.tickets,
-    state.selectedDay, state.selectedAccommodationID, state.selectedOutboundID, state.selectedReturnID, persistCurrentSession]);
+    state.selectedDay, state.selectedAccommodationID, state.selectedOutboundID, state.selectedReturnID,
+    state.bookingConfirmations, persistCurrentSession]);
 
   useEffect(() => {
     const onVisibility = () => { if (document.visibilityState === "hidden") persistCurrentSession(); };
@@ -1063,6 +1096,8 @@ function summarizeTransport<T extends { title: string; quotes: { amountCNY?: num
       setFocus,
       selectAccommodation,
       selectTransport,
+      confirmBooking,
+      removeBookingConfirmation,
       removeStop,
       relaxPlan,
       saveSettings: persistSettings,
@@ -1090,6 +1125,8 @@ function summarizeTransport<T extends { title: string; quotes: { amountCNY?: num
       setFocus,
       selectAccommodation,
       selectTransport,
+      confirmBooking,
+      removeBookingConfirmation,
       removeStop,
       relaxPlan,
       persistSettings,

@@ -135,6 +135,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cn.anytravel.app.model.AccommodationOption
+import cn.anytravel.app.model.BookingConfirmation
+import cn.anytravel.app.model.BookingKind
 import cn.anytravel.app.model.CompletePlan
 import cn.anytravel.app.model.ExpenseLine
 import cn.anytravel.app.model.LocalTravelMode
@@ -884,9 +886,16 @@ private fun PlanPanel(
                         onMinimumRating = viewModel::setAccommodationMinimumRating,
                         onMaximumDistance = viewModel::setAccommodationMaximumDistance,
                         onAmenity = viewModel::setAccommodationAmenity,
-                        onSelect = viewModel::selectAccommodation
+                        onSelect = viewModel::selectAccommodation,
+                        onConfirmBooking = viewModel::confirmBooking,
+                        onRemoveBooking = viewModel::removeBookingConfirmation
                     )
-                    PlanTab.TRANSPORT -> TransportContent(plan, viewModel::selectTransport)
+                    PlanTab.TRANSPORT -> TransportContent(
+                        plan,
+                        viewModel::selectTransport,
+                        viewModel::confirmBooking,
+                        viewModel::removeBookingConfirmation
+                    )
                     PlanTab.COSTS -> CostsContent(plan)
                 }
             }
@@ -1090,7 +1099,9 @@ private fun StaysContent(
     onMinimumRating: (Double?) -> Unit,
     onMaximumDistance: (Int?) -> Unit,
     onAmenity: (AccommodationAmenity?) -> Unit,
-    onSelect: (String) -> Unit
+    onSelect: (String) -> Unit,
+    onConfirmBooking: (BookingKind, String, String) -> Unit,
+    onRemoveBooking: (BookingKind, String) -> Unit
 ) {
     if (plan.draft.skipAccommodation) {
         EmptyState(Icons.Rounded.Bed, "这次不需要住宿", "景点、路线和交通仍会继续规划。")
@@ -1154,14 +1165,30 @@ private fun StaysContent(
             item { DataBoundaryCard("这个筛选下暂时没有带价住处，放宽价格后再看看。") }
         }
         items(filtered, key = { it.id }) { option ->
-            AccommodationCard(option, selected = option.id == plan.selectedAccommodationId, onSelect = { onSelect(option.id) })
+            AccommodationCard(
+                option,
+                selected = option.id == plan.selectedAccommodationId,
+                confirmed = plan.bookingConfirmations.any { it.kind == BookingKind.ACCOMMODATION && it.itemId == option.id },
+                onSelect = { onSelect(option.id) }
+            )
+        }
+        plan.selectedAccommodation?.let { selected ->
+            item {
+                BookingStatusCard(
+                    kind = BookingKind.ACCOMMODATION,
+                    itemId = selected.id,
+                    confirmation = plan.bookingConfirmations.firstOrNull { it.kind == BookingKind.ACCOMMODATION && it.itemId == selected.id },
+                    onConfirm = { note -> onConfirmBooking(BookingKind.ACCOMMODATION, selected.id, note) },
+                    onRemove = { onRemoveBooking(BookingKind.ACCOMMODATION, selected.id) }
+                )
+            }
         }
         item { DataBoundaryCard("实时价格会注明渠道、口径与抓取时间；税费、早餐、取消政策和最终房型以结算页为准。") }
     }
 }
 
 @Composable
-private fun AccommodationCard(option: AccommodationOption, selected: Boolean, onSelect: () -> Unit) {
+private fun AccommodationCard(option: AccommodationOption, selected: Boolean, confirmed: Boolean, onSelect: () -> Unit) {
     val context = LocalContext.current
     val best = option.quotes.filter { it.isCurrentPrice() }.minByOrNull { it.amountCNY ?: Int.MAX_VALUE }
     Surface(
@@ -1178,7 +1205,15 @@ private fun AccommodationCard(option: AccommodationOption, selected: Boolean, on
                 Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(option.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                        if (selected) Text("已选择", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
+                        Text(
+                            when {
+                                confirmed -> "已确认预订"
+                                selected -> "已选择 · 未预订"
+                                else -> "备选"
+                            },
+                            color = if (confirmed || selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.labelMedium
+                        )
                     }
                     Text(option.address, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
                 }
@@ -1195,7 +1230,12 @@ private fun AccommodationCard(option: AccommodationOption, selected: Boolean, on
 }
 
 @Composable
-private fun TransportContent(plan: CompletePlan, onSelect: (String) -> Unit) {
+private fun TransportContent(
+    plan: CompletePlan,
+    onSelect: (String) -> Unit,
+    onConfirmBooking: (BookingKind, String, String) -> Unit,
+    onRemoveBooking: (BookingKind, String) -> Unit
+) {
     if (plan.draft.skipTransport) {
         EmptyState(Icons.Rounded.Train, "这次不安排大交通", "住宿、景点和市内路线仍会照常展开。")
         return
@@ -1222,14 +1262,30 @@ private fun TransportContent(plan: CompletePlan, onSelect: (String) -> Unit) {
         }
         if (visible.isEmpty()) item { DataBoundaryCard("这一程暂时没有匹配班次；可切换交通方式或刷新当日数据。") }
         items(visible, key = { it.id }) { option ->
-            TransportCard(option, selected = option.id == plan.selectedTransportId, onSelect = { onSelect(option.id) })
+            TransportCard(
+                option,
+                selected = option.id == plan.selectedTransportId,
+                confirmed = plan.bookingConfirmations.any { it.kind == BookingKind.TRANSPORT && it.itemId == option.id },
+                onSelect = { onSelect(option.id) }
+            )
+        }
+        plan.selectedTransport?.let { selected ->
+            item {
+                BookingStatusCard(
+                    kind = BookingKind.TRANSPORT,
+                    itemId = selected.id,
+                    confirmation = plan.bookingConfirmations.firstOrNull { it.kind == BookingKind.TRANSPORT && it.itemId == selected.id },
+                    onConfirm = { note -> onConfirmBooking(BookingKind.TRANSPORT, selected.id, note) },
+                    onRemove = { onRemoveBooking(BookingKind.TRANSPORT, selected.id) }
+                )
+            }
         }
         item { DataBoundaryCard("交通推荐会在取得实时班次后按门到门耗时、价格、换乘和酒店接驳重新排序。") }
     }
 }
 
 @Composable
-private fun TransportCard(option: TransportOption, selected: Boolean, onSelect: () -> Unit) {
+private fun TransportCard(option: TransportOption, selected: Boolean, confirmed: Boolean, onSelect: () -> Unit) {
     val context = LocalContext.current
     val quote = option.quotes.filter { it.isCurrentPrice() }.minByOrNull { it.amountCNY ?: Int.MAX_VALUE }
     val icon = when (option.mode) {
@@ -1255,12 +1311,98 @@ private fun TransportCard(option: TransportOption, selected: Boolean, onSelect: 
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                Text(
+                    when {
+                        confirmed -> "已确认预订"
+                        selected -> "已选择 · 未购票"
+                        option.isRecommended -> "推荐"
+                        else -> "备选"
+                    },
+                    color = if (confirmed || selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelMedium
+                )
                 Text(quote?.priceText() ?: "待核价", color = if (quote?.amountCNY != null) TravelOrange else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.titleMedium)
             }
             Spacer(Modifier.height(10.dp))
             option.recommendationReasons.forEach { Text("· $it", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             option.durationMinutes?.let { Text("· 预计总耗时基线 ${it.durationText()}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             option.quotes.forEach { item -> QuoteRow(item, onOpen = { item.bookingURL?.let { url -> openURL(context, url) } }) }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BookingStatusCard(
+    kind: BookingKind,
+    itemId: String,
+    confirmation: BookingConfirmation?,
+    onConfirm: (String) -> Unit,
+    onRemove: () -> Unit
+) {
+    var editing by remember(itemId) { mutableStateOf(false) }
+    var note by remember(itemId, confirmation?.note) { mutableStateOf(confirmation?.note.orEmpty()) }
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = if (confirmation != null) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(Icons.Rounded.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Column(Modifier.weight(1f)) {
+                Text(
+                    if (confirmation != null) "你已确认在外部平台订好" else "目前只是已选择",
+                    style = MaterialTheme.typography.labelLarge
+                )
+                Text(
+                    confirmation?.let { record ->
+                        buildList {
+                            record.startDate?.let { start ->
+                                add(record.endDate?.takeIf { it != start }?.let { "$start 至 $it" } ?: start)
+                            }
+                            record.note?.takeIf(String::isNotBlank)?.let(::add)
+                        }.joinToString(" · ").ifBlank { "库存与付款仍以原平台订单为准" }
+                    } ?: "AnyTravel 尚未替你下单。",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (confirmation == null) {
+                Button(onClick = { editing = true }) { Text("我已订好") }
+            } else {
+                TextButton(onClick = onRemove) { Text("撤销确认") }
+            }
+        }
+    }
+    if (editing) {
+        ModalBottomSheet(onDismissRequest = { editing = false }, containerColor = MaterialTheme.colorScheme.surface) {
+            Column(
+                Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 22.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("确认已在外部平台预订", style = MaterialTheme.typography.headlineSmall)
+                Text(
+                    if (kind == BookingKind.ACCOMMODATION) "记录入住与离店日期，并保留一条可选订单备注。" else "记录这一班次与出行日期。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it.take(80) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("订单备注（可留空）") },
+                    placeholder = { Text("例如：订单尾号、可取消至何时") },
+                    supportingText = { Text("请勿填写身份证号、银行卡或完整支付信息。") },
+                    minLines = 2
+                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = { editing = false }) { Text("取消") }
+                    Button(onClick = { onConfirm(note); editing = false }) { Text("确认已预订") }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
         }
     }
 }

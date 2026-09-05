@@ -214,6 +214,26 @@ data class TransportOption(
 )
 
 @Serializable
+enum class BookingKind {
+    ACCOMMODATION,
+    TRANSPORT
+}
+
+@Serializable
+@Immutable
+data class BookingConfirmation(
+    val id: String = UUID.randomUUID().toString(),
+    val kind: BookingKind,
+    val itemId: String,
+    val title: String,
+    val confirmedAt: String = java.time.Instant.now().toString(),
+    val startDate: String? = null,
+    val endDate: String? = null,
+    val direction: TransportDirection? = null,
+    val note: String? = null
+)
+
+@Serializable
 enum class ExpenseSource(val title: String) {
     LIVE("实时价"),
     BUDGET("预算预留")
@@ -266,7 +286,8 @@ data class CompletePlan(
     val routeSegments: List<RouteSegment> = emptyList(),
     val failedRouteSegmentCount: Int = 0,
     val selectedPlaceIDs: Set<String> = emptySet(),
-    val planningNotes: List<String> = emptyList()
+    val planningNotes: List<String> = emptyList(),
+    val bookingConfirmations: List<BookingConfirmation> = emptyList()
 ) {
     val selectedAccommodation: AccommodationOption?
         get() = accommodations.firstOrNull { it.id == selectedAccommodationId }

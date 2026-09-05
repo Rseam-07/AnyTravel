@@ -112,6 +112,20 @@ export interface TransportOption {
   hotelTransferMeters?: number | null;
 }
 
+export type BookingKind = "accommodation" | "transport";
+
+export interface BookingConfirmation {
+  id: string;
+  kind: BookingKind;
+  itemID: string;
+  title: string;
+  confirmedAt: string;
+  startDate?: string;
+  endDate?: string;
+  direction?: "outbound" | "return";
+  note?: string;
+}
+
 export interface CostRecord {
   category: string;
   label: string;

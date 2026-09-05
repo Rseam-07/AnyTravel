@@ -153,13 +153,13 @@ final class AnyTravelUITests: XCTestCase {
 
         XCTAssertTrue(app.navigationBars["旅途偏好与价格渠道"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["旅途里的智能向导"].exists)
-        let managedModel = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "GLM-5.3-Flash")
-        ).firstMatch
-        XCTAssertTrue(managedModel.waitForExistence(timeout: 2))
 
         let providerPicker = app.segmentedControls["assistant-provider-picker"]
         XCTAssertTrue(providerPicker.waitForExistence(timeout: 2))
+        let managedMode = providerPicker.buttons["AnyTravel 智能服务"]
+        XCTAssertTrue(managedMode.waitForExistence(timeout: 2))
+        XCTAssertTrue(managedMode.isSelected)
+        XCTAssertFalse(app.textFields["assistant-custom-base-url"].exists)
         let customMode = providerPicker.buttons["自定义服务"]
         XCTAssertTrue(customMode.waitForExistence(timeout: 2))
         customMode.tap()

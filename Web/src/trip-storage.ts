@@ -1,4 +1,4 @@
-import type { AccommodationOption, Plan, TicketQuote, TransportOption, TravelPlace, TripDraft } from "./types";
+import type { AccommodationOption, BookingConfirmation, Plan, TicketQuote, TransportOption, TravelPlace, TripDraft } from "./types";
 
 export interface TripSnapshot {
   plan: Plan | null;
@@ -10,6 +10,7 @@ export interface TripSnapshot {
   selectedAccommodationID: string | null;
   selectedOutboundID: string | null;
   selectedReturnID: string | null;
+  bookingConfirmations: BookingConfirmation[];
 }
 
 export interface SavedTrip {
@@ -28,6 +29,10 @@ const object = (value: unknown): value is Record<string, any> => value !== null 
 const coordinate = (value: unknown) => object(value) && Number.isFinite(value.lat) && Math.abs(value.lat) <= 90 && Number.isFinite(value.lng) && Math.abs(value.lng) <= 180;
 const place = (value: unknown) => object(value) && typeof value.id === "string" && typeof value.name === "string" && coordinate(value.coordinate);
 const quotes = (value: unknown) => Array.isArray(value) && value.every(q => object(q) && typeof q.provider === "string" && (q.amountCNY == null || (Number.isFinite(q.amountCNY) && q.amountCNY >= 0)));
+const bookingConfirmation = (value: unknown) => object(value) && typeof value.id === "string" &&
+  ["accommodation", "transport"].includes(value.kind) && typeof value.itemID === "string" &&
+  typeof value.title === "string" && typeof value.confirmedAt === "string" &&
+  (value.note == null || typeof value.note === "string");
 
 export function validDraft(value: unknown): value is TripDraft {
   return object(value) && typeof value.destination === "string" && typeof value.origin === "string" &&
@@ -45,7 +50,10 @@ function decodeTrip(value: unknown): SavedTrip {
     if (!object(snapshot) || !Array.isArray(snapshot.places) || !snapshot.places.every(place) ||
         !Array.isArray(snapshot.accommodations) || !snapshot.accommodations.every(a => object(a) && typeof a.id === "string" && quotes(a.quotes)) ||
         !Array.isArray(snapshot.transports) || !snapshot.transports.every(t => object(t) && typeof t.id === "string" && quotes(t.quotes)) ||
-        !object(snapshot.tickets)) throw new Error("行程快照格式不完整");
+        !object(snapshot.tickets) || (snapshot.bookingConfirmations != null &&
+          (!Array.isArray(snapshot.bookingConfirmations) || !snapshot.bookingConfirmations.every(bookingConfirmation)))) {
+      throw new Error("行程快照格式不完整");
+    }
     if (snapshot.plan != null && (!object(snapshot.plan) || !Array.isArray(snapshot.plan.days) || !Array.isArray(snapshot.plan.notes) ||
         !snapshot.plan.days.every((day: any) => object(day) && Array.isArray(day.stops) && day.stops.every((stop: any) => object(stop) && place(stop.place)) &&
           Array.isArray(day.route) && day.route.every((segment: any) => coordinate(segment.from) && coordinate(segment.to)) && Array.isArray(day.badges)))) {
@@ -53,6 +61,7 @@ function decodeTrip(value: unknown): SavedTrip {
     }
     snapshot.transports = snapshot.transports.map(t => ({ ...t,
       departureTime: dateOrUndefined(t.departureTime), arrivalTime: dateOrUndefined(t.arrivalTime) }));
+    snapshot.bookingConfirmations = snapshot.bookingConfirmations ?? [];
   }
   return value as SavedTrip;
 }
@@ -104,7 +113,8 @@ export function snapshotTrip(state: TripSnapshot & { draft: TripDraft }, id: str
     snapshot: {
       plan: state.plan, places: state.places, accommodations: state.accommodations, transports: state.transports,
       tickets: state.tickets, selectedDay: state.selectedDay, selectedAccommodationID: state.selectedAccommodationID,
-      selectedOutboundID: state.selectedOutboundID, selectedReturnID: state.selectedReturnID
+      selectedOutboundID: state.selectedOutboundID, selectedReturnID: state.selectedReturnID,
+      bookingConfirmations: state.bookingConfirmations
     }
   };
 }
@@ -118,6 +128,8 @@ export function restoredSnapshot(trip: SavedTrip): TripSnapshot {
     tickets: Object.fromEntries(Object.entries(saved?.tickets ?? {}).map(([id, q]) => [id, { ...q, isStale: true }])),
     selectedDay: Math.max(0, Math.min(saved?.selectedDay ?? 0, (saved?.plan?.days.length ?? 1) - 1)),
     selectedAccommodationID: saved?.selectedAccommodationID ?? null,
-    selectedOutboundID: saved?.selectedOutboundID ?? null, selectedReturnID: saved?.selectedReturnID ?? null
+    selectedOutboundID: saved?.selectedOutboundID ?? null,
+    selectedReturnID: saved?.selectedReturnID ?? null,
+    bookingConfirmations: saved?.bookingConfirmations ?? []
   };
 }

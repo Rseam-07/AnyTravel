@@ -1,9 +1,16 @@
 import SwiftUI
 
+private struct BookingEditor {
+    let kind: BookingItemKind
+    let itemID: UUID
+}
+
 struct PlannerPanel: View {
     @Bindable var model: PlannerViewModel
     let panelDetent: PlannerPanelDetent
     @State private var selectedTransportDirection: TransportDirection = .outbound
+    @State private var bookingEditor: BookingEditor?
+    @State private var bookingNote = ""
     @FocusState private var destinationFocused: Bool
     @FocusState private var adjustmentFocused: Bool
     @Namespace private var sectionMotion
@@ -41,6 +48,23 @@ struct PlannerPanel: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .anyTravelGlassCard(cornerRadius: 31)
         .animation(AnyTravelMotion.settle(reduceMotion: reduceMotion), value: model.phase)
+        .alert(
+            "确认已在外部平台预订",
+            isPresented: Binding(
+                get: { bookingEditor != nil },
+                set: { if !$0 { bookingEditor = nil } }
+            )
+        ) {
+            TextField("订单尾号、可取消至何时（可留空）", text: $bookingNote)
+            Button("确认已预订") {
+                guard let editor = bookingEditor else { return }
+                model.confirmBooking(kind: editor.kind, itemID: editor.itemID, note: bookingNote)
+                bookingEditor = nil
+            }
+            Button("取消", role: .cancel) { bookingEditor = nil }
+        } message: {
+            Text("只记录你已完成的外部订单。请勿填写身份证号、银行卡或完整支付信息。")
+        }
     }
 
     private var handle: some View {
@@ -1077,6 +1101,7 @@ struct PlannerPanel: View {
 
                 if let selected = model.selectedAccommodation {
                     quoteStrip(selected.quotes)
+                    bookingStatusCard(kind: .accommodation, itemID: selected.id)
                 }
             }
         }
@@ -1235,6 +1260,7 @@ struct PlannerPanel: View {
                         quoteRefreshBanner
                         if let selectedOption {
                             quoteStrip(selectedOption.quotes)
+                            bookingStatusCard(kind: .transport, itemID: selectedOption.id)
                         }
                     }
                     .padding(.bottom, 2)
@@ -1482,6 +1508,7 @@ struct PlannerPanel: View {
 
     private func accommodationCard(_ option: AccommodationOption) -> some View {
         let selected = model.selectedAccommodationID == option.id
+        let confirmation = model.bookingConfirmation(kind: .accommodation, itemID: option.id)
         let pricedQuote = option.bestPricedQuote
         let channelCount = Set(option.quotes.filter { $0.amountCNY != nil }.map(\.provider)).count
         return Button {
@@ -1503,6 +1530,10 @@ struct PlannerPanel: View {
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
                     }
+                    Spacer(minLength: 4)
+                    Text(confirmation != nil ? "已确认预订" : selected ? "已选择 · 未预订" : "备选")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(confirmation != nil || selected ? AnyTravelPalette.route : Color.secondary)
                 }
 
                 HStack(spacing: 6) {
@@ -1579,6 +1610,7 @@ struct PlannerPanel: View {
             ? model.selectedReturnTransportID == option.id
             : model.selectedTransportID == option.id
         let duration = option.durationMinutes.map(transportDurationText) ?? "耗时待比较"
+        let confirmation = model.bookingConfirmation(kind: .transport, itemID: option.id)
         let pricedQuote = option.quotes
             .filter(\.isCurrentPrice)
             .min { ($0.amountCNY ?? .max) < ($1.amountCNY ?? .max) }
@@ -1597,11 +1629,13 @@ struct PlannerPanel: View {
                         Text(duration).font(.caption2).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    if option.isRecommended {
-                        Text("推荐")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(AnyTravelPalette.warm)
-                    }
+                    Text(
+                        confirmation != nil
+                            ? "已确认预订"
+                            : selected ? "已选择 · 未购票" : option.isRecommended ? "推荐" : "备选"
+                    )
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(confirmation != nil || selected ? AnyTravelPalette.route : option.isRecommended ? AnyTravelPalette.warm : Color.secondary)
                 }
 
                 Text(option.recommendationReasons.prefix(2).joined(separator: " · "))
@@ -1658,6 +1692,52 @@ struct PlannerPanel: View {
         )
         .accessibilityAddTraits(selected ? .isSelected : [])
         .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: selected)
+    }
+
+    private func bookingStatusCard(kind: BookingItemKind, itemID: UUID) -> some View {
+        let confirmation = model.bookingConfirmation(kind: kind, itemID: itemID)
+        return HStack(spacing: 10) {
+            Image(systemName: confirmation == nil ? "checkmark.circle" : "checkmark.seal.fill")
+                .foregroundStyle(AnyTravelPalette.route)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(confirmation == nil ? "目前只是已选择" : "你已确认在外部平台订好")
+                    .font(.caption.weight(.bold))
+                Text(
+                    confirmation.map { record in
+                        [record.dateSummary, record.note]
+                            .compactMap { $0 }
+                            .filter { !$0.isEmpty }
+                            .joined(separator: " · ")
+                    }
+                    .flatMap { $0.isEmpty ? nil : $0 }
+                        ?? (confirmation == nil ? "AnyTravel 尚未替你下单。" : "库存与付款仍以原平台订单为准。")
+                )
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            }
+            Spacer(minLength: 4)
+            if confirmation == nil {
+                Button("我已订好") {
+                    bookingNote = ""
+                    bookingEditor = BookingEditor(kind: kind, itemID: itemID)
+                }
+                .font(.caption.weight(.bold))
+                .frame(minHeight: 44)
+                .buttonStyle(AnyTravelPressStyle())
+            } else {
+                Button("撤销确认") { model.removeBookingConfirmation(kind: kind, itemID: itemID) }
+                    .font(.caption2.weight(.semibold))
+                    .frame(minHeight: 44)
+                    .buttonStyle(AnyTravelPressStyle())
+            }
+        }
+        .padding(11)
+        .background(
+            confirmation == nil ? AnyTravelPalette.softSurface : AnyTravelPalette.route.opacity(0.10),
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
+        .accessibilityElement(children: .contain)
     }
 
     private func localTransferCard(_ option: LocalTransferOption) -> some View {
