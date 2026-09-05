@@ -16,7 +16,7 @@ npm run dev
 
 仓库包含 `.github/workflows/deploy-web-pages.yml`。将 `main` 推送到 GitHub 后，Actions 会在 Ubuntu runner 上安装锁定依赖、构建 `Web/dist`，再发布到 GitHub Pages。首次启用时，在仓库的 **Settings → Pages → Build and deployment** 将来源设为 **GitHub Actions**；之后每次修改 Web 或默认服务配置都会自动部署。
 
-Pages 使用相对资源路径，因此仓库站点地址形如 `https://<账号>.github.io/AnyTravel/`。当前 `Config/ServiceDefaults.json` 没有公共后端地址，Pages 仍可使用内置目的地资料、地图和离线规划；酒店、交通、门票和托管向导只有在配置可从浏览器访问的 HTTPS 服务后才会显示实时结果。需要接入公共后端时，在仓库 **Settings → Secrets and variables → Actions → Variables** 增加 `ANYTRAVEL_SERVICE_URL`（只放 HTTPS 根地址，不放 token）；工作流会在构建时注入它，后端还需允许 Pages 域名的 CORS。
+线上地址为 [https://rseam-07.github.io/AnyTravel/](https://rseam-07.github.io/AnyTravel/)。Pages 使用相对资源路径，可在仓库子路径下正常加载。当前 `Config/ServiceDefaults.json` 没有公共后端地址，Pages 仍可使用内置目的地资料、地图和离线规划；酒店、交通、门票和托管向导只有在配置可从浏览器访问的 HTTPS 服务后才会显示实时结果。需要接入公共后端时，在仓库 **Settings → Secrets and variables → Actions → Variables** 增加 `ANYTRAVEL_SERVICE_URL`（只放 HTTPS 根地址，不放 token）；工作流会在构建时注入它，后端还需允许 Pages 域名的 CORS。
 
 供应商和模型密钥应放在 `Backend/.env`，不要写入 `Web/.env.local`。设置页仍保留一个明确标为“不推荐”的浏览器直连 DeepSeek 备用入口，只适合用户自带、可随时轮换的密钥。
 
