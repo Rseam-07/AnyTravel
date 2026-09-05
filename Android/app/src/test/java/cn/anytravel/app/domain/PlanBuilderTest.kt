@@ -8,6 +8,9 @@ import cn.anytravel.app.model.QuoteKind
 import cn.anytravel.app.model.QuoteUnit
 import cn.anytravel.app.model.TransportDirection
 import cn.anytravel.app.model.TransportOption
+import cn.anytravel.app.model.BookingConfirmation
+import cn.anytravel.app.model.BookingKind
+import cn.anytravel.app.model.ExpenseSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -46,6 +49,49 @@ class PlanBuilderTest {
 
         assertEquals(6_000, plan.totalExpense)
         assertTrue(plan.expenses.all { it.detail.isNotBlank() })
+    }
+
+    @Test
+    fun providerStayTotalIsNotMultipliedByNightsAndRoomsAgain() {
+        val base = builder.build(TripDraft(destination = "苏州", budgetPerPerson = 3_000, travelers = 4, dayCount = 3), suzhou)
+        val hotelId = requireNotNull(base.selectedAccommodationId)
+        val updated = builder.mergeLiveData(
+            base,
+            mapOf(hotelId to listOf(PriceQuote(
+                provider = "酒店官网",
+                amountCNY = 600,
+                totalAmountCNY = 1_200,
+                unit = QuoteUnit.PER_NIGHT,
+                kind = QuoteKind.LIVE,
+                note = "测试",
+                mealPlan = "含早餐",
+                taxesIncluded = true
+            ))),
+            emptyList()
+        )
+        val hotel = updated.expenses.single { it.id == "hotel" }
+
+        assertEquals(1_200, hotel.amountCNY)
+        assertEquals(ExpenseSource.QUERIED, hotel.source)
+        assertTrue(hotel.detail.contains("本次入住总价"))
+        assertEquals(listOf("住宿押金"), hotel.unpricedComponents)
+    }
+
+    @Test
+    fun confirmedOrderTotalOverridesQuoteAndRemainsSerializableInExpenses() {
+        val base = builder.build(TripDraft(destination = "苏州", budgetPerPerson = 3_000, travelers = 2, dayCount = 3), suzhou)
+        val hotelId = requireNotNull(base.selectedAccommodationId)
+        val updated = builder.updateBookingConfirmations(base, listOf(BookingConfirmation(
+            kind = BookingKind.ACCOMMODATION,
+            itemId = hotelId,
+            title = requireNotNull(base.selectedAccommodation).name,
+            actualAmountCNY = 1_688
+        )))
+        val hotel = updated.expenses.single { it.id == "hotel" }
+
+        assertEquals(1_688, hotel.amountCNY)
+        assertEquals(ExpenseSource.CONFIRMED, hotel.source)
+        assertEquals(1_688, updated.confirmedExpense)
     }
 
     @Test

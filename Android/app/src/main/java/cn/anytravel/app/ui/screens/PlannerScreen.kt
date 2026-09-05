@@ -896,7 +896,7 @@ private fun PlanPanel(
                         viewModel::confirmBooking,
                         viewModel::removeBookingConfirmation
                     )
-                    PlanTab.COSTS -> CostsContent(plan)
+                    PlanTab.COSTS -> CostsContent(plan, viewModel::selectTab)
                 }
             }
         }
@@ -1100,7 +1100,7 @@ private fun StaysContent(
     onMaximumDistance: (Int?) -> Unit,
     onAmenity: (AccommodationAmenity?) -> Unit,
     onSelect: (String) -> Unit,
-    onConfirmBooking: (BookingKind, String, String) -> Unit,
+    onConfirmBooking: (BookingKind, String, String, Int?) -> Unit,
     onRemoveBooking: (BookingKind, String) -> Unit
 ) {
     if (plan.draft.skipAccommodation) {
@@ -1178,7 +1178,7 @@ private fun StaysContent(
                     kind = BookingKind.ACCOMMODATION,
                     itemId = selected.id,
                     confirmation = plan.bookingConfirmations.firstOrNull { it.kind == BookingKind.ACCOMMODATION && it.itemId == selected.id },
-                    onConfirm = { note -> onConfirmBooking(BookingKind.ACCOMMODATION, selected.id, note) },
+                    onConfirm = { note, amount -> onConfirmBooking(BookingKind.ACCOMMODATION, selected.id, note, amount) },
                     onRemove = { onRemoveBooking(BookingKind.ACCOMMODATION, selected.id) }
                 )
             }
@@ -1233,7 +1233,7 @@ private fun AccommodationCard(option: AccommodationOption, selected: Boolean, co
 private fun TransportContent(
     plan: CompletePlan,
     onSelect: (String) -> Unit,
-    onConfirmBooking: (BookingKind, String, String) -> Unit,
+    onConfirmBooking: (BookingKind, String, String, Int?) -> Unit,
     onRemoveBooking: (BookingKind, String) -> Unit
 ) {
     if (plan.draft.skipTransport) {
@@ -1275,7 +1275,7 @@ private fun TransportContent(
                     kind = BookingKind.TRANSPORT,
                     itemId = selected.id,
                     confirmation = plan.bookingConfirmations.firstOrNull { it.kind == BookingKind.TRANSPORT && it.itemId == selected.id },
-                    onConfirm = { note -> onConfirmBooking(BookingKind.TRANSPORT, selected.id, note) },
+                    onConfirm = { note, amount -> onConfirmBooking(BookingKind.TRANSPORT, selected.id, note, amount) },
                     onRemove = { onRemoveBooking(BookingKind.TRANSPORT, selected.id) }
                 )
             }
@@ -1337,11 +1337,12 @@ private fun BookingStatusCard(
     kind: BookingKind,
     itemId: String,
     confirmation: BookingConfirmation?,
-    onConfirm: (String) -> Unit,
+    onConfirm: (String, Int?) -> Unit,
     onRemove: () -> Unit
 ) {
     var editing by remember(itemId) { mutableStateOf(false) }
     var note by remember(itemId, confirmation?.note) { mutableStateOf(confirmation?.note.orEmpty()) }
+    var actualAmount by remember(itemId, confirmation?.actualAmountCNY) { mutableStateOf(confirmation?.actualAmountCNY?.toString().orEmpty()) }
     Surface(
         shape = RoundedCornerShape(18.dp),
         color = if (confirmation != null) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
@@ -1363,6 +1364,7 @@ private fun BookingStatusCard(
                             record.startDate?.let { start ->
                                 add(record.endDate?.takeIf { it != start }?.let { "$start 至 $it" } ?: start)
                             }
+                            add(record.actualAmountCNY?.let { "实际支出 ¥$it" } ?: "实际支出未记录")
                             record.note?.takeIf(String::isNotBlank)?.let(::add)
                         }.joinToString(" · ").ifBlank { "库存与付款仍以原平台订单为准" }
                     } ?: "AnyTravel 尚未替你下单。",
@@ -1385,8 +1387,16 @@ private fun BookingStatusCard(
             ) {
                 Text("确认已在外部平台预订", style = MaterialTheme.typography.headlineSmall)
                 Text(
-                    if (kind == BookingKind.ACCOMMODATION) "记录入住与离店日期，并保留一条可选订单备注。" else "记录这一班次与出行日期。",
+                    if (kind == BookingKind.ACCOMMODATION) "记录入住、离店日期与本次订单实际总额。" else "记录这一班次、出行日期与本次订单实际总额。",
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = actualAmount,
+                    onValueChange = { actualAmount = it.filter(Char::isDigit).take(8) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("实际支付总额（可留空）") },
+                    placeholder = { Text("例如：1288") },
+                    singleLine = true
                 )
                 OutlinedTextField(
                     value = note,
@@ -1399,7 +1409,7 @@ private fun BookingStatusCard(
                 )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = { editing = false }) { Text("取消") }
-                    Button(onClick = { onConfirm(note); editing = false }) { Text("确认已预订") }
+                    Button(onClick = { onConfirm(note, actualAmount.toIntOrNull()); editing = false }) { Text("确认已预订") }
                 }
                 Spacer(Modifier.height(8.dp))
             }
@@ -1456,22 +1466,53 @@ private fun QuoteRow(quote: PriceQuote, onOpen: () -> Unit) {
 }
 
 @Composable
-private fun CostsContent(plan: CompletePlan) {
+private fun CostsContent(plan: CompletePlan, onSelectTab: (PlanTab) -> Unit) {
     LazyColumn(contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.primaryContainer) {
-                Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.Payments, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp))
                     Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                        Text("当前方案总计", style = MaterialTheme.typography.labelLarge)
-                        Text("¥${plan.totalExpense}", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+                        Text("当前预算轮廓", style = MaterialTheme.typography.labelLarge)
+                        Text("约 ¥${plan.totalExpense}", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
                     }
                     Text("${plan.draft.travelers}人", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        CostMetric("已确认", plan.confirmedExpense)
+                        CostMetric("查询/参考", plan.quotedExpense)
+                        CostMetric("待确认", plan.unpricedExpenseComponents.size, suffix = "类")
+                    }
                 }
             }
         }
         items(plan.expenses, key = { it.id }) { ExpenseRow(it) }
-        item { DataBoundaryCard("预算预留用于把方案补完整，不代表平台报价；取得实时价后，对应项目会自动替换并重新合计。") }
+        if (plan.unpricedExpenseComponents.isNotEmpty()) {
+            item { DataBoundaryCard("仍有${plan.unpricedExpenseComponents.size}类金额可能另计：${plan.unpricedExpenseComponents.joinToString("、")}。它们没有被当作0，机动金只用于预算缓冲。") }
+        }
+        if (plan.totalExpense > plan.draft.budgetPerPerson * plan.draft.travelers.coerceAtLeast(1)) {
+            item {
+                Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.55f)) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("当前轮廓超过总预算约 ¥${plan.totalExpense - plan.draft.budgetPerPerson * plan.draft.travelers.coerceAtLeast(1)}", color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.labelLarge)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = { onSelectTab(PlanTab.STAYS) }) { Text("调整住宿") }
+                            TextButton(onClick = { onSelectTab(PlanTab.TRANSPORT) }) { Text("调整交通") }
+                        }
+                    }
+                }
+            }
+        }
+        item { DataBoundaryCard("房间数暂按每间2名成人估算；儿童、单人入住、加床、税费、早餐、押金和取消条件以最终订单页为准。") }
+    }
+}
+
+@Composable
+private fun CostMetric(title: String, amount: Int, suffix: String = "元") {
+    Column {
+        Text(title, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("$amount$suffix", style = MaterialTheme.typography.labelLarge)
     }
 }
 
@@ -1481,9 +1522,13 @@ private fun ExpenseRow(line: ExpenseLine) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(line.title, style = MaterialTheme.typography.titleMedium)
-                Text("${line.detail} · ${line.source.title}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "${line.detail} · ${line.source.title}" + if (line.unpricedComponents.isEmpty()) "" else " · 另待确认：${line.unpricedComponents.joinToString("、")}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
-            Text("¥${line.amountCNY}", style = MaterialTheme.typography.titleMedium)
+            Text("${if (line.source == cn.anytravel.app.model.ExpenseSource.CONFIRMED) "" else "约"}¥${line.amountCNY}", style = MaterialTheme.typography.titleMedium)
         }
     }
 }

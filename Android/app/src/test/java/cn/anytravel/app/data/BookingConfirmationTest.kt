@@ -36,6 +36,7 @@ class BookingConfirmationTest {
             confirmedAt = "2026-09-05T00:00:00Z",
             startDate = "2026-09-10",
             endDate = "2026-09-12",
+            actualAmountCNY = 1_688,
             note = "订单尾号 1234"
         )))
 
@@ -43,6 +44,7 @@ class BookingConfirmationTest {
 
         assertEquals("订单尾号 1234", restored.bookingConfirmations.single().note)
         assertEquals("2026-09-12", restored.bookingConfirmations.single().endDate)
+        assertEquals(1_688, restored.bookingConfirmations.single().actualAmountCNY)
     }
 
     @Test

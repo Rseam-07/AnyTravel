@@ -34,6 +34,8 @@ struct PlanExportPayload: Sendable {
     let generatedAt: Date
 
     var totalExpenseCNY: Int { expenses.reduce(0) { $0 + $1.amountCNY } }
+    var confirmedExpenseCNY: Int { expenses.filter { $0.source == .confirmed }.reduce(0) { $0 + $1.amountCNY } }
+    var unpricedComponents: [String] { Array(Set(expenses.flatMap(\.unpricedComponents))).sorted() }
 }
 
 enum PlanExportError: LocalizedError, Equatable {
@@ -506,10 +508,11 @@ private final class PlanPDFDocument {
     private func drawExpenses() {
         drawSectionTitle("费用落款", subtitle: "每一笔都留下口径，最后仍以结算页为准")
         for line in payload.expenses {
-            let price = "¥\(line.amountCNY.formatted(.number.grouping(.automatic)))"
+            let price = "\(line.source == .confirmed ? "" : "约 ")¥\(line.amountCNY.formatted(.number.grouping(.automatic)))"
+            let pending = line.unpricedComponents.isEmpty ? "" : " · 另待确认：\(line.unpricedComponents.joined(separator: "、"))"
             drawExpenseRow(
                 title: line.title.exportSafeText,
-                detail: "\(line.detail.exportSafeText) · \(line.source.title)",
+                detail: "\(line.detail.exportSafeText) · \(line.source.title)\(pending)",
                 price: price,
                 continuationTitle: "费用落款 · 续"
             )
@@ -518,14 +521,14 @@ private final class PlanPDFDocument {
         let totalRect = CGRect(x: margin, y: cursorY + 4, width: contentWidth, height: 52)
         drawRoundedRect(totalRect, radius: 15, fill: PlanPDFPalette.route)
         drawText(
-            "当前方案合计",
+            "当前预算轮廓",
             font: .systemFont(ofSize: 12, weight: .semibold),
             color: .white,
             maxWidth: 180,
             at: CGPoint(x: totalRect.minX + 16, y: totalRect.minY + 18)
         )
         drawText(
-            "¥\(payload.totalExpenseCNY.formatted(.number.grouping(.automatic)))",
+            "约 ¥\(payload.totalExpenseCNY.formatted(.number.grouping(.automatic)))",
             font: .monospacedDigitSystemFont(ofSize: 18, weight: .bold),
             color: .white,
             maxWidth: 220,
@@ -533,6 +536,16 @@ private final class PlanPDFDocument {
             alignment: .right
         )
         cursorY = totalRect.maxY + 8
+        if !payload.unpricedComponents.isEmpty {
+            drawText(
+                "已确认支出 ¥\(payload.confirmedExpenseCNY.formatted(.number.grouping(.automatic))) · 另待确认：\(payload.unpricedComponents.joined(separator: "、"))".exportSafeText,
+                font: .systemFont(ofSize: 8.5, weight: .regular),
+                color: PlanPDFPalette.secondaryInk,
+                maxWidth: contentWidth,
+                at: CGPoint(x: margin, y: cursorY)
+            )
+            cursorY += 18
+        }
     }
 
     private func drawSectionTitle(_ title: String, subtitle: String) {

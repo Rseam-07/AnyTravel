@@ -29,7 +29,7 @@ object PlanExportService {
         try {
             val writer = PdfWriter(document)
             writer.title("${plan.draft.destination} · ${plan.draft.dayCount}天")
-            writer.muted("${plan.draft.origin.ifBlank { "出发地待定" }}出发 · ${plan.draft.travelers}人 · ${plan.draft.pace.title} · 预算约¥${plan.totalExpense}")
+            writer.muted("${plan.draft.origin.ifBlank { "出发地待定" }}出发 · ${plan.draft.travelers}人 · ${plan.draft.pace.title} · 当前预算轮廓约¥${plan.totalExpense}")
             writer.rule()
             plan.planningNotes.takeLast(4).forEach(writer::muted)
             plan.days.forEach { day ->
@@ -56,8 +56,12 @@ object PlanExportService {
                 }
             }
             writer.heading("费用")
-            plan.expenses.forEach { writer.body("${it.title}  ¥${it.amountCNY} · ${it.detail}") }
-            writer.body("合计约 ¥${plan.totalExpense}", bold = true)
+            plan.expenses.forEach {
+                val pending = if (it.unpricedComponents.isEmpty()) "" else " · 另待确认：${it.unpricedComponents.joinToString("、")}"
+                writer.body("${it.title}  ${if (it.source == cn.anytravel.app.model.ExpenseSource.CONFIRMED) "" else "约"}¥${it.amountCNY} · ${it.detail} · ${it.source.title}$pending")
+            }
+            writer.body("当前预算轮廓约 ¥${plan.totalExpense}", bold = true)
+            writer.muted("已确认支出 ¥${plan.confirmedExpense}" + if (plan.unpricedExpenseComponents.isEmpty()) "" else " · 另待确认：${plan.unpricedExpenseComponents.joinToString("、")}")
             writer.rule()
             writer.muted("价格、开放时间与库存会变化，请在出发和付款前复核。由 AnyTravel · 折叠远方生成。")
             writer.finish()

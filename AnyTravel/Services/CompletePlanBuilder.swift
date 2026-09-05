@@ -137,7 +137,8 @@ struct ExpensePlanner {
         returnTransport: TransportOption? = nil,
         outboundTransfer: LocalTransferOption? = nil,
         returnTransfer: LocalTransferOption? = nil,
-        itineraryDays: [ItineraryDay] = []
+        itineraryDays: [ItineraryDay] = [],
+        bookingConfirmations: [BookingConfirmation] = []
     ) -> [ExpenseLine] {
         let totalBudget = draft.budgetPerPerson * max(draft.logistics.travelers, 1)
         let rooms = max((draft.logistics.travelers + 1) / 2, 1)
@@ -145,18 +146,29 @@ struct ExpensePlanner {
 
         let transportQuote = transport?.quotes.bestUsableQuote
         let returnTransportQuote = returnTransport?.quotes.bestUsableQuote
+        let outboundConfirmation = transport.flatMap { option in
+            bookingConfirmations.first { $0.kind == .transport && $0.itemID == option.id }
+        }
+        let returnConfirmation = returnTransport.flatMap { option in
+            bookingConfirmations.first { $0.kind == .transport && $0.itemID == option.id }
+        }
         let quotedOutboundAmount = totalAmount(for: transportQuote, travelers: draft.logistics.travelers)
         let quotedReturnAmount = totalAmount(for: returnTransportQuote, travelers: draft.logistics.travelers)
         let roundTripEnvelope = Int(Double(totalBudget) * 0.24)
-        let outboundAmount = quotedOutboundAmount ?? roundTripEnvelope / 2
-        let returnAmount = quotedReturnAmount ?? quotedOutboundAmount ?? (roundTripEnvelope - outboundAmount)
+        let outboundAmount = outboundConfirmation?.actualAmountCNY ?? quotedOutboundAmount ?? roundTripEnvelope / 2
+        let returnAmount = returnConfirmation?.actualAmountCNY ?? quotedReturnAmount ?? quotedOutboundAmount ?? (roundTripEnvelope - outboundAmount)
 
         let hotelQuote = accommodation?.quotes.bestUsableQuote
+        let hotelConfirmation = accommodation.flatMap { option in
+            bookingConfirmations.first { $0.kind == .accommodation && $0.itemID == option.id }
+        }
         let accommodationAmount: Int
         if nights == 0 {
             accommodationAmount = 0
-        } else if let nightly = hotelQuote?.amountCNY {
-            accommodationAmount = nightly * nights * rooms
+        } else if let confirmed = hotelConfirmation?.actualAmountCNY {
+            accommodationAmount = confirmed
+        } else if let quote = hotelQuote, let quoted = accommodationTotal(for: quote, travelers: draft.logistics.travelers, nights: nights, rooms: rooms) {
+            accommodationAmount = quoted
         } else {
             accommodationAmount = Int(Double(totalBudget) * 0.34)
         }
@@ -177,20 +189,26 @@ struct ExpensePlanner {
                 ExpenseLine(
                     id: "outbound-transport",
                     title: "去程大交通",
-                    detail: transportQuote.map { "\($0.provider.title) · \($0.kind.title) · 当前去程" }
+                    detail: outboundConfirmation?.actualAmountCNY != nil
+                        ? "\(outboundConfirmation?.title ?? transport?.title ?? "当前去程") · 用户记录的订单总额"
+                        : transportQuote.map { "\($0.provider.title) · \($0.kind.title) · 当前去程\(outboundConfirmation == nil ? "" : " · 已确认购票，实付未记录")" }
                         ?? "先留出往返交通预算的一半",
                     amountCNY: outboundAmount,
-                    source: transportQuote?.kind == .live ? .live : .budgetEnvelope
+                    source: outboundConfirmation?.actualAmountCNY != nil ? .confirmed : expenseSource(for: transportQuote),
+                    unpricedComponents: transportQuote == nil ? ["去程票价"] : []
                 ),
                 ExpenseLine(
                     id: "return-transport",
                     title: "返程大交通",
-                    detail: returnTransportQuote.map { "\($0.provider.title) · \($0.kind.title) · 当前返程" }
+                    detail: returnConfirmation?.actualAmountCNY != nil
+                        ? "\(returnConfirmation?.title ?? returnTransport?.title ?? "当前返程") · 用户记录的订单总额"
+                        : returnTransportQuote.map { "\($0.provider.title) · \($0.kind.title) · 当前返程\(returnConfirmation == nil ? "" : " · 已确认购票，实付未记录")" }
                         ?? (quotedOutboundAmount == nil
                             ? "先留出往返交通预算的一半"
                             : "按当前去程价格预留 · 尚非返程实时报价"),
                     amountCNY: returnAmount,
-                    source: returnTransportQuote?.kind == .live ? .live : .budgetEnvelope
+                    source: returnConfirmation?.actualAmountCNY != nil ? .confirmed : expenseSource(for: returnTransportQuote),
+                    unpricedComponents: returnTransportQuote == nil ? ["返程票价"] : []
                 )
             ]
         }
@@ -219,13 +237,43 @@ struct ExpensePlanner {
             travelers: draft.logistics.travelers
         )
 
+        let accommodationPending: [String]
+        if nights == 0 {
+            accommodationPending = []
+        } else {
+            accommodationPending = [
+                hotelQuote?.taxesIncluded == true ? nil : hotelQuote?.taxesIncluded == false ? "住宿税费（渠道标记未含）" : "住宿税费",
+                hotelQuote?.mealPlan?.isEmpty == false ? nil : "早餐",
+                "住宿押金"
+            ].compactMap { $0 }
+        }
+        let accommodationDetail: String
+        if nights == 0 {
+            accommodationDetail = "已跳过或无需过夜"
+        } else if hotelConfirmation?.actualAmountCNY != nil {
+            accommodationDetail = "\(hotelConfirmation?.title ?? accommodation?.name ?? "住宿") · 用户记录的订单总额"
+        } else if let quote = hotelQuote {
+            let formula: String
+            if quote.totalAmountCNY != nil || quote.unit == .total {
+                formula = "渠道返回本次入住总价 · \(nights)晚 · \(rooms)间"
+            } else if let amount = quote.amountCNY {
+                formula = "¥\(amount)/晚 × \(nights)晚 × \(rooms)间"
+            } else {
+                formula = "\(nights)晚 × \(rooms)间"
+            }
+            accommodationDetail = "\(accommodation?.name ?? "住宿") · \(formula)\(hotelConfirmation == nil ? "" : " · 已确认预订，实付未记录")"
+        } else {
+            accommodationDetail = "\(nights)晚 × \(rooms)间 · 当前按每间2名成人估算"
+        }
+
         return transportLines + transferLines + [
             ExpenseLine(
                 id: "accommodation",
                 title: "住宿",
-                detail: nights == 0 ? "已跳过或无需过夜" : hotelQuote.map { "\(nights)晚 × \(rooms)间 · \($0.provider.title)" } ?? "\(nights)晚 · 等待多渠道报价",
+                detail: accommodationDetail,
                 amountCNY: accommodationAmount,
-                source: hotelQuote?.kind == .live ? .live : .budgetEnvelope
+                source: nights == 0 ? .estimate : hotelConfirmation?.actualAmountCNY != nil ? .confirmed : expenseSource(for: hotelQuote),
+                unpricedComponents: accommodationPending
             ),
             ticketLine,
             ExpenseLine(id: "meals", title: "餐饮", detail: "默认轻松节奏，预留正餐与休息", amountCNY: Int(Double(totalBudget) * 0.17), source: .budgetEnvelope),
@@ -241,8 +289,31 @@ struct ExpensePlanner {
     }
 
     private func totalAmount(for quote: ProviderQuote?, travelers: Int) -> Int? {
-        guard let quote, let amount = quote.amountCNY else { return nil }
+        guard let quote else { return nil }
+        if let totalAmountCNY = quote.totalAmountCNY { return totalAmountCNY }
+        guard let amount = quote.amountCNY else { return nil }
         return quote.unit == .perPerson ? amount * max(travelers, 1) : amount
+    }
+
+    private func accommodationTotal(for quote: ProviderQuote, travelers: Int, nights: Int, rooms: Int) -> Int? {
+        if let totalAmountCNY = quote.totalAmountCNY { return totalAmountCNY }
+        guard let amount = quote.amountCNY else { return nil }
+        switch quote.unit {
+        case .total:
+            return amount
+        case .perPerson:
+            return amount * max(travelers, 1)
+        case .perNight:
+            return amount * max(nights, 1) * max(rooms, 1)
+        }
+    }
+
+    private func expenseSource(for quote: ProviderQuote?) -> ExpenseSource {
+        guard let quote else { return .budgetEnvelope }
+        if quote.isStale || quote.kind == .indicative { return .reference }
+        if quote.kind == .live { return .live }
+        if quote.kind == .budgetEstimate { return .estimate }
+        return .budgetEnvelope
     }
 
     private func ticketExpenseLine(
@@ -264,7 +335,8 @@ struct ExpensePlanner {
                 title: "景点与预约",
                 detail: "按景点逐项核价前的额度",
                 amountCNY: envelope,
-                source: .budgetEnvelope
+                source: .budgetEnvelope,
+                unpricedComponents: stops.isEmpty ? [] : ["\(stops.count)处景点票价"]
             )
         }
 
@@ -285,7 +357,8 @@ struct ExpensePlanner {
             title: "景点与预约",
             detail: detail,
             amountCNY: amount,
-            source: source
+            source: source,
+            unpricedComponents: unknownCount == 0 ? [] : ["\(unknownCount)处景点票价"]
         )
     }
 

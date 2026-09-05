@@ -26,6 +26,7 @@ import { formatCNY, meterText } from "../types";
 import { bestQuote, distanceMeters } from "../planner";
 import type { AccommodationOption, BookingConfirmation, BookingKind } from "../types";
 import { KNOWLEDGE_STATS, lookupCity } from "../knowledge";
+import { buildExpenseSummary, expenseSourceTitle } from "../expense-planner";
 
 export function WeatherStrip() {
   const { state } = useApp();
@@ -405,7 +406,7 @@ export function AccommodationPanel() {
           selected={state.selectedAccommodationID === item.id}
           confirmation={state.bookingConfirmations.find(record => record.kind === "accommodation" && record.itemID === item.id)}
           onSelect={() => selectAccommodation(item.id)}
-          onConfirm={(note) => confirmBooking("accommodation", item.id, note)}
+          onConfirm={(note, amount) => confirmBooking("accommodation", item.id, note, amount)}
           onRemoveConfirmation={() => removeBookingConfirmation("accommodation", item.id)}
           onFocus={() => item.coordinate && setFocus({ kind: "accommodation", id: item.id, coordinate: item.coordinate })}
         />
@@ -427,7 +428,7 @@ function StayCard({
   selected: boolean;
   confirmation?: BookingConfirmation;
   onSelect: () => void;
-  onConfirm: (note?: string) => void;
+  onConfirm: (note?: string, actualAmountCNY?: number) => void;
   onRemoveConfirmation: () => void;
   onFocus: () => void;
 }) {
@@ -581,7 +582,7 @@ export function TransportPanel({ onGoConditions }: { onGoConditions?: () => void
               <BookingControl
                 kind="transport"
                 confirmation={confirmation}
-                onConfirm={(note) => confirmBooking("transport", option.id, note)}
+                onConfirm={(note, amount) => confirmBooking("transport", option.id, note, amount)}
                 onRemove={() => removeBookingConfirmation("transport", option.id)}
               />
             )}
@@ -607,11 +608,12 @@ function BookingControl({
 }: {
   kind: BookingKind;
   confirmation?: BookingConfirmation;
-  onConfirm: (note?: string) => void;
+  onConfirm: (note?: string, actualAmountCNY?: number) => void;
   onRemove: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [note, setNote] = useState(confirmation?.note ?? "");
+  const [actualAmount, setActualAmount] = useState(confirmation?.actualAmountCNY?.toString() ?? "");
   const noun = kind === "accommodation" ? "住宿" : "车票/机票";
   if (confirmation) {
     const confirmedAt = new Date(confirmation.confirmedAt);
@@ -627,7 +629,7 @@ function BookingControl({
       <div className="booking-confirmation" onClick={(event) => event.stopPropagation()}>
         <div>
           <strong>你已确认在外部平台订好</strong>
-          <small>{[tripDates, dateText, confirmation.note].filter(Boolean).join(" · ")}</small>
+          <small>{[tripDates, confirmation.actualAmountCNY ? `实际支出 ${formatCNY(confirmation.actualAmountCNY)}` : "实际支出未记录", dateText, confirmation.note].filter(Boolean).join(" · ")}</small>
         </div>
         <button className="link-btn" onClick={onRemove}>撤销确认</button>
       </div>
@@ -645,11 +647,20 @@ function BookingControl({
     <form
       className="booking-editor"
       onClick={(event) => event.stopPropagation()}
-      onSubmit={(event) => { event.preventDefault(); onConfirm(note); setEditing(false); }}
+      onSubmit={(event) => {
+        event.preventDefault();
+        const parsed = actualAmount.trim() ? Number(actualAmount) : undefined;
+        onConfirm(note, parsed != null && Number.isFinite(parsed) && parsed > 0 ? parsed : undefined);
+        setEditing(false);
+      }}
     >
       <label>
+        实际支付总额（可留空）
+        <input type="number" min="1" max="10000000" step="1" inputMode="numeric" value={actualAmount} onChange={(event) => setActualAmount(event.target.value)} placeholder="例如：1288" autoFocus />
+      </label>
+      <label>
         {noun}订单备注（可留空）
-        <input value={note} onChange={(event) => setNote(event.target.value)} maxLength={80} placeholder="例如：订单尾号、可取消至何时" autoFocus />
+        <input value={note} onChange={(event) => setNote(event.target.value)} maxLength={80} placeholder="例如：订单尾号、可取消至何时" />
       </label>
       <small>请勿填写身份证号、银行卡或完整支付信息。</small>
       <div>
@@ -660,92 +671,58 @@ function BookingControl({
   );
 }
 
-export function BudgetPanel() {
+export function BudgetPanel({ onNavigate }: { onNavigate?: (target: "stay" | "transport") => void }) {
   const { state } = useApp();
-  const rows = useMemo(() => buildCosts(state), [state]);
-  const total = rows.reduce((sum, row) => sum + (row.amountCNY ?? 0), 0);
+  const summary = useMemo(() => buildExpenseSummary(state), [state]);
   const budget = state.draft.budgetPerPerson ? state.draft.budgetPerPerson * state.draft.travelers : null;
-  const over = budget != null && total > budget;
+  const over = budget != null && summary.plannedTotalCNY > budget;
+  const biggest = [...summary.rows].filter((row) => row.amountCNY > 0).sort((a, b) => b.amountCNY - a.amountCNY).slice(0, 2);
   return (
     <div>
       <div className="section-title">一路要花多少钱</div>
-      {rows.map((row, i) => (
-        <div key={i} className="cost-row">
+      <div className="cost-summary" aria-label="费用口径摘要">
+        <div><small>当前预算轮廓</small><strong>约 {formatCNY(summary.plannedTotalCNY)}</strong></div>
+        <div><small>已确认支出</small><strong>{formatCNY(summary.confirmedTotalCNY)}</strong></div>
+        <div><small>渠道查询/参考</small><strong>{formatCNY(summary.quotedTotalCNY)}</strong></div>
+      </div>
+      {summary.rows.map((row) => (
+        <div key={row.id} className="cost-row">
           <span className="cost-label">
             {row.label}
             <span className="cost-kind">
-              {row.kind === "live" ? "渠道实时价" : row.kind === "estimate" ? "本地估算（非成交价）" : "预算预留"}
-              {row.note ? ` · ${row.note}` : ""}
+              {expenseSourceTitle(row.source)} · {row.note}
+              {row.pendingItems.length > 0 ? ` · 另待确认：${row.pendingItems.join("、")}` : ""}
             </span>
           </span>
           <span className="cost-amount">{formatCNY(row.amountCNY)}</span>
         </div>
       ))}
       <div className="cost-total">
-        <span>合计（{state.draft.travelers} 人）</span>
-        <span style={{ color: over ? "var(--danger)" : "var(--warm)" }}>{formatCNY(total)}</span>
+        <span>计划总额（{state.draft.travelers} 人，含预留）</span>
+        <span style={{ color: over ? "var(--danger)" : "var(--warm)" }}>约 {formatCNY(summary.plannedTotalCNY)}</span>
       </div>
+      {summary.pendingItems.length > 0 && (
+        <div className="cost-boundary" role="status">
+          仍有 {summary.pendingItems.length} 类金额可能另计：{summary.pendingItems.join("、")}。它们没有被当作 0，机动金只用于预算缓冲。
+        </div>
+      )}
       {budget != null && (
         <div className="sub-text" style={{ marginTop: 8 }}>
           {over ? (
-            <span style={{ color: "var(--danger)", fontWeight: 700 }}>
-              超出人均预算约 {formatCNY(total - budget)}：试试换住宿档位、改交通席别或减一天。
-            </span>
+            <div className="cost-overage">
+              <strong>比总预算高约 {formatCNY(summary.plannedTotalCNY - budget)}</strong>
+              <span>占用最多的是 {biggest.map((row) => `${row.label} ${formatCNY(row.amountCNY)}`).join("、")}。</span>
+              <div>
+                <button className="mini-btn" onClick={() => onNavigate?.("stay")}>调整住宿</button>
+                <button className="mini-btn" onClick={() => onNavigate?.("transport")}>调整交通</button>
+              </div>
+            </div>
           ) : (
-            <>在预算 {formatCNY(budget)} 内，还有 {formatCNY(budget - total)} 余量。</>
+            <>在预算 {formatCNY(budget)} 内，当前还留有约 {formatCNY(budget - summary.plannedTotalCNY)} 余量。</>
           )}
         </div>
       )}
+      <div className="cost-boundary">房间数暂按每间 2 名成人估算；儿童、单人入住、加床、税费、早餐、押金和取消条件以最终订单页为准。</div>
     </div>
   );
-}
-
-import type { AppState } from "../store";
-
-function buildCosts(state: AppState): { label: string; amountCNY: number | null; kind: "live" | "estimate" | "reserved"; note?: string }[] {
-  const rows: { label: string; amountCNY: number | null; kind: "live" | "estimate" | "reserved"; note?: string }[] = [];
-  const draft = state.draft;
-  const nights = Math.max(draft.dayCount - 1, 1);
-
-  const outbound = state.transports.find((t) => t.direction === "outbound" && t.id === state.selectedOutboundID);
-  const retur = state.transports.find((t) => t.direction === "return" && t.id === state.selectedReturnID);
-  for (const [label, option] of [
-    ["去程大交通", outbound],
-    ["返程大交通", retur]
-  ] as const) {
-    const quote = option && bestQuote(option.quotes);
-    const per = quote?.amountCNY != null ? quote.amountCNY * draft.travelers : null;
-    rows.push({
-      label,
-      amountCNY: per,
-      kind: quote?.amountCNY != null ? "live" : "reserved",
-      note: quote?.sourceLabel
-    });
-  }
-
-  const stays = state.accommodations.filter((a) => a.id === state.selectedAccommodationID);
-  const stayQuote = stays.length ? bestQuote(stays[0].quotes) : null;
-  const stayTotal = stayQuote?.amountCNY != null ? stayQuote.amountCNY * nights * Math.ceil(draft.travelers / 2) : null;
-  rows.push({
-    label: `住宿（${nights} 晚）`,
-    amountCNY: stayTotal,
-    kind: stayQuote?.amountCNY != null ? "live" : "reserved",
-    note: stayQuote?.amountCNY != null ? `${stays[0].name} · ${stayQuote.providerTitle}` : "默认已选最低价住宿，可在住宿页更换"
-  });
-
-  const ticketTotal = Object.values(state.tickets).reduce((sum, t) => sum + (t.amountCNY ?? 0) * draft.travelers, 0);
-  rows.push({
-    label: "景点门票",
-    amountCNY: Object.keys(state.tickets).length ? ticketTotal : null,
-    kind: ticketTotal > 0 ? "live" : "reserved",
-    note: Object.keys(state.tickets).length ? `${Object.keys(state.tickets).length} 处已查到公开起价` : "公开列表命中后回填"
-  });
-
-  const cityTransit = draft.dayCount * draft.travelers * 12;
-  rows.push({ label: "市内交通（地铁/公交估算）", amountCNY: cityTransit, kind: "estimate", note: "按每人每天约 12 元估算" });
-
-  const meal = draft.dayCount * draft.travelers * (draft.pace === "relaxed" ? 150 : 120);
-  rows.push({ label: "餐饮（估算）", amountCNY: meal, kind: "estimate", note: "按人均每天约 100–150 元估算" });
-
-  return rows;
 }

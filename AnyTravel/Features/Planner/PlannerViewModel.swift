@@ -254,12 +254,25 @@ final class PlannerViewModel {
             returnTransport: selectedReturnTransport,
             outboundTransfer: selectedOutboundTransfer,
             returnTransfer: selectedReturnTransfer,
-            itineraryDays: itineraryDays
+            itineraryDays: itineraryDays,
+            bookingConfirmations: bookingConfirmations
         )
     }
 
     var plannedExpenseTotal: Int {
         expenseLines.reduce(0) { $0 + $1.amountCNY }
+    }
+
+    var confirmedExpenseTotal: Int {
+        expenseLines.filter { $0.source == .confirmed }.reduce(0) { $0 + $1.amountCNY }
+    }
+
+    var quotedExpenseTotal: Int {
+        expenseLines.filter { $0.source == .live || $0.source == .reference }.reduce(0) { $0 + $1.amountCNY }
+    }
+
+    var unpricedExpenseComponents: [String] {
+        Array(Set(expenseLines.flatMap(\.unpricedComponents))).sorted()
     }
 
     var totalBudget: Int {
@@ -2378,7 +2391,7 @@ final class PlannerViewModel {
         bookingConfirmations.first { $0.kind == kind && $0.itemID == itemID }
     }
 
-    func confirmBooking(kind: BookingItemKind, itemID: UUID, note: String) {
+    func confirmBooking(kind: BookingItemKind, itemID: UUID, note: String, actualAmountCNY: Int? = nil) {
         let accommodation = kind == .accommodation ? accommodations.first { $0.id == itemID } : nil
         let transport = kind == .transport
             ? (transportOptions + returnTransportOptions).first { $0.id == itemID }
@@ -2396,6 +2409,7 @@ final class PlannerViewModel {
             startDate: direction == .returnTrip ? draft.logistics.endDate : draft.logistics.startDate,
             endDate: kind == .accommodation ? draft.logistics.endDate : nil,
             direction: direction,
+            actualAmountCNY: actualAmountCNY.flatMap { $0 > 0 ? $0 : nil },
             note: trimmedNote.isEmpty ? nil : trimmedNote
         )
         bookingConfirmations.removeAll { $0.kind == kind && $0.itemID == itemID }

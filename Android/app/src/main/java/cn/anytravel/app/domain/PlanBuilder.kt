@@ -46,7 +46,7 @@ class PlanBuilder {
             selectedAccommodationId = selectedAccommodation?.id,
             transports = transports,
             selectedTransportId = selectedTransport?.id,
-            expenses = buildExpenses(draft, selectedAccommodation, selectedTransport),
+            expenses = buildExpenses(draft, selectedAccommodation, selectedTransport, transports, days),
             sourceNote = pack.sourceNote,
             selectedPlaceIDs = selectedPlaceIDs.intersect(orderedPlaces.mapTo(mutableSetOf()) { it.id }),
             planningNotes = planningNotes(draft, orderedPlaces, selectedPlaceIDs, selectionWasSkipped)
@@ -63,7 +63,7 @@ class PlanBuilder {
             selectedAccommodationId = id,
             transports = transports,
             selectedTransportId = selectedTransport?.id,
-            expenses = buildExpenses(plan.draft, selected, selectedTransport)
+            expenses = buildExpenses(plan.draft, selected, selectedTransport, transports, plan.days, plan.bookingConfirmations)
         )
     }
 
@@ -73,9 +73,22 @@ class PlanBuilder {
         return plan.copy(
             transports = transports,
             selectedTransportId = id,
-            expenses = buildExpenses(plan.draft, plan.selectedAccommodation, transport)
+            expenses = buildExpenses(plan.draft, plan.selectedAccommodation, transport, transports, plan.days, plan.bookingConfirmations)
         )
     }
+
+    fun updateBookingConfirmations(plan: CompletePlan, confirmations: List<cn.anytravel.app.model.BookingConfirmation>): CompletePlan =
+        plan.copy(
+            bookingConfirmations = confirmations,
+            expenses = buildExpenses(
+                plan.draft,
+                plan.selectedAccommodation,
+                plan.selectedTransport,
+                plan.transports,
+                plan.days,
+                confirmations
+            )
+        )
 
     fun updateItinerary(
         plan: CompletePlan,
@@ -172,7 +185,7 @@ class PlanBuilder {
             selectedAccommodationId = selectedAccommodationId,
             transports = transports,
             selectedTransportId = selectedTransportId,
-            expenses = buildExpenses(plan.draft, selectedAccommodation, selectedTransport)
+            expenses = buildExpenses(plan.draft, selectedAccommodation, selectedTransport, transports, plan.days, plan.bookingConfirmations)
         )
     }
 
@@ -721,26 +734,151 @@ class PlanBuilder {
     private fun buildExpenses(
         draft: TripDraft,
         accommodation: AccommodationOption?,
-        transport: TransportOption?
+        transport: TransportOption?,
+        transports: List<TransportOption>,
+        days: List<ItineraryDay>,
+        confirmations: List<cn.anytravel.app.model.BookingConfirmation> = emptyList()
     ): List<ExpenseLine> {
         val totalBudget = draft.budgetPerPerson * draft.travelers.coerceAtLeast(1)
         val rooms = ((draft.travelers + 1) / 2).coerceAtLeast(1)
-        val liveHotel = accommodation?.quotes?.filter { it.kind == QuoteKind.LIVE }?.minByOrNull { it.amountCNY ?: Int.MAX_VALUE }
-        val liveTransport = transport?.quotes?.filter { it.kind == QuoteKind.LIVE }?.minByOrNull { it.amountCNY ?: Int.MAX_VALUE }
-        val transportAmount = if (draft.skipTransport) 0 else liveTransport?.amountCNY?.let { amount ->
-            if (liveTransport.unit == QuoteUnit.PER_PERSON) amount * draft.travelers else amount
-        } ?: (totalBudget * 0.24).roundToInt()
-        val hotelAmount = if (draft.skipAccommodation) 0 else liveHotel?.amountCNY?.let { amount ->
-            if (liveHotel.unit == QuoteUnit.TOTAL) amount else amount * draft.nights * rooms
-        } ?: (totalBudget * 0.34).roundToInt()
-        return listOf(
-            ExpenseLine("transport", "往返大交通", if (draft.skipTransport) "已跳过大交通" else liveTransport?.let { "${it.provider} · ${it.kind.title}" } ?: "先留出总预算的24%", transportAmount, if (liveTransport != null) ExpenseSource.LIVE else ExpenseSource.BUDGET),
-            ExpenseLine("hotel", "住宿", if (draft.skipAccommodation) "已跳过住宿" else liveHotel?.let { "${draft.nights}晚 × ${rooms}间 · ${it.provider}" } ?: "${draft.nights}晚 · 等待多渠道报价", hotelAmount, if (liveHotel != null) ExpenseSource.LIVE else ExpenseSource.BUDGET),
-            ExpenseLine("tickets", "景点与预约", "逐项核价前的额度", (totalBudget * 0.13).roundToInt(), ExpenseSource.BUDGET),
-            ExpenseLine("meals", "餐饮", "正餐、茶歇与不赶时间的余量", (totalBudget * 0.17).roundToInt(), ExpenseSource.BUDGET),
-            ExpenseLine("local", "市内交通", "地铁、公交与必要打车", (totalBudget * 0.07).roundToInt(), ExpenseSource.BUDGET),
-            ExpenseLine("buffer", "机动金", "价格波动与临时调整", (totalBudget * 0.05).roundToInt(), ExpenseSource.BUDGET)
+        val selectedByDirection = { direction: cn.anytravel.app.model.TransportDirection ->
+            transport?.takeIf { it.direction == direction }
+                ?: transports.filter { it.direction == direction }
+                    .sortedWith(compareByDescending<TransportOption> { it.isRecommended }
+                        .thenBy { option -> option.quotes.filter(PriceQuote::isCurrentPrice).mapNotNull(PriceQuote::amountCNY).minOrNull() ?: Int.MAX_VALUE })
+                    .firstOrNull()
+        }
+        val transportLines = if (draft.skipTransport) {
+            listOf(ExpenseLine("transport", "大交通", "已跳过大交通", 0, ExpenseSource.ESTIMATE))
+        } else {
+            listOf(
+                transportExpenseLine(
+                    id = "outbound-transport",
+                    title = "去程大交通",
+                    option = selectedByDirection(cn.anytravel.app.model.TransportDirection.OUTBOUND),
+                    travelers = draft.travelers,
+                    reserve = (totalBudget * 0.12).roundToInt(),
+                    confirmations = confirmations
+                ),
+                transportExpenseLine(
+                    id = "return-transport",
+                    title = "返程大交通",
+                    option = selectedByDirection(cn.anytravel.app.model.TransportDirection.RETURN),
+                    travelers = draft.travelers,
+                    reserve = (totalBudget * 0.12).roundToInt(),
+                    confirmations = confirmations
+                )
+            )
+        }
+
+        val hotelQuote = accommodation?.quotes?.filter(PriceQuote::isCurrentPrice)
+            ?.minByOrNull { accommodationTotal(it, draft.travelers, draft.nights, rooms) ?: Int.MAX_VALUE }
+        val hotelConfirmation = accommodation?.let { selected ->
+            confirmations.firstOrNull { it.kind == cn.anytravel.app.model.BookingKind.ACCOMMODATION && it.itemId == selected.id }
+        }
+        val hotelAmount = when {
+            draft.skipAccommodation -> 0
+            hotelConfirmation?.actualAmountCNY != null -> hotelConfirmation.actualAmountCNY
+            hotelQuote != null -> accommodationTotal(hotelQuote, draft.travelers, draft.nights, rooms)
+                ?: (totalBudget * 0.34).roundToInt()
+            else -> (totalBudget * 0.34).roundToInt()
+        }
+        val hotelPending = if (draft.skipAccommodation) emptyList() else buildList {
+            when (hotelQuote?.taxesIncluded) {
+                true -> Unit
+                false -> add("住宿税费（渠道标记未含）")
+                null -> add("住宿税费")
+            }
+            if (hotelQuote?.mealPlan.isNullOrBlank()) add("早餐")
+            add("住宿押金")
+        }
+        val hotelDetail = when {
+            draft.skipAccommodation -> "已跳过住宿"
+            hotelConfirmation?.actualAmountCNY != null -> "${hotelConfirmation.title} · 用户记录的订单总额"
+            hotelQuote?.totalAmountCNY != null || hotelQuote?.unit == QuoteUnit.TOTAL ->
+                "${accommodation.name} · 渠道返回本次入住总价 · ${draft.nights}晚 · ${rooms}间"
+            hotelQuote?.amountCNY != null ->
+                "${accommodation.name} · ¥${hotelQuote.amountCNY}/晚 × ${draft.nights}晚 × ${rooms}间${if (hotelConfirmation == null) "" else " · 已确认预订，实付未记录"}"
+            else -> "${draft.nights}晚 × ${rooms}间 · 当前按每间2名成人估算"
+        }
+        val ticketableCount = days.flatMap { it.stops }.filter { it.interest != TripInterest.FOOD }.distinctBy { it.id }.size
+
+        return transportLines + listOf(
+            ExpenseLine(
+                "hotel",
+                "住宿",
+                hotelDetail,
+                hotelAmount,
+                when {
+                    draft.skipAccommodation -> ExpenseSource.ESTIMATE
+                    hotelConfirmation?.actualAmountCNY != null -> ExpenseSource.CONFIRMED
+                    else -> expenseSource(hotelQuote)
+                },
+                hotelPending
+            ),
+            ExpenseLine(
+                "tickets",
+                "景点与预约",
+                if (ticketableCount == 0) "当前没有需计价的景点" else "${ticketableCount}处逐项核价前的额度",
+                if (ticketableCount == 0) 0 else (totalBudget * 0.13).roundToInt(),
+                ExpenseSource.BUDGET,
+                if (ticketableCount == 0) emptyList() else listOf("${ticketableCount}处景点票价")
+            ),
+            ExpenseLine("meals", "餐饮", "${draft.travelers}人 × ${draft.dayCount}天 · 按轻松节奏预留", (totalBudget * 0.17).roundToInt(), ExpenseSource.BUDGET),
+            ExpenseLine("local", "市内交通", "地铁、公交与必要打车的预算额度", (totalBudget * 0.07).roundToInt(), ExpenseSource.BUDGET),
+            ExpenseLine("buffer", "机动金", "价格波动、临时调整与未计入的零散费用", (totalBudget * 0.05).roundToInt(), ExpenseSource.BUDGET)
         )
+    }
+
+    private fun transportExpenseLine(
+        id: String,
+        title: String,
+        option: TransportOption?,
+        travelers: Int,
+        reserve: Int,
+        confirmations: List<cn.anytravel.app.model.BookingConfirmation>
+    ): ExpenseLine {
+        val quote = option?.quotes?.filter(PriceQuote::isCurrentPrice)?.minByOrNull {
+            transportTotal(it, travelers) ?: Int.MAX_VALUE
+        }
+        val confirmation = option?.let { selected ->
+            confirmations.firstOrNull { it.kind == cn.anytravel.app.model.BookingKind.TRANSPORT && it.itemId == selected.id }
+        }
+        val quoted = quote?.let { transportTotal(it, travelers) }
+        val amount = confirmation?.actualAmountCNY ?: quoted ?: reserve
+        val detail = when {
+            confirmation?.actualAmountCNY != null -> "${confirmation.title} · 用户记录的订单总额"
+            quoted != null -> "${option.title} · ${if (quote.unit == QuoteUnit.PER_PERSON) "¥${quote.amountCNY}/人 × ${travelers}人" else "本次行程总价"}${if (confirmation == null) "" else " · 已确认购票，实付未记录"}"
+            else -> "尚未取得可用报价，先留出总预算的12%"
+        }
+        return ExpenseLine(
+            id,
+            title,
+            detail,
+            amount,
+            if (confirmation?.actualAmountCNY != null) ExpenseSource.CONFIRMED else expenseSource(quote),
+            if (quoted == null) listOf("${title}票价") else emptyList()
+        )
+    }
+
+    private fun transportTotal(quote: PriceQuote, travelers: Int): Int? =
+        quote.totalAmountCNY ?: quote.amountCNY?.let { if (quote.unit == QuoteUnit.PER_PERSON) it * travelers.coerceAtLeast(1) else it }
+
+    private fun accommodationTotal(quote: PriceQuote, travelers: Int, nights: Int, rooms: Int): Int? {
+        quote.totalAmountCNY?.let { return it }
+        val amount = quote.amountCNY ?: return null
+        return when (quote.unit) {
+            QuoteUnit.TOTAL -> amount
+            QuoteUnit.PER_PERSON -> amount * travelers.coerceAtLeast(1)
+            QuoteUnit.PER_NIGHT -> amount * nights.coerceAtLeast(1) * rooms.coerceAtLeast(1)
+        }
+    }
+
+    private fun expenseSource(quote: PriceQuote?): ExpenseSource = when (quote?.kind) {
+        QuoteKind.LIVE -> ExpenseSource.QUERIED
+        QuoteKind.INDICATIVE -> ExpenseSource.REFERENCE
+        QuoteKind.BUDGET_ENVELOPE -> ExpenseSource.ESTIMATE
+        else -> ExpenseSource.BUDGET
     }
 }
 

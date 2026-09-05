@@ -11,6 +11,7 @@ struct PlannerPanel: View {
     @State private var selectedTransportDirection: TransportDirection = .outbound
     @State private var bookingEditor: BookingEditor?
     @State private var bookingNote = ""
+    @State private var bookingAmount = ""
     @FocusState private var destinationFocused: Bool
     @FocusState private var adjustmentFocused: Bool
     @Namespace private var sectionMotion
@@ -55,15 +56,18 @@ struct PlannerPanel: View {
                 set: { if !$0 { bookingEditor = nil } }
             )
         ) {
+            TextField("实际支付总额（可留空）", text: $bookingAmount)
+                .keyboardType(.numberPad)
             TextField("订单尾号、可取消至何时（可留空）", text: $bookingNote)
             Button("确认已预订") {
                 guard let editor = bookingEditor else { return }
-                model.confirmBooking(kind: editor.kind, itemID: editor.itemID, note: bookingNote)
+                let amount = Int(bookingAmount.filter(\.isNumber))
+                model.confirmBooking(kind: editor.kind, itemID: editor.itemID, note: bookingNote, actualAmountCNY: amount)
                 bookingEditor = nil
             }
             Button("取消", role: .cancel) { bookingEditor = nil }
         } message: {
-            Text("只记录你已完成的外部订单。请勿填写身份证号、银行卡或完整支付信息。")
+            Text("金额请填写本次订单实际支付总额。请勿填写身份证号、银行卡或完整支付信息。")
         }
     }
 
@@ -780,7 +784,7 @@ struct PlannerPanel: View {
                     ?? "补充出发地和日期后比较班次与价格"
             } ?? "补充条件后自动推荐，也可以先指定方式"
         case .budget:
-            "计划¥\(model.plannedExpenseTotal.formatted(.number.grouping(.automatic))) / 预算¥\(model.totalBudget.formatted(.number.grouping(.automatic)))"
+            "计划约¥\(model.plannedExpenseTotal.formatted(.number.grouping(.automatic))) · 已确认¥\(model.confirmedExpenseTotal.formatted(.number.grouping(.automatic))) · 待确认\(model.unpricedExpenseComponents.count)类"
         }
     }
 
@@ -1341,26 +1345,79 @@ struct PlannerPanel: View {
     private var budgetReadyContent: some View {
         ScrollView {
             LazyVStack(spacing: 7) {
+                HStack(spacing: 7) {
+                    expenseMetric("预算轮廓", amount: model.plannedExpenseTotal, emphasized: true)
+                    expenseMetric("已确认", amount: model.confirmedExpenseTotal)
+                    expenseMetric("查询/参考", amount: model.quotedExpenseTotal)
+                }
                 ForEach(model.expenseLines) { line in
                     HStack(spacing: 10) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(line.title).font(.subheadline.weight(.semibold))
-                            Text("\(line.detail) · \(line.source.title)")
+                            Text(
+                                "\(line.detail) · \(line.source.title)"
+                                    + (line.unpricedComponents.isEmpty ? "" : " · 另待确认：\(line.unpricedComponents.joined(separator: "、"))")
+                            )
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(2)
                         }
                         Spacer()
-                        Text("¥\(line.amountCNY.formatted(.number.grouping(.automatic)))")
+                        Text("\(line.source == .confirmed ? "" : "约")¥\(line.amountCNY.formatted(.number.grouping(.automatic)))")
                             .font(.subheadline.monospacedDigit().weight(.bold))
                     }
                     .padding(10)
                     .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
+                if !model.unpricedExpenseComponents.isEmpty {
+                    Text("仍有\(model.unpricedExpenseComponents.count)类金额可能另计：\(model.unpricedExpenseComponents.joined(separator: "、"))。这些项目没有被当作0，机动金只用于预算缓冲。")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(AnyTravelPalette.warm.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                if model.plannedExpenseTotal > model.totalBudget {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("比总预算高约 ¥\((model.plannedExpenseTotal - model.totalBudget).formatted(.number.grouping(.automatic)))")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(AnyTravelPalette.warm)
+                        HStack {
+                            Button("调整住宿") { model.setPlanMapFocus(.accommodation) }
+                            Button("调整交通") { model.setPlanMapFocus(.transport) }
+                        }
+                        .font(.caption.weight(.semibold))
+                        .buttonStyle(AnyTravelPressStyle())
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(AnyTravelPalette.warm.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                Text("房间数暂按每间2名成人估算；儿童、单人入住、加床、税费、早餐、押金与取消条件以最终订单页为准。")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 4)
             }
         }
-        .frame(maxHeight: 260)
+        .frame(maxHeight: 330)
         .scrollIndicators(.hidden)
+    }
+
+    private func expenseMetric(_ title: String, amount: Int, emphasized: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(.secondary)
+            Text("\(emphasized ? "约" : "")¥\(amount.formatted(.number.grouping(.automatic)))")
+                .font(.caption.monospacedDigit().weight(.bold))
+                .foregroundStyle(emphasized ? AnyTravelPalette.route : .primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(9)
+        .background(AnyTravelPalette.softSurface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
     }
 
     private var compactStopsStrip: some View {
@@ -1704,7 +1761,11 @@ struct PlannerPanel: View {
                     .font(.caption.weight(.bold))
                 Text(
                     confirmation.map { record in
-                        [record.dateSummary, record.note]
+                        [
+                            record.dateSummary,
+                            record.actualAmountCNY.map { "实际支出 ¥\($0.formatted(.number.grouping(.automatic)))" } ?? "实际支出未记录",
+                            record.note
+                        ]
                             .compactMap { $0 }
                             .filter { !$0.isEmpty }
                             .joined(separator: " · ")
@@ -1720,6 +1781,7 @@ struct PlannerPanel: View {
             if confirmation == nil {
                 Button("我已订好") {
                     bookingNote = ""
+                    bookingAmount = ""
                     bookingEditor = BookingEditor(kind: kind, itemID: itemID)
                 }
                 .font(.caption.weight(.bold))

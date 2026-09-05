@@ -230,12 +230,16 @@ data class BookingConfirmation(
     val startDate: String? = null,
     val endDate: String? = null,
     val direction: TransportDirection? = null,
+    val actualAmountCNY: Int? = null,
     val note: String? = null
 )
 
 @Serializable
 enum class ExpenseSource(val title: String) {
-    LIVE("实时价"),
+    CONFIRMED("已确认支出"),
+    QUERIED("渠道查询价"),
+    REFERENCE("参考价"),
+    ESTIMATE("本地估算"),
     BUDGET("预算预留")
 }
 
@@ -246,7 +250,8 @@ data class ExpenseLine(
     val title: String,
     val detail: String,
     val amountCNY: Int,
-    val source: ExpenseSource
+    val source: ExpenseSource,
+    val unpricedComponents: List<String> = emptyList()
 )
 
 @Serializable
@@ -294,6 +299,9 @@ data class CompletePlan(
     val selectedTransport: TransportOption?
         get() = transports.firstOrNull { it.id == selectedTransportId }
     val totalExpense: Int get() = expenses.sumOf { it.amountCNY }
+    val confirmedExpense: Int get() = expenses.filter { it.source == ExpenseSource.CONFIRMED }.sumOf { it.amountCNY }
+    val quotedExpense: Int get() = expenses.filter { it.source == ExpenseSource.QUERIED || it.source == ExpenseSource.REFERENCE }.sumOf { it.amountCNY }
+    val unpricedExpenseComponents: List<String> get() = expenses.flatMap { it.unpricedComponents }.distinct().sorted()
 }
 
 fun Int.distanceText(): String = when {

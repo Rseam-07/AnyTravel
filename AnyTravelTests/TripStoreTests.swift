@@ -107,6 +107,7 @@ final class TripStoreTests: XCTestCase {
             confirmedAt: Date(timeIntervalSince1970: 2_000_000_000),
             startDate: Date(timeIntervalSince1970: 2_000_086_400),
             endDate: Date(timeIntervalSince1970: 2_000_259_200),
+            actualAmountCNY: 1_688,
             note: "订单尾号 1234"
         )
         let snapshot = LogisticsSnapshot(
@@ -129,6 +130,7 @@ final class TripStoreTests: XCTestCase {
 
         XCTAssertEqual(restored.itemID, hotelID)
         XCTAssertEqual(restored.note, "订单尾号 1234")
+        XCTAssertEqual(restored.actualAmountCNY, 1_688)
         XCTAssertEqual(restored.kind, .accommodation)
     }
 

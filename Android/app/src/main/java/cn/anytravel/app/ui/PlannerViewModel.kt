@@ -843,7 +843,7 @@ class PlannerViewModel(
         }
     }
 
-    fun confirmBooking(kind: BookingKind, itemId: String, note: String) {
+    fun confirmBooking(kind: BookingKind, itemId: String, note: String, actualAmountCNY: Int? = null) {
         val plan = _state.value.plan ?: return
         val accommodation = plan.accommodations.firstOrNull { kind == BookingKind.ACCOMMODATION && it.id == itemId }
         val transport = plan.transports.firstOrNull { kind == BookingKind.TRANSPORT && it.id == itemId }
@@ -861,13 +861,14 @@ class PlannerViewModel(
             startDate = if (transport?.direction == cn.anytravel.app.model.TransportDirection.RETURN) endDate else plan.draft.startDate,
             endDate = if (kind == BookingKind.ACCOMMODATION) endDate else null,
             direction = transport?.direction,
+            actualAmountCNY = actualAmountCNY?.takeIf { it > 0 },
             note = note.trim().takeIf(String::isNotEmpty)
         )
         val records = plan.bookingConfirmations
             .filterNot { it.kind == kind && it.itemId == itemId } + confirmation
         _state.update {
             it.copy(
-                plan = plan.copy(bookingConfirmations = records),
+                plan = builder.updateBookingConfirmations(plan, records),
                 noticeMessage = "已记录为你在外部平台完成的预订；库存与付款仍以原平台订单为准"
             )
         }
@@ -878,7 +879,7 @@ class PlannerViewModel(
         val records = plan.bookingConfirmations.filterNot { it.kind == kind && it.itemId == itemId }
         _state.update {
             it.copy(
-                plan = plan.copy(bookingConfirmations = records),
+                plan = builder.updateBookingConfirmations(plan, records),
                 noticeMessage = "已撤销预订确认，当前选择仍然保留"
             )
         }

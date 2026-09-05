@@ -904,6 +904,13 @@ input::placeholder { color: var(--secondary-ink); opacity: .68; }
 .cost-kind { display: block; margin-top: 2px; color: var(--secondary-ink); font-size: 9.5px; line-height: 1.4; }
 .cost-amount { font-weight: 760; font-variant-numeric: tabular-nums; }
 .cost-total { display: flex; justify-content: space-between; padding: 14px 2px 5px; font-size: 15px; font-weight: 790; }
+.cost-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin: 8px 0 5px; }
+.cost-summary > div { display: grid; gap: 3px; min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 13px; background: var(--soft-surface); }
+.cost-summary small { color: var(--secondary-ink); font-size: 9px; }
+.cost-summary strong { overflow: hidden; color: var(--route-dark); font-size: 12px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.cost-boundary { margin-top: 9px; padding: 10px 11px; border-radius: 13px; background: color-mix(in srgb, var(--warm) 8%, var(--soft-surface)); color: var(--secondary-ink); font-size: 10px; line-height: 1.55; }
+.cost-overage { display: grid; gap: 6px; padding: 10px 11px; border-radius: 13px; background: color-mix(in srgb, var(--danger) 8%, var(--soft-surface)); color: var(--danger); }
+.cost-overage > div { display: flex; gap: 7px; }
 
 .mini-btn { min-height: 32px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--soft-surface); color: var(--secondary-ink); font-size: 10.5px; font-weight: 680; }
 .mini-btn:hover { border-color: rgba(18, 110, 102, .35); color: var(--route-dark); }

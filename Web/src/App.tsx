@@ -235,7 +235,7 @@ function PanelScaffold({
                 <SlidersHorizontal size={15} aria-hidden="true" /> 调整
               </button>
             </div>
-            <PanelBody tab={tab} goConditions={() => setEditingConditions(true)} />
+            <PanelBody tab={tab} setTab={setTab} goConditions={() => setEditingConditions(true)} />
           </>
         )}
       </div>
@@ -291,12 +291,12 @@ function DestinationStart() {
   );
 }
 
-function PanelBody({ tab, goConditions }: { tab: ReadyTab; goConditions?: () => void }) {
+function PanelBody({ tab, setTab, goConditions }: { tab: ReadyTab; setTab: (tab: ReadyTab) => void; goConditions?: () => void }) {
   switch (tab) {
     case "plan": return <PlanPanel />;
     case "stay": return <AccommodationPanel />;
     case "transport": return <TransportPanel onGoConditions={goConditions} />;
-    case "budget": return <BudgetPanel />;
+    case "budget": return <BudgetPanel onNavigate={setTab} />;
   }
 }
 

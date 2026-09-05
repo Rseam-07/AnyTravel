@@ -66,7 +66,9 @@ export interface ProviderQuote {
   bookingURL?: string;
   note?: string;
   sourceLabel?: string;
+  totalAmountCNY?: number | null;
   roomName?: string;
+  bedType?: string;
   mealPlan?: string;
   cancellationPolicy?: string;
   taxesIncluded?: boolean;
@@ -123,6 +125,7 @@ export interface BookingConfirmation {
   startDate?: string;
   endDate?: string;
   direction?: "outbound" | "return";
+  actualAmountCNY?: number;
   note?: string;
 }
 
@@ -130,7 +133,7 @@ export interface CostRecord {
   category: string;
   label: string;
   amountCNY?: number | null;
-  kind: "live" | "estimate" | "reserved";
+  kind: "confirmed" | "queried" | "reference" | "estimate" | "reserved";
   note?: string;
 }
 

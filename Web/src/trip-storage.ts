@@ -32,6 +32,7 @@ const quotes = (value: unknown) => Array.isArray(value) && value.every(q => obje
 const bookingConfirmation = (value: unknown) => object(value) && typeof value.id === "string" &&
   ["accommodation", "transport"].includes(value.kind) && typeof value.itemID === "string" &&
   typeof value.title === "string" && typeof value.confirmedAt === "string" &&
+  (value.actualAmountCNY == null || (Number.isFinite(value.actualAmountCNY) && value.actualAmountCNY > 0)) &&
   (value.note == null || typeof value.note === "string");
 
 export function validDraft(value: unknown): value is TripDraft {

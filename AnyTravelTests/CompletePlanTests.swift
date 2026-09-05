@@ -70,6 +70,70 @@ final class CompletePlanTests: XCTestCase {
     }
 
     @MainActor
+    func testProviderStayTotalIsNotMultipliedByNightsAndRoomsAgain() {
+        var logistics = TripLogistics()
+        logistics.travelers = 4
+        let draft = TripDraft(destination: "苏州", dayCount: 3, budgetPerPerson: 3_000, logistics: logistics)
+        let hotel = AccommodationOption(
+            name: "测试酒店",
+            address: "苏州",
+            coordinate: Coordinate(latitude: 31.3, longitude: 120.6),
+            attractionDistanceMeters: 500,
+            quotes: [ProviderQuote(
+                provider: .propertyOfficial,
+                amountCNY: 600,
+                unit: .perNight,
+                kind: .live,
+                note: "测试",
+                totalAmountCNY: 1_200,
+                mealPlan: "含早餐",
+                taxesIncluded: true
+            )]
+        )
+
+        let line = ExpensePlanner().buildLines(draft: draft, accommodation: hotel, transport: nil)
+            .first { $0.id == "accommodation" }
+
+        XCTAssertEqual(line?.amountCNY, 1_200)
+        XCTAssertEqual(line?.source, .live)
+        XCTAssertTrue(line?.detail.contains("本次入住总价") == true)
+        XCTAssertEqual(line?.unpricedComponents, ["住宿押金"])
+    }
+
+    @MainActor
+    func testConfirmedOrderTotalOverridesQuoteAndUnknownFeesStayVisible() {
+        let hotelID = UUID()
+        var logistics = TripLogistics()
+        logistics.travelers = 2
+        let draft = TripDraft(destination: "苏州", dayCount: 3, budgetPerPerson: 3_000, logistics: logistics)
+        let hotel = AccommodationOption(
+            id: hotelID,
+            name: "测试酒店",
+            address: "苏州",
+            coordinate: Coordinate(latitude: 31.3, longitude: 120.6),
+            attractionDistanceMeters: 500,
+            quotes: [ProviderQuote(provider: .ctrip, amountCNY: 500, unit: .perNight, kind: .live, note: "测试", taxesIncluded: false)]
+        )
+        let confirmation = BookingConfirmation(
+            kind: .accommodation,
+            itemID: hotelID,
+            title: hotel.name,
+            actualAmountCNY: 1_688
+        )
+
+        let line = ExpensePlanner().buildLines(
+            draft: draft,
+            accommodation: hotel,
+            transport: nil,
+            bookingConfirmations: [confirmation]
+        ).first { $0.id == "accommodation" }
+
+        XCTAssertEqual(line?.amountCNY, 1_688)
+        XCTAssertEqual(line?.source, .confirmed)
+        XCTAssertEqual(line?.unpricedComponents, ["住宿税费（渠道标记未含）", "早餐", "住宿押金"])
+    }
+
+    @MainActor
     func testReturnLiveQuoteReplacesMirroredOutboundEstimate() {
         var logistics = TripLogistics()
         logistics.travelers = 2

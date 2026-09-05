@@ -201,7 +201,7 @@ interface AppApi {
   setFocus: (focus: Focus | null) => void;
   selectAccommodation: (id: string) => void;
   selectTransport: (id: string) => void;
-  confirmBooking: (kind: BookingKind, itemID: string, note?: string) => void;
+  confirmBooking: (kind: BookingKind, itemID: string, note?: string, actualAmountCNY?: number) => void;
   removeBookingConfirmation: (kind: BookingKind, itemID: string) => void;
   removeStop: (dayIndex: number, stopIndex: number) => Promise<void>;
   relaxPlan: () => Promise<void>;
@@ -729,7 +729,7 @@ function summarizeTransport<T extends { title: string; quotes: { amountCNY?: num
     if (coordinate) setFocus({ kind: "station", id, coordinate });
   }, [setFocus]);
 
-  const confirmBooking = useCallback((kind: BookingKind, itemID: string, note?: string) => {
+  const confirmBooking = useCallback((kind: BookingKind, itemID: string, note?: string, actualAmountCNY?: number) => {
     const current = stateRef.current;
     const item = kind === "accommodation"
       ? current.accommodations.find(option => option.id === itemID)
@@ -744,7 +744,11 @@ function summarizeTransport<T extends { title: string; quotes: { amountCNY?: num
       id: existing?.id ?? crypto.randomUUID(), kind, itemID, title: kind === "accommodation" ? (item as AccommodationOption).name : (item as TransportOption).title,
       confirmedAt: new Date().toISOString(), startDate,
       endDate: kind === "accommodation" ? returnDate : undefined,
-      direction, note: note?.trim() || undefined
+      direction,
+      actualAmountCNY: actualAmountCNY != null && Number.isFinite(actualAmountCNY) && actualAmountCNY > 0
+        ? Math.round(actualAmountCNY)
+        : undefined,
+      note: note?.trim() || undefined
     };
     const bookingConfirmations = [...current.bookingConfirmations.filter(value => !(value.kind === kind && value.itemID === itemID)), record];
     dispatch({ type: "patch", patch: { bookingConfirmations, notice: "已记录为你在外部平台完成的预订；库存与付款仍以原平台订单为准。" } });
@@ -1158,7 +1162,9 @@ function offersToQuotes(hotel: BackendCatalogHotel): ProviderQuote[] {
       bookingURL: offer.bookingURL,
       note: offer.note,
       sourceLabel: offer.source,
+      totalAmountCNY: offer.totalAmountCNY,
       roomName: offer.roomName,
+      bedType: offer.bedType,
       mealPlan: offer.mealPlan,
       cancellationPolicy: offer.cancellationPolicy,
       taxesIncluded: offer.taxesIncluded,

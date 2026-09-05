@@ -437,6 +437,7 @@ struct BookingConfirmation: Codable, Hashable, Identifiable, Sendable {
     var startDate: Date?
     var endDate: Date?
     var direction: TransportDirection?
+    var actualAmountCNY: Int?
     var note: String?
 
     init(
@@ -448,6 +449,7 @@ struct BookingConfirmation: Codable, Hashable, Identifiable, Sendable {
         startDate: Date? = nil,
         endDate: Date? = nil,
         direction: TransportDirection? = nil,
+        actualAmountCNY: Int? = nil,
         note: String? = nil
     ) {
         self.id = id
@@ -458,6 +460,7 @@ struct BookingConfirmation: Codable, Hashable, Identifiable, Sendable {
         self.startDate = startDate
         self.endDate = endDate
         self.direction = direction
+        self.actualAmountCNY = actualAmountCNY
         self.note = note
     }
 
@@ -637,15 +640,19 @@ enum QuoteRefreshState: Equatable, Sendable {
 }
 
 enum ExpenseSource: String, Codable, Hashable, Sendable {
+    case confirmed
     case live
+    case reference
     case estimate
     case budgetEnvelope
 
     var title: String {
         switch self {
-        case .live: "已报价"
-        case .estimate: "估算"
-        case .budgetEnvelope: "预算额度"
+        case .confirmed: "已确认支出"
+        case .live: "渠道查询价"
+        case .reference: "参考价"
+        case .estimate: "本地估算"
+        case .budgetEnvelope: "预算预留"
         }
     }
 }
@@ -656,6 +663,23 @@ struct ExpenseLine: Hashable, Identifiable, Sendable {
     let detail: String
     let amountCNY: Int
     let source: ExpenseSource
+    let unpricedComponents: [String]
+
+    init(
+        id: String,
+        title: String,
+        detail: String,
+        amountCNY: Int,
+        source: ExpenseSource,
+        unpricedComponents: [String] = []
+    ) {
+        self.id = id
+        self.title = title
+        self.detail = detail
+        self.amountCNY = amountCNY
+        self.source = source
+        self.unpricedComponents = unpricedComponents
+    }
 }
 
 struct ScheduleItem: Hashable, Identifiable, Sendable {
