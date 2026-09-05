@@ -2,6 +2,7 @@ import XCTest
 @testable import AnyTravel
 
 final class TripStoreTests: XCTestCase {
+    @MainActor
     func testStructuredPartyNormalizesForOlderDrafts() {
         var legacy = TripLogistics()
         legacy.travelers = 4

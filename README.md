@@ -22,7 +22,7 @@ AnyTravel 是一款地图优先的开源 iOS 与 Android 旅行规划应用。�
 
 动效实录：[首次启动与初始化](Documentation/Demo/onboarding-motion.mp4) · [地图、住宿、交通与费用联动](Documentation/Demo/map-plan-motion.mp4)
 
-下载：[iOS 0.8.2 无签名 IPA](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.8.2) · [Android 0.8.2 通用 Release 预览 APK](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.8.2)
+下载：[iOS 0.8.3 无签名 IPA](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.8.3) · [Android 0.8.3 通用 Release 预览 APK](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.8.3)
 
 [Web 在线版](https://rseam-07.github.io/AnyTravel/)：React + TypeScript + MapLibre GL，桌面为 Apple Maps 式大屏横排（左面板 + 全屏地图 + 底部轨道），移动端为三档底部面板；本地开发位于 [Web/](Web/README.md)。已跑通：目的地/条件输入、141 个国内目的地离线攻略、OSM 景点与营业时间、空间聚类方案、OSRM 耗时、天气、住宿比价、12306 去返程、去哪儿门票、自然语言白名单动作、费用对比、旅册、分享链接与可安装 PWA 外壳。推送 `main` 后，GitHub Actions 会自动更新线上版本；实时住行报价仍需配置公共 HTTPS 后端。
 
@@ -127,9 +127,7 @@ xcodebuild \
 cd Backend && npm test
 ```
 
-0.8.2 验证结果：iOS 常规单元套件执行 86 项，其中 3 项联网用例按设计跳过，其余 83 项通过；界面套件执行 18 项，其中 2 项联网用例按设计跳过，其余 16 项通过。Android 常规单元套件执行 27 项，其中 2 项联网用例按设计跳过，其余 25 项通过；lint 与 Release 通用 APK 构建通过。Backend 53/53、Web 7/7、生产构建和国内目的地知识库校验通过。另行启用联网后，iOS 3 项价格源测试与 2 项价格卡片界面测试全部通过，0 跳过；Android 1 项真实聚合测试通过。iOS 设备 Release 构建通过。当前构建机没有 Android 设备或 emulator/system image，Xperia 1 II 与 connected Compose 仍未做设备级验收。发布与真机边界见 [接力交接](Documentation/HANDOFF.md)。
-
-当前未发布的 1.0 基础改动验证结果：Web 20/20、Backend 58/58；Android 共 32 项，其中 2 项联网用例按设计跳过、其余 30 项通过，Debug lint 无问题并完成 Release APK 构建；iOS 共 89 项，其中 3 项联网报价用例按设计跳过、其余 86 项通过，并完成未签名设备 Release 构建。公网默认服务地址、正式签名与真机矩阵仍未满足，因此这些结果不等同于 1.0 已发布。完整缺口与执行顺序见 [1.0 可用性清单](Documentation/V1_USER_JOURNEY_CHECKLIST.md)。
+0.8.3 验证结果：iOS 共执行 116 项测试，111 项通过、5 项联网用例按设计跳过、0 失败，并完成 arm64 未签名设备 Release 构建。Android 共执行 40 项单元测试，38 项通过、2 项联网用例按设计跳过，lint 与 Release 通用 APK 构建通过。Backend 59/59、Web 27/27、生产构建和国内目的地知识库校验通过；Chromium 实测 GitHub Pages 同款构建的地图与 WebGL 画布均铺满 1280×720 视口。公网伴随服务、正式签名与 Xperia 1 II 真机矩阵仍未满足，因此 0.8.3 是阶段预览版，不等同于 1.0。完整缺口与执行顺序见 [1.0 可用性清单](Documentation/V1_USER_JOURNEY_CHECKLIST.md)。
 
 0.6.3 发布前验证结果：57/57 iOS 单元测试、16/16 XCUITest、29/29 Node 测试通过。iPhone 17 Pro / iOS 26.5 模拟器覆盖 Apple 地图式三档面板拖拽、最小档自然语言输入、最大档内容浏览、人数和往返日期双向调整、自动规划地点去重，以及重置、设置、旅册、定位、地图样式和北向按钮的真实点击闭环；浅色偏好页和浅色/深色完整方案均完成截图检查。设备 Release 构建产物为 0.6.3（12）。所有服务端密钥只保存在被 Git 忽略的节点环境文件中。
 

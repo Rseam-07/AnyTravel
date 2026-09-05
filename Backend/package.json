@@ -1,6 +1,6 @@
 {
   "name": "anytravel-pricing-node",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "private": true,
   "type": "module",
   "description": "Self-hosted quote aggregator for AnyTravel",
