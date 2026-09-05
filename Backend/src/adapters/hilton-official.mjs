@@ -146,6 +146,7 @@ function hiltonBookingURL(hotelCode, request) {
   if (request?.checkIn) url.searchParams.set("arrivalDate", request.checkIn);
   if (request?.checkOut) url.searchParams.set("departureDate", request.checkOut);
   url.searchParams.set("room1NumAdults", String(Math.min(Math.max(Number(request?.adults || 1), 1), 8)));
+  url.searchParams.set("numRooms", String(Math.min(Math.max(Number(request?.rooms || 1), 1), 4)));
   return url.toString();
 }
 

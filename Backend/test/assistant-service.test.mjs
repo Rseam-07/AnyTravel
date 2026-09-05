@@ -77,6 +77,27 @@ test("accepts a complete free-form trip action set but clamps unsafe values", ()
   ]);
 });
 
+test("normalizes structured party actions without trusting model values", () => {
+  const result = normalizeAssistantPayload(JSON.stringify({
+    reply: "同行人的节奏也已记下。",
+    actions: [
+      { type: "set_adults", value: 99 },
+      { type: "set_children_ages", value: [3, 8, 19, -1, 6] },
+      { type: "set_rooms", value: 0 },
+      { type: "set_seniors", value: 12 },
+      { type: "set_mobility", value: "wheelchair" }
+    ]
+  }), context.places);
+
+  assert.deepEqual(result.actions, [
+    { type: "set_adults", value: "8" },
+    { type: "set_children_ages", value: "3,8,6" },
+    { type: "set_rooms", value: "1" },
+    { type: "set_seniors", value: "8" },
+    { type: "set_mobility", value: "wheelchair" }
+  ]);
+});
+
 test("calls the OpenAI-compatible endpoint without exposing the key in the body", async () => {
   let capturedURL;
   let capturedOptions;

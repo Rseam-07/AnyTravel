@@ -209,6 +209,7 @@ function PanelScaffold({
   editingConditions: boolean;
   setEditingConditions: (value: boolean) => void;
 }) {
+  const { state, undoReconfiguration } = useApp();
   return (
     <>
       <div className="panel-grabber" aria-hidden="true"><i /></div>
@@ -231,9 +232,16 @@ function PanelScaffold({
           <>
             <div className="ready-tools">
               <span>{tab === "plan" ? "当天路线" : tab === "stay" ? "落脚选择" : tab === "transport" ? "往返抵达" : "旅途花费"}</span>
-              <button className="chip-btn" onClick={() => setEditingConditions(true)}>
-                <SlidersHorizontal size={15} aria-hidden="true" /> 调整
-              </button>
+              <span className="ready-tool-actions">
+                {state.canUndoReconfiguration && (
+                  <button className="chip-btn" onClick={() => void undoReconfiguration()}>
+                    <RotateCcw size={15} aria-hidden="true" /> 撤回刚才调整
+                  </button>
+                )}
+                <button className="chip-btn" onClick={() => setEditingConditions(true)}>
+                  <SlidersHorizontal size={15} aria-hidden="true" /> 调整
+                </button>
+              </span>
             </div>
             <PanelBody tab={tab} setTab={setTab} goConditions={() => setEditingConditions(true)} />
           </>

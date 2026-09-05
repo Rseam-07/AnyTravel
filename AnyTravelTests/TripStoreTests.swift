@@ -2,6 +2,24 @@ import XCTest
 @testable import AnyTravel
 
 final class TripStoreTests: XCTestCase {
+    func testStructuredPartyNormalizesForOlderDrafts() {
+        var legacy = TripLogistics()
+        legacy.travelers = 4
+        XCTAssertEqual(legacy.effectiveAdults, 4)
+        XCTAssertEqual(legacy.effectiveRooms, 2)
+
+        var family = TripLogistics()
+        family.travelers = 4
+        family.adults = 2
+        family.childrenAges = [5, 12]
+        family.rooms = 2
+        family.seniorTravelers = 1
+        XCTAssertEqual(family.effectiveTotalTravelers, 4)
+        XCTAssertEqual(family.effectiveAdults, 2)
+        XCTAssertEqual(family.effectiveRooms, 2)
+        XCTAssertEqual(family.effectiveSeniorTravelers, 1)
+    }
+
     @MainActor
     func testPersistsAndReloadsATrip() throws {
         let directory = FileManager.default.temporaryDirectory
@@ -135,12 +153,57 @@ final class TripStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testPersistsPlanLocksWithSavedTrip() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let fileURL = directory.appendingPathComponent("trips.json")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let placeID = UUID()
+        let hotelID = UUID()
+        let transportID = UUID()
+        let locks = PlanLockState(
+            visits: [
+                LockedVisit(
+                    placeID: placeID,
+                    placeName: "拙政园",
+                    dayIndex: 0,
+                    orderIndex: 1,
+                    timeText: "10:00–12:00"
+                )
+            ],
+            accommodationID: hotelID,
+            outboundTransportID: transportID
+        )
+        let snapshot = LogisticsSnapshot(
+            accommodations: [],
+            selectedAccommodationID: hotelID,
+            transportOptions: [],
+            selectedTransportID: transportID,
+            planLocks: locks
+        )
+        let trip = SavedTrip(
+            title: "苏州 · 固定选择",
+            draft: TripDraft(destination: "苏州"),
+            destinationCenter: Coordinate(latitude: 31.2989, longitude: 120.5853),
+            days: [],
+            logisticsSnapshot: snapshot
+        )
+
+        try TripStore(fileURL: fileURL).save(trip)
+        let restored = try XCTUnwrap(TripStore(fileURL: fileURL).trips.first?.logisticsSnapshot?.planLocks)
+
+        XCTAssertEqual(restored, locks)
+        XCTAssertEqual(restored.visits.first?.timeText, "10:00–12:00")
+    }
+
+    @MainActor
     func testOlderLogisticsSnapshotWithoutBookingFieldStillDecodes() throws {
         let legacy = Data(#"{"accommodations":[],"transportOptions":[]}"#.utf8)
 
         let restored = try JSONDecoder().decode(LogisticsSnapshot.self, from: legacy)
 
         XCTAssertNil(restored.bookingConfirmations)
+        XCTAssertNil(restored.planLocks)
     }
 
     @MainActor

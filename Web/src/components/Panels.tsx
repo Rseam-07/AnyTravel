@@ -9,6 +9,8 @@ import {
   CloudSun,
   Hotel,
   Leaf,
+  Lock,
+  LockOpen,
   MapPin,
   Printer,
   Save,
@@ -63,7 +65,7 @@ export function WeatherStrip() {
 }
 
 export function PlanPanel({ compact = false }: { compact?: boolean }) {
-  const { state, setFocus, removeStop, relaxPlan, shareURL, saveTrip, sendChat } = useApp();
+  const { state, setFocus, removeStop, relaxPlan, shareURL, saveTrip, sendChat, toggleVisitLock } = useApp();
   const plan = state.plan;
   const [notice, setNotice] = useState<string | null>(null);
   const [adjustment, setAdjustment] = useState("");
@@ -177,6 +179,7 @@ export function PlanPanel({ compact = false }: { compact?: boolean }) {
       <div className="itinerary-list">
         {day.stops.map((stop, stopIndex) => {
           const ticket = state.tickets[stop.place.id] ?? stop.ticket;
+          const locked = state.planLocks.visits.some((lock) => lock.placeID === stop.place.id);
           return (
             <div key={`${stop.place.id}-${stopIndex}`}>
               {stopIndex > 0 && (
@@ -207,6 +210,7 @@ export function PlanPanel({ compact = false }: { compact?: boolean }) {
                     {stop.place.source === "user" && <MapPin size={14} aria-label="手动添加" />}
                     <strong>{stop.place.name}</strong>
                     {stop.isPrimary && <span className="prio">主游览</span>}
+                    {locked && <span className="booking-state locked"><Lock size={10} aria-hidden="true" />日期与时段已锁</span>}
                   </div>
                   <div className="stop-meta">
                     <span><Clock3 size={13} aria-hidden="true" />停留约 {stop.visitMinutes} 分钟</span>
@@ -225,17 +229,31 @@ export function PlanPanel({ compact = false }: { compact?: boolean }) {
                     {stop.note && <span><UtensilsCrossed size={13} aria-hidden="true" />{stop.note}</span>}
                   </div>
                 </div>
-                <button
-                  className="remove-stop"
-                  aria-label={`移除${stop.place.name}`}
-                  title="从当天移除"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void removeStop(dayIndex, stopIndex);
-                  }}
-                >
-                  <Trash2 size={15} aria-hidden="true" />
-                </button>
+                <span className="stop-actions">
+                  <button
+                    className={`lock-control${locked ? " active" : ""}`}
+                    aria-label={locked ? `解锁${stop.place.name}` : `锁定${stop.place.name}的日期与时段`}
+                    title={locked ? "解锁日期与时段" : "锁定日期与时段"}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      toggleVisitLock(dayIndex, stopIndex);
+                    }}
+                  >
+                    {locked ? <Lock size={14} aria-hidden="true" /> : <LockOpen size={14} aria-hidden="true" />}
+                  </button>
+                  <button
+                    className="remove-stop"
+                    aria-label={`移除${stop.place.name}`}
+                    title={locked ? "先解锁，才能移除" : "从当天移除"}
+                    disabled={locked}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void removeStop(dayIndex, stopIndex);
+                    }}
+                  >
+                    <Trash2 size={15} aria-hidden="true" />
+                  </button>
+                </span>
               </article>
             </div>
           );
@@ -295,7 +313,7 @@ export function PlanPanel({ compact = false }: { compact?: boolean }) {
 }
 
 export function AccommodationPanel() {
-  const { state, setFocus, selectAccommodation, confirmBooking, removeBookingConfirmation } = useApp();
+  const { state, setFocus, selectAccommodation, confirmBooking, removeBookingConfirmation, toggleAccommodationLock } = useApp();
   const [filter, setFilter] = useState<"all" | "cheap" | "live" | "near">("all");
   const items = state.accommodations;
 
@@ -405,7 +423,9 @@ export function AccommodationPanel() {
           item={item}
           selected={state.selectedAccommodationID === item.id}
           confirmation={state.bookingConfirmations.find(record => record.kind === "accommodation" && record.itemID === item.id)}
+          locked={state.planLocks.accommodationID === item.id || state.bookingConfirmations.some(record => record.kind === "accommodation" && record.itemID === item.id)}
           onSelect={() => selectAccommodation(item.id)}
+          onToggleLock={() => toggleAccommodationLock(item.id)}
           onConfirm={(note, amount) => confirmBooking("accommodation", item.id, note, amount)}
           onRemoveConfirmation={() => removeBookingConfirmation("accommodation", item.id)}
           onFocus={() => item.coordinate && setFocus({ kind: "accommodation", id: item.id, coordinate: item.coordinate })}
@@ -419,7 +439,9 @@ function StayCard({
   item,
   selected,
   confirmation,
+  locked,
   onSelect,
+  onToggleLock,
   onConfirm,
   onRemoveConfirmation,
   onFocus
@@ -427,7 +449,9 @@ function StayCard({
   item: AccommodationOption;
   selected: boolean;
   confirmation?: BookingConfirmation;
+  locked: boolean;
   onSelect: () => void;
+  onToggleLock: () => void;
   onConfirm: (note?: string, actualAmountCNY?: number) => void;
   onRemoveConfirmation: () => void;
   onFocus: () => void;
@@ -446,6 +470,7 @@ function StayCard({
           <span className={`booking-state ${confirmation ? "confirmed" : selected ? "selected" : "suggestion"}`}>
             {confirmation ? "已确认预订" : selected ? "已选择 · 未预订" : "备选"}
           </span>
+          {locked && <span className="booking-state locked"><Lock size={10} aria-hidden="true" />已锁定</span>}
         </div>
         <div className="stay-meta">
           {[item.brand, item.starRating ? `${item.starRating} 星` : null]
@@ -485,6 +510,16 @@ function StayCard({
           <button className="link-btn" style={{ textDecoration: "none" }} onClick={(e) => { e.stopPropagation(); onFocus(); }}>
             在地图上看
           </button>
+          <button
+            className={`link-btn lock-link${locked ? " active" : ""}`}
+            style={{ textDecoration: "none" }}
+            disabled={Boolean(confirmation)}
+            title={confirmation ? "已预订内容会自动锁定；撤销预订确认后可解锁" : undefined}
+            onClick={(e) => { e.stopPropagation(); onToggleLock(); }}
+          >
+            {locked ? <Lock size={12} aria-hidden="true" /> : <LockOpen size={12} aria-hidden="true" />}
+            {confirmation ? "预订已锁定" : locked ? "解锁住处" : "锁定住处"}
+          </button>
         </div>
         {(selected || confirmation) && (
           <BookingControl
@@ -500,7 +535,7 @@ function StayCard({
 }
 
 export function TransportPanel({ onGoConditions }: { onGoConditions?: () => void }) {
-  const { state, selectTransport, confirmBooking, removeBookingConfirmation } = useApp();
+  const { state, selectTransport, confirmBooking, removeBookingConfirmation, toggleTransportLock } = useApp();
   const [direction, setDirection] = useState<"outbound" | "return">("outbound");
   const outbound = state.transports.filter((t) => t.direction === "outbound");
   const retur = state.transports.filter((t) => t.direction === "return");
@@ -549,6 +584,9 @@ export function TransportPanel({ onGoConditions }: { onGoConditions?: () => void
         const quote = bestQuote(option.quotes);
         const selected = direction === "outbound" ? state.selectedOutboundID === option.id : state.selectedReturnID === option.id;
         const confirmation = state.bookingConfirmations.find(record => record.kind === "transport" && record.itemID === option.id);
+        const locked = confirmation != null || (direction === "outbound"
+          ? state.planLocks.outboundTransportID === option.id
+          : state.planLocks.returnTransportID === option.id);
         return (
           <div
             key={option.id}
@@ -560,6 +598,7 @@ export function TransportPanel({ onGoConditions }: { onGoConditions?: () => void
               <span className={`booking-state ${confirmation ? "confirmed" : selected ? "selected" : "suggestion"}`}>
                 {confirmation ? "已确认预订" : selected ? "已选择 · 未购票" : option.isRecommended ? "推荐" : "备选"}
               </span>
+              {locked && <span className="booking-state locked"><Lock size={10} aria-hidden="true" />已锁定</span>}
             </div>
             <div className="train-meta">
               {option.departureTime ? `${option.departureTime.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} 始发` : ""}
@@ -578,6 +617,15 @@ export function TransportPanel({ onGoConditions }: { onGoConditions?: () => void
                 )}
               </span>
             </div>
+            <button
+              className={`lock-row-action${locked ? " active" : ""}`}
+              disabled={Boolean(confirmation)}
+              title={confirmation ? "已购票内容会自动锁定；撤销确认后可解锁" : undefined}
+              onClick={(event) => { event.stopPropagation(); toggleTransportLock(option.id); }}
+            >
+              {locked ? <Lock size={13} aria-hidden="true" /> : <LockOpen size={13} aria-hidden="true" />}
+              {confirmation ? "购票后已锁定" : locked ? "解锁这个班次" : "锁定这个班次"}
+            </button>
             {(selected || confirmation) && (
               <BookingControl
                 kind="transport"

@@ -129,6 +129,23 @@ export interface BookingConfirmation {
   note?: string;
 }
 
+/** Explicit promises the planner must preserve across price refreshes and replans. */
+export interface LockedVisit {
+  placeID: string;
+  placeName: string;
+  dayIndex: number;
+  orderIndex: number;
+  arriveMinute?: number;
+  leaveMinute?: number;
+}
+
+export interface PlanLockState {
+  visits: LockedVisit[];
+  accommodationID?: string | null;
+  outboundTransportID?: string | null;
+  returnTransportID?: string | null;
+}
+
 export interface CostRecord {
   category: string;
   label: string;
@@ -181,6 +198,8 @@ export interface TripDraft {
   startDate?: string; // yyyy-mm-dd
   dayCount: number;
   travelers: number;
+  /** Optional structured party details. Older saved drafts only have travelers. */
+  party?: TravelerProfile;
   budgetPerPerson?: number;
   pace: Pace;
   interests: Interest[];
@@ -188,6 +207,34 @@ export interface TripDraft {
   longDistanceMode?: LongDistanceMode;
   skipAccommodation: boolean;
   skipTransport: boolean;
+}
+
+export type MobilityNeed = "none" | "stroller" | "wheelchair";
+
+export interface TravelerProfile {
+  adults: number;
+  childrenAges: number[];
+  rooms: number;
+  seniorTravelers: number;
+  mobilityNeed: MobilityNeed;
+}
+
+/** Upgrade old drafts without changing their serialized shape or silently changing headcount. */
+export function effectiveParty(draft: Pick<TripDraft, "travelers" | "party">): TravelerProfile {
+  const raw = draft.party;
+  const childrenAges = (raw?.childrenAges ?? [])
+    .map((age) => Math.round(age))
+    .filter((age) => age >= 0 && age <= 17)
+    .slice(0, 6);
+  const adults = Math.min(Math.max(Math.round(raw?.adults ?? (draft.travelers - childrenAges.length)), 1), 8);
+  const total = adults + childrenAges.length;
+  return {
+    adults,
+    childrenAges,
+    rooms: Math.min(Math.max(Math.round(raw?.rooms ?? Math.ceil(total / 2)), 1), 4),
+    seniorTravelers: Math.min(Math.max(Math.round(raw?.seniorTravelers ?? 0), 0), adults),
+    mobilityNeed: raw?.mobilityNeed ?? "none"
+  };
 }
 
 export interface WeatherDay {

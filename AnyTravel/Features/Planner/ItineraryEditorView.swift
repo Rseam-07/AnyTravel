@@ -45,6 +45,7 @@ struct ItineraryEditorView: View {
                                         } label: {
                                             Label("移出行程", systemImage: "trash")
                                         }
+                                        .disabled(model.isVisitLocked(place))
                                     }
                             }
                             .onMove { offsets, destination in
@@ -228,7 +229,8 @@ struct ItineraryEditorView: View {
     }
 
     private func stopRow(_ place: TravelPlace, index: Int, count: Int) -> some View {
-        HStack(spacing: 12) {
+        let locked = model.isVisitLocked(place)
+        return HStack(spacing: 12) {
             Text("\(index + 1)")
                 .font(.caption.bold())
                 .foregroundStyle(.white)
@@ -246,7 +248,21 @@ struct ItineraryEditorView: View {
 
             Spacer(minLength: 8)
 
+            if locked {
+                Image(systemName: "lock.fill")
+                    .foregroundStyle(AnyTravelPalette.route)
+                    .accessibilityLabel("已锁定")
+            }
+
             Menu {
+                Button {
+                    model.toggleVisitLock(place, in: selectedDayIndex)
+                } label: {
+                    Label(locked ? "解锁日期、顺序与时段" : "锁定日期、顺序与时段", systemImage: locked ? "lock.open" : "lock")
+                }
+
+                Divider()
+
                 Button {
                     performAnimatedEdit {
                         model.movePlace(place, by: -1, in: selectedDayIndex)
@@ -254,7 +270,7 @@ struct ItineraryEditorView: View {
                 } label: {
                     Label("向前一站", systemImage: "arrow.up")
                 }
-                .disabled(index == 0)
+                .disabled(index == 0 || locked)
 
                 Button {
                     performAnimatedEdit {
@@ -263,7 +279,7 @@ struct ItineraryEditorView: View {
                 } label: {
                     Label("向后一站", systemImage: "arrow.down")
                 }
-                .disabled(index == count - 1)
+                .disabled(index == count - 1 || locked)
 
                 if model.itineraryDays.count > 1 {
                     Divider()
@@ -286,6 +302,7 @@ struct ItineraryEditorView: View {
                     } label: {
                         Label("移到另一天", systemImage: "calendar")
                     }
+                    .disabled(locked)
 
                     Menu {
                         ForEach(otherDays) { day in
@@ -316,6 +333,7 @@ struct ItineraryEditorView: View {
                 } label: {
                     Label("移出行程", systemImage: "trash")
                 }
+                .disabled(locked)
             } label: {
                 Image(systemName: "ellipsis.circle")
                     .font(.title3)

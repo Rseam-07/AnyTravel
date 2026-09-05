@@ -26,6 +26,9 @@ import cn.anytravel.app.model.TripDraft
 import cn.anytravel.app.model.TravelPlace
 import cn.anytravel.app.model.LongDistanceMode
 import cn.anytravel.app.model.LocalTravelMode
+import cn.anytravel.app.model.LockedVisit
+import cn.anytravel.app.model.MobilityNeed
+import cn.anytravel.app.model.PlanLockState
 import cn.anytravel.app.model.TripInterest
 import cn.anytravel.app.model.TripPace
 import java.time.LocalDate
@@ -92,6 +95,8 @@ data class PlannerUiState(
     val focusedPlaceID: String? = null,
     val canUndoItinerary: Boolean = false,
     val canRedoItinerary: Boolean = false,
+    val canUndoReconfiguration: Boolean = false,
+    val lastChangeSummary: String? = null,
     val accommodationMaxNightlyPrice: Int? = null,
     val accommodationSort: AccommodationSort = AccommodationSort.RECOMMENDED,
     val accommodationMinimumRating: Double? = null,
@@ -130,6 +135,7 @@ class PlannerViewModel(
     private var manuallySelectedTransportId: String? = null
     private val itineraryUndo = java.util.ArrayDeque<CompletePlan>()
     private val itineraryRedo = java.util.ArrayDeque<CompletePlan>()
+    private var reconfigurationUndo: CompletePlan? = null
     private val initialAssistantConfiguration = repository.assistantConfiguration()
     private val _state = MutableStateFlow(
         PlannerUiState(
@@ -261,9 +267,12 @@ class PlannerViewModel(
         val current = _state.value
         val pack = current.pendingDestinationPack ?: return
         val selected = if (selectionWasSkipped) emptySet() else current.selectedAttractionIDs
-        val plan = builder.build(current.draft, pack, selected, selectionWasSkipped)
-        manuallySelectedAccommodationId = null
-        manuallySelectedTransportId = null
+        val generated = builder.build(current.draft, pack, selected, selectionWasSkipped)
+        val previous = current.plan
+        val plan = previous?.let { builder.applyLocks(generated, it) } ?: generated
+        reconfigurationUndo = previous
+        manuallySelectedAccommodationId = plan.selectedAccommodationId
+        manuallySelectedTransportId = plan.selectedTransportId
         clearItineraryHistory()
         _state.update {
             it.copy(
@@ -274,6 +283,8 @@ class PlannerViewModel(
                 selectedDay = 0,
                 canUndoItinerary = false,
                 canRedoItinerary = false,
+                canUndoReconfiguration = previous != null,
+                lastChangeSummary = if (previous != null) "景点选择已更新；锁定与已预订内容保持不动" else null,
                 panelFraction = 0.58f,
                 noticeMessage = if (selectionWasSkipped) {
                     "已按热度、兴趣与距离补齐一条轻松路线"
@@ -297,6 +308,7 @@ class PlannerViewModel(
         manuallySelectedAccommodationId = null
         manuallySelectedTransportId = null
         clearItineraryHistory()
+        reconfigurationUndo = null
         _state.update {
             it.copy(
                 plan = null,
@@ -304,6 +316,8 @@ class PlannerViewModel(
                 isRefreshing = false,
                 canUndoItinerary = false,
                 canRedoItinerary = false,
+                canUndoReconfiguration = false,
+                lastChangeSummary = null,
                 errorMessage = null,
                 noticeMessage = null
             )
@@ -360,6 +374,10 @@ class PlannerViewModel(
     fun movePlaceWithinDay(dayIndex: Int, placeID: String, offset: Int) {
         val plan = _state.value.plan ?: return
         val day = plan.days.getOrNull(dayIndex) ?: return
+        if (isVisitLocked(plan, placeID)) {
+            _state.update { it.copy(noticeMessage = "先解锁这个景点，才能改变它的顺序与时段") }
+            return
+        }
         val sourceIndex = day.stops.indexOfFirst { it.id == placeID }
         if (sourceIndex < 0) return
         val targetIndex = (sourceIndex + offset).coerceIn(0, day.stops.lastIndex)
@@ -373,6 +391,10 @@ class PlannerViewModel(
 
     fun movePlaceToAdjacentDay(dayIndex: Int, placeID: String, offset: Int) {
         val plan = _state.value.plan ?: return
+        if (isVisitLocked(plan, placeID)) {
+            _state.update { it.copy(noticeMessage = "先解锁这个景点，才能把它移到另一天") }
+            return
+        }
         val targetDay = dayIndex + offset
         if (targetDay !in plan.days.indices) return
         val source = plan.days.getOrNull(dayIndex) ?: return
@@ -386,6 +408,10 @@ class PlannerViewModel(
 
     fun removePlace(dayIndex: Int, placeID: String) {
         val plan = _state.value.plan ?: return
+        if (isVisitLocked(plan, placeID)) {
+            _state.update { it.copy(noticeMessage = "先解锁这个景点，再决定是否移除") }
+            return
+        }
         if (plan.days.sumOf { it.stops.size } <= 1) {
             _state.update { it.copy(errorMessage = "至少留下一处想去的地方") }
             return
@@ -410,6 +436,109 @@ class PlannerViewModel(
         val next = itineraryRedo.pollLast() ?: return
         pushHistory(itineraryUndo, current)
         publishRestoredPlan(next, "已重新应用这次行程修改")
+    }
+
+    fun toggleVisitLock(dayIndex: Int, placeID: String) {
+        val plan = _state.value.plan ?: return
+        val day = plan.days.getOrNull(dayIndex) ?: return
+        val place = day.stops.firstOrNull { it.id == placeID } ?: return
+        val existing = plan.locks.visits.firstOrNull {
+            it.placeId == placeID || normalizedPlaceName(it.placeName) == normalizedPlaceName(place.name)
+        }
+        val visits = if (existing != null) {
+            plan.locks.visits - existing
+        } else {
+            plan.locks.visits + LockedVisit(
+                placeId = place.id,
+                placeName = place.name,
+                dayIndex = dayIndex,
+                orderIndex = day.stops.indexOfFirst { it.id == placeID },
+                timeText = day.schedule.firstOrNull { it.placeId == placeID }?.timeText
+            )
+        }
+        val revised = plan.copy(locks = plan.locks.copy(visits = visits))
+        _state.update {
+            it.copy(
+                plan = revised,
+                noticeMessage = if (existing == null) {
+                    "已锁定${place.name}在第${dayIndex + 1}天的顺序与时段"
+                } else {
+                    "已解锁${place.name}，下次重排可以调整它"
+                }
+            )
+        }
+    }
+
+    fun toggleAccommodationLock(id: String) {
+        val plan = _state.value.plan ?: return
+        val confirmed = plan.bookingConfirmations.any { it.kind == BookingKind.ACCOMMODATION && it.itemId == id }
+        if (confirmed) {
+            _state.update { it.copy(noticeMessage = "已预订住处会自动锁定；撤销预订确认后才可解锁") }
+            return
+        }
+        val unlocking = plan.locks.accommodationId == id
+        var revised = plan.copy(locks = plan.locks.copy(accommodationId = if (unlocking) null else id))
+        if (!unlocking) revised = builder.selectAccommodation(revised, id)
+        manuallySelectedAccommodationId = revised.selectedAccommodationId
+        _state.update {
+            it.copy(
+                plan = revised,
+                noticeMessage = if (unlocking) "住处已解锁，当前选择仍保留" else "住处已锁定，重新比价不会偷偷替换"
+            )
+        }
+    }
+
+    fun toggleTransportLock(id: String) {
+        val plan = _state.value.plan ?: return
+        val confirmed = plan.bookingConfirmations.any { it.kind == BookingKind.TRANSPORT && it.itemId == id }
+        if (confirmed) {
+            _state.update { it.copy(noticeMessage = "已购票班次会自动锁定；撤销确认后才可解锁") }
+            return
+        }
+        val unlocking = id in plan.locks.transportIds
+        val ids = if (unlocking) plan.locks.transportIds - id else plan.locks.transportIds + id
+        var revised = plan.copy(locks = plan.locks.copy(transportIds = ids))
+        if (!unlocking) revised = builder.selectTransport(revised, id)
+        manuallySelectedTransportId = revised.selectedTransportId
+        _state.update {
+            it.copy(
+                plan = revised,
+                noticeMessage = if (unlocking) "这个班次已解锁" else "这个班次已锁定，刷新价格也会保留"
+            )
+        }
+    }
+
+    fun undoReconfiguration() {
+        val previous = reconfigurationUndo ?: return
+        reconfigurationUndo = null
+        repository.saveDraft(previous.draft)
+        manuallySelectedAccommodationId = previous.selectedAccommodationId
+        manuallySelectedTransportId = previous.selectedTransportId
+        clearItineraryHistory()
+        _state.update {
+            it.copy(
+                draft = previous.draft,
+                plan = previous,
+                selectedDay = it.selectedDay.coerceIn(previous.days.indices),
+                selectedTab = PlanTab.DAYS,
+                panelFraction = 0.62f,
+                autoCamera = true,
+                canUndoReconfiguration = false,
+                lastChangeSummary = null,
+                canUndoItinerary = false,
+                canRedoItinerary = false,
+                noticeMessage = "已撤回上一次整段调整，日期、选择、锁定与路线都回到之前"
+            )
+        }
+        startPricingRefresh(previous)
+        startRouteRefresh(previous)
+    }
+
+    private fun isVisitLocked(plan: CompletePlan, placeID: String): Boolean {
+        val place = plan.days.flatMap { it.stops }.firstOrNull { it.id == placeID }
+        return plan.locks.visits.any {
+            it.placeId == placeID || (place != null && normalizedPlaceName(it.placeName) == normalizedPlaceName(place.name))
+        }
     }
 
     private fun commitItineraryEdit(
@@ -597,7 +726,30 @@ class PlannerViewModel(
                     shouldRegenerate = true
                 }
                 "set_travelers" -> action.value.toIntOrNull()?.let {
-                    next = next.copy(travelers = it.coerceIn(1, 8))
+                    next = next.withTotalTravelers(it)
+                    shouldRegenerate = true
+                }
+                "set_adults" -> action.value.toIntOrNull()?.let {
+                    next = next.withAdults(it)
+                    shouldRegenerate = true
+                }
+                "set_children_ages" -> {
+                    val ages = action.value.split(',', '，', '、', ';', '；', ' ')
+                        .mapNotNull { it.trim().toIntOrNull() }
+                        .filter { it in 0..17 }
+                    next = next.withChildren(ages)
+                    shouldRegenerate = true
+                }
+                "set_rooms" -> action.value.toIntOrNull()?.let {
+                    next = next.copy(rooms = it.coerceIn(1, 4))
+                    shouldRegenerate = true
+                }
+                "set_seniors" -> action.value.toIntOrNull()?.let {
+                    next = next.copy(seniorTravelers = it.coerceIn(0, next.effectiveAdults))
+                    shouldRegenerate = true
+                }
+                "set_mobility" -> runCatching { MobilityNeed.valueOf(action.value.uppercase()) }.getOrNull()?.let {
+                    next = next.copy(mobilityNeed = it)
                     shouldRegenerate = true
                 }
                 "set_budget" -> action.value.toIntOrNull()?.let {
@@ -661,7 +813,13 @@ class PlannerViewModel(
             next = next.copy(dayCount = it.coerceIn(1, 7))
         }
         Regex("(\\d{1,2})\\s*(?:人|位)").find(text)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let {
-            next = next.copy(travelers = it.coerceIn(1, 8))
+            next = next.withTotalTravelers(it)
+        }
+        Regex("(?:成人|大人)\\s*(\\d{1,2})").find(text)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let {
+            next = next.withAdults(it)
+        }
+        Regex("(\\d{1,2})\\s*(?:间|套)\\s*房").find(text)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let {
+            next = next.copy(rooms = it.coerceIn(1, 4))
         }
         Regex("(?:预算|每人)?\\s*(\\d{3,6})\\s*(?:元|块)").find(text)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let {
             next = next.copy(budgetPerPerson = it.coerceIn(1_000, 30_000))
@@ -685,6 +843,8 @@ class PlannerViewModel(
         if (listOf("需要住宿", "安排住宿", "要住酒店").any(text::contains)) next = next.copy(skipAccommodation = false)
         if (listOf("不要大交通", "跳过交通", "不安排交通", "不用查车票", "不用查机票").any(text::contains)) next = next.copy(skipTransport = true)
         if (listOf("安排交通", "需要交通", "查车票", "查机票").any(text::contains)) next = next.copy(skipTransport = false)
+        if (listOf("轮椅", "无障碍").any(text::contains)) next = next.copy(mobilityNeed = MobilityNeed.WHEELCHAIR)
+        if (listOf("婴儿车", "推车").any(text::contains)) next = next.copy(mobilityNeed = MobilityNeed.STROLLER)
         return next
     }
 
@@ -702,6 +862,10 @@ class PlannerViewModel(
                 .mapTo(mutableSetOf()) { it.name }
             val selectedIDs = pack.places.filter { it.name in selectedNames }.mapTo(mutableSetOf()) { it.id }
             var plan = builder.build(draft, pack, selectedIDs, selectedIDs.isEmpty())
+            if (previous != null) {
+                plan = builder.applyLocks(plan, previous)
+                reconfigurationUndo = previous
+            }
             if (!removePlaceName.isNullOrBlank()) plan = removingPlace(plan, removePlaceName)
             val focus = focusPlaceName?.let { name -> plan.days.flatMap { it.stops }.firstOrNull { it.name == name } }
             val day = focus?.let { place -> plan.days.firstOrNull { route -> route.stops.any { it.id == place.id } } }
@@ -715,7 +879,9 @@ class PlannerViewModel(
                     focusedPlaceID = focus?.id,
                     isAssistantResponding = false,
                     assistantStatusMessage = null,
-                    noticeMessage = reply,
+                    canUndoReconfiguration = previous != null,
+                    lastChangeSummary = previous?.let { changeSummary(it.draft, draft) },
+                    noticeMessage = if (previous != null) "$reply；锁定与已预订内容保持不动，可一步撤回" else reply,
                     errorMessage = null
                 )
             }
@@ -818,9 +984,10 @@ class PlannerViewModel(
     fun selectAccommodation(id: String) {
         val plan = _state.value.plan ?: return
         manuallySelectedAccommodationId = id
+        val locks = if (plan.locks.accommodationId != null) plan.locks.copy(accommodationId = id) else plan.locks
         _state.update {
             it.copy(
-                plan = builder.selectAccommodation(plan, id),
+                plan = builder.selectAccommodation(plan.copy(locks = locks), id),
                 selectedTab = PlanTab.STAYS,
                 panelFraction = 0.67f,
                 autoCamera = true,
@@ -831,10 +998,17 @@ class PlannerViewModel(
 
     fun selectTransport(id: String) {
         val plan = _state.value.plan ?: return
+        val option = plan.transports.firstOrNull { it.id == id } ?: return
         manuallySelectedTransportId = id
+        val lockedSameDirection = plan.locks.transportIds.filter { lockedID ->
+            plan.transports.firstOrNull { it.id == lockedID }?.direction == option.direction
+        }.toSet()
+        val locks = if (lockedSameDirection.isNotEmpty()) {
+            plan.locks.copy(transportIds = (plan.locks.transportIds - lockedSameDirection) + id)
+        } else plan.locks
         _state.update {
             it.copy(
-                plan = builder.selectTransport(plan, id),
+                plan = builder.selectTransport(plan.copy(locks = locks), id),
                 selectedTab = PlanTab.TRANSPORT,
                 panelFraction = 0.67f,
                 autoCamera = true,
@@ -866,10 +1040,15 @@ class PlannerViewModel(
         )
         val records = plan.bookingConfirmations
             .filterNot { it.kind == kind && it.itemId == itemId } + confirmation
+        val locks = if (kind == BookingKind.ACCOMMODATION) {
+            plan.locks.copy(accommodationId = itemId)
+        } else {
+            plan.locks.copy(transportIds = plan.locks.transportIds + itemId)
+        }
         _state.update {
             it.copy(
-                plan = builder.updateBookingConfirmations(plan, records),
-                noticeMessage = "已记录为你在外部平台完成的预订；库存与付款仍以原平台订单为准"
+                plan = builder.updateBookingConfirmations(plan.copy(locks = locks), records),
+                noticeMessage = "已记录预订并自动锁定；库存与付款仍以原平台订单为准"
             )
         }
     }
@@ -1073,6 +1252,7 @@ class PlannerViewModel(
     fun loadPlan(plan: CompletePlan) {
         repository.saveDraft(plan.draft)
         clearItineraryHistory()
+        reconfigurationUndo = null
         _state.update {
             it.copy(
                 draft = plan.draft,
@@ -1082,6 +1262,8 @@ class PlannerViewModel(
                 selectedDay = 0,
                 canUndoItinerary = false,
                 canRedoItinerary = false,
+                canUndoReconfiguration = false,
+                lastChangeSummary = null,
                 panelFraction = 0.58f,
                 autoCamera = true,
                 noticeMessage = "已回到${plan.draft.destination}的路线"
@@ -1188,6 +1370,23 @@ class PlannerViewModel(
                 }
             }
         }
+    }
+
+    private fun changeSummary(before: TripDraft, after: TripDraft): String {
+        val changes = buildList {
+            if (before.startDate != after.startDate) add("日期")
+            if (before.dayCount != after.dayCount) add("天数")
+            if (before.travelers != after.travelers) add("人数")
+            if (before.budgetPerPerson != after.budgetPerPerson) add("预算")
+            if (before.origin != after.origin) add("出发地")
+            if (before.pace != after.pace) add("节奏")
+            if (before.interests != after.interests) add("兴趣")
+            if (before.localTravelMode != after.localTravelMode) add("市内移动")
+            if (before.preferredLongDistanceMode != after.preferredLongDistanceMode) add("抵达方式")
+            if (before.skipAccommodation != after.skipAccommodation) add("住宿")
+            if (before.skipTransport != after.skipTransport) add("大交通")
+        }
+        return if (changes.isEmpty()) "方案已重新核对" else "已调整${changes.joinToString("、")}"
     }
 
     fun dismissMessage() {

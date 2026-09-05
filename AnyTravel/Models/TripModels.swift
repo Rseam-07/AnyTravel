@@ -243,6 +243,30 @@ struct ItineraryDay: Codable, Hashable, Identifiable, Sendable {
     var title: String { "第 \(index + 1) 天" }
 }
 
+struct LockedVisit: Codable, Hashable, Identifiable, Sendable {
+    var placeID: TravelPlace.ID
+    var placeName: String
+    var dayIndex: Int
+    var orderIndex: Int
+    var timeText: String?
+
+    var id: TravelPlace.ID { placeID }
+}
+
+struct PlanLockState: Codable, Hashable, Sendable {
+    var visits: [LockedVisit] = []
+    var accommodationID: AccommodationOption.ID?
+    var outboundTransportID: TransportOption.ID?
+    var returnTransportID: TransportOption.ID?
+
+    var isEmpty: Bool {
+        visits.isEmpty
+            && accommodationID == nil
+            && outboundTransportID == nil
+            && returnTransportID == nil
+    }
+}
+
 struct SavedTrip: Codable, Hashable, Identifiable, Sendable {
     let id: UUID
     var title: String

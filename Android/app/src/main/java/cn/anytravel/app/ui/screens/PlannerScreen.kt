@@ -75,6 +75,8 @@ import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.FlightTakeoff
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.MoreHoriz
@@ -141,6 +143,7 @@ import cn.anytravel.app.model.CompletePlan
 import cn.anytravel.app.model.ExpenseLine
 import cn.anytravel.app.model.LocalTravelMode
 import cn.anytravel.app.model.LongDistanceMode
+import cn.anytravel.app.model.MobilityNeed
 import cn.anytravel.app.model.PriceQuote
 import cn.anytravel.app.model.QuoteKind
 import cn.anytravel.app.model.QuoteUnit
@@ -662,13 +665,102 @@ private fun DraftPanel(
                         modifier = Modifier.weight(1f)
                     )
                     CompactStepper(
-                        title = "同行",
-                        value = state.draft.travelers,
+                        title = "同行总人数",
+                        value = state.draft.effectiveTotalTravelers,
                         suffix = "人",
-                        range = 1..8,
-                        onChange = { value -> onDraftChange { it.copy(travelers = value) } },
+                        range = 1..12,
+                        onChange = { value -> onDraftChange { it.withTotalTravelers(value) } },
                         modifier = Modifier.weight(1f)
                     )
+                }
+            }
+            item {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                ) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("同行结构", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "儿童年龄会随支持的酒店渠道一并查询；最终房型、儿童价和无障碍服务以结算页确认。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            CompactStepper(
+                                title = "成人",
+                                value = state.draft.effectiveAdults,
+                                suffix = "人",
+                                range = 1..8,
+                                onChange = { value -> onDraftChange { it.withAdults(value) } },
+                                modifier = Modifier.weight(1f)
+                            )
+                            CompactStepper(
+                                title = "房间",
+                                value = state.draft.effectiveRooms,
+                                suffix = "间",
+                                range = 1..4,
+                                onChange = { value -> onDraftChange { it.copy(rooms = value) } },
+                                modifier = Modifier.weight(1f)
+                            )
+                            CompactStepper(
+                                title = "老人",
+                                value = state.draft.effectiveSeniorTravelers,
+                                suffix = "人",
+                                range = 0..state.draft.effectiveAdults,
+                                onChange = { value -> onDraftChange { it.copy(seniorTravelers = value) } },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        state.draft.effectiveChildrenAges.forEachIndexed { index, age ->
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(
+                                    value = age.toString(),
+                                    onValueChange = { value ->
+                                        value.toIntOrNull()?.let { parsed ->
+                                            onDraftChange { draft ->
+                                                val ages = draft.effectiveChildrenAges.toMutableList()
+                                                if (index < ages.size) ages[index] = parsed.coerceIn(0, 17)
+                                                draft.withChildren(ages)
+                                            }
+                                        }
+                                    },
+                                    label = { Text("儿童${index + 1}年龄") },
+                                    suffix = { Text("岁") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(14.dp)
+                                )
+                                IconButton(
+                                    onClick = {
+                                        onDraftChange { draft -> draft.withChildren(draft.effectiveChildrenAges.filterIndexed { childIndex, _ -> childIndex != index }) }
+                                    }
+                                ) { Icon(Icons.Rounded.DeleteOutline, contentDescription = "移除儿童${index + 1}") }
+                            }
+                        }
+                        if (state.draft.effectiveChildrenAges.size < 6) {
+                            OutlinedButton(
+                                onClick = { onDraftChange { it.withChildren(it.effectiveChildrenAges + 8) } },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                Icon(Icons.Rounded.Add, contentDescription = null)
+                                Spacer(Modifier.width(6.dp))
+                                Text("添加儿童年龄")
+                            }
+                        }
+                        Text("无障碍与亲子出行", style = MaterialTheme.typography.labelLarge)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            MobilityNeed.entries.forEach { need ->
+                                FilterChip(
+                                    selected = state.draft.mobilityNeed == need,
+                                    onClick = { onDraftChange { it.copy(mobilityNeed = need) } },
+                                    label = { Text(need.title) }
+                                )
+                            }
+                        }
+                    }
                 }
             }
             item {
@@ -839,6 +931,13 @@ private fun PlanPanel(
                     label = { Text(if (state.isRefreshing) "正在问价" else "刷新价格") },
                     leadingIcon = { Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp)) }
                 )
+                if (state.canUndoReconfiguration) {
+                    AssistChip(
+                        onClick = viewModel::undoReconfiguration,
+                        label = { Text("撤回刚才调整") },
+                        leadingIcon = { Icon(Icons.AutoMirrored.Rounded.Undo, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                    )
+                }
                 AssistChip(
                     onClick = viewModel::editAttractions,
                     label = { Text("重选景点") },
@@ -887,12 +986,14 @@ private fun PlanPanel(
                         onMaximumDistance = viewModel::setAccommodationMaximumDistance,
                         onAmenity = viewModel::setAccommodationAmenity,
                         onSelect = viewModel::selectAccommodation,
+                        onToggleLock = viewModel::toggleAccommodationLock,
                         onConfirmBooking = viewModel::confirmBooking,
                         onRemoveBooking = viewModel::removeBookingConfirmation
                     )
                     PlanTab.TRANSPORT -> TransportContent(
                         plan,
                         viewModel::selectTransport,
+                        viewModel::toggleTransportLock,
                         viewModel::confirmBooking,
                         viewModel::removeBookingConfirmation
                     )
@@ -994,6 +1095,7 @@ private fun DaysContent(state: PlannerUiState, viewModel: PlannerViewModel) {
                 ) {
                     Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         dayStops.forEachIndexed { index, place ->
+                            val locked = plan.locks.visits.any { it.placeId == place.id || it.placeName == place.name }
                             Surface(
                                 shape = RoundedCornerShape(16.dp),
                                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)
@@ -1015,6 +1117,16 @@ private fun DaysContent(state: PlannerUiState, viewModel: PlannerViewModel) {
                                             maxLines = 2,
                                             overflow = TextOverflow.Ellipsis
                                         )
+                                        IconButton(
+                                            onClick = { viewModel.toggleVisitLock(selectedDay, place.id) },
+                                            modifier = Modifier.size(44.dp)
+                                        ) {
+                                            Icon(
+                                                if (locked) Icons.Rounded.Lock else Icons.Rounded.LockOpen,
+                                                contentDescription = if (locked) "解锁${place.name}" else "锁定${place.name}的日期与时段",
+                                                tint = if (locked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                     }
                                     Row(
                                         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -1023,26 +1135,27 @@ private fun DaysContent(state: PlannerUiState, viewModel: PlannerViewModel) {
                                     ) {
                                         IconButton(
                                             onClick = { viewModel.movePlaceWithinDay(selectedDay, place.id, -1) },
-                                            enabled = index > 0,
+                                            enabled = index > 0 && !locked,
                                             modifier = Modifier.size(44.dp)
                                         ) { Icon(Icons.Rounded.ArrowUpward, contentDescription = "把${place.name}提前") }
                                         IconButton(
                                             onClick = { viewModel.movePlaceWithinDay(selectedDay, place.id, 1) },
-                                            enabled = index < dayStops.lastIndex,
+                                            enabled = index < dayStops.lastIndex && !locked,
                                             modifier = Modifier.size(44.dp)
                                         ) { Icon(Icons.Rounded.ArrowDownward, contentDescription = "把${place.name}延后") }
                                         IconButton(
                                             onClick = { viewModel.movePlaceToAdjacentDay(selectedDay, place.id, -1) },
-                                            enabled = selectedDay > 0,
+                                            enabled = selectedDay > 0 && !locked,
                                             modifier = Modifier.size(44.dp)
                                         ) { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, contentDescription = "把${place.name}移到前一天") }
                                         IconButton(
                                             onClick = { viewModel.movePlaceToAdjacentDay(selectedDay, place.id, 1) },
-                                            enabled = selectedDay < plan.days.lastIndex,
+                                            enabled = selectedDay < plan.days.lastIndex && !locked,
                                             modifier = Modifier.size(44.dp)
                                         ) { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = "把${place.name}移到后一天") }
                                         IconButton(
                                             onClick = { viewModel.removePlace(selectedDay, place.id) },
+                                            enabled = !locked,
                                             modifier = Modifier.size(44.dp)
                                         ) { Icon(Icons.Rounded.DeleteOutline, contentDescription = "移除${place.name}", tint = TravelOrange) }
                                     }
@@ -1100,6 +1213,7 @@ private fun StaysContent(
     onMaximumDistance: (Int?) -> Unit,
     onAmenity: (AccommodationAmenity?) -> Unit,
     onSelect: (String) -> Unit,
+    onToggleLock: (String) -> Unit,
     onConfirmBooking: (BookingKind, String, String, Int?) -> Unit,
     onRemoveBooking: (BookingKind, String) -> Unit
 ) {
@@ -1169,7 +1283,9 @@ private fun StaysContent(
                 option,
                 selected = option.id == plan.selectedAccommodationId,
                 confirmed = plan.bookingConfirmations.any { it.kind == BookingKind.ACCOMMODATION && it.itemId == option.id },
-                onSelect = { onSelect(option.id) }
+                locked = plan.locks.accommodationId == option.id || plan.bookingConfirmations.any { it.kind == BookingKind.ACCOMMODATION && it.itemId == option.id },
+                onSelect = { onSelect(option.id) },
+                onToggleLock = { onToggleLock(option.id) }
             )
         }
         plan.selectedAccommodation?.let { selected ->
@@ -1188,7 +1304,14 @@ private fun StaysContent(
 }
 
 @Composable
-private fun AccommodationCard(option: AccommodationOption, selected: Boolean, confirmed: Boolean, onSelect: () -> Unit) {
+private fun AccommodationCard(
+    option: AccommodationOption,
+    selected: Boolean,
+    confirmed: Boolean,
+    locked: Boolean,
+    onSelect: () -> Unit,
+    onToggleLock: () -> Unit
+) {
     val context = LocalContext.current
     val best = option.quotes.filter { it.isCurrentPrice() }.minByOrNull { it.amountCNY ?: Int.MAX_VALUE }
     Surface(
@@ -1225,6 +1348,15 @@ private fun AccommodationCard(option: AccommodationOption, selected: Boolean, co
             }
             Spacer(Modifier.height(10.dp))
             option.quotes.forEach { quote -> QuoteRow(quote, onOpen = { quote.bookingURL?.let { openURL(context, it) } }) }
+            TextButton(
+                onClick = onToggleLock,
+                enabled = !confirmed,
+                modifier = Modifier.align(Alignment.End)
+            ) {
+                Icon(if (locked) Icons.Rounded.Lock else Icons.Rounded.LockOpen, contentDescription = null, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(5.dp))
+                Text(if (confirmed) "预订后已锁定" else if (locked) "解锁住处" else "锁定住处")
+            }
         }
     }
 }
@@ -1233,6 +1365,7 @@ private fun AccommodationCard(option: AccommodationOption, selected: Boolean, co
 private fun TransportContent(
     plan: CompletePlan,
     onSelect: (String) -> Unit,
+    onToggleLock: (String) -> Unit,
     onConfirmBooking: (BookingKind, String, String, Int?) -> Unit,
     onRemoveBooking: (BookingKind, String) -> Unit
 ) {
@@ -1266,7 +1399,9 @@ private fun TransportContent(
                 option,
                 selected = option.id == plan.selectedTransportId,
                 confirmed = plan.bookingConfirmations.any { it.kind == BookingKind.TRANSPORT && it.itemId == option.id },
-                onSelect = { onSelect(option.id) }
+                locked = option.id in plan.locks.transportIds || plan.bookingConfirmations.any { it.kind == BookingKind.TRANSPORT && it.itemId == option.id },
+                onSelect = { onSelect(option.id) },
+                onToggleLock = { onToggleLock(option.id) }
             )
         }
         plan.selectedTransport?.let { selected ->
@@ -1285,7 +1420,14 @@ private fun TransportContent(
 }
 
 @Composable
-private fun TransportCard(option: TransportOption, selected: Boolean, confirmed: Boolean, onSelect: () -> Unit) {
+private fun TransportCard(
+    option: TransportOption,
+    selected: Boolean,
+    confirmed: Boolean,
+    locked: Boolean,
+    onSelect: () -> Unit,
+    onToggleLock: () -> Unit
+) {
     val context = LocalContext.current
     val quote = option.quotes.filter { it.isCurrentPrice() }.minByOrNull { it.amountCNY ?: Int.MAX_VALUE }
     val icon = when (option.mode) {
@@ -1327,6 +1469,15 @@ private fun TransportCard(option: TransportOption, selected: Boolean, confirmed:
             option.recommendationReasons.forEach { Text("· $it", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             option.durationMinutes?.let { Text("· 预计总耗时基线 ${it.durationText()}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             option.quotes.forEach { item -> QuoteRow(item, onOpen = { item.bookingURL?.let { url -> openURL(context, url) } }) }
+            TextButton(
+                onClick = onToggleLock,
+                enabled = !confirmed,
+                modifier = Modifier.align(Alignment.End)
+            ) {
+                Icon(if (locked) Icons.Rounded.Lock else Icons.Rounded.LockOpen, contentDescription = null, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(5.dp))
+                Text(if (confirmed) "购票后已锁定" else if (locked) "解锁班次" else "锁定班次")
+            }
         }
     }
 }

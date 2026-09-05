@@ -236,14 +236,14 @@ export function mapProviderIssue(issue: { provider: string; status: string; deta
 
 export async function fetchAccommodationCatalog(
   baseURL: string,
-  request: { destination: string; checkIn?: string; checkOut?: string; adults: number; rooms: number; size: number; anchors: string[] }
+  request: { destination: string; checkIn?: string; checkOut?: string; adults: number; childrenAges?: number[]; rooms: number; size: number; anchors: string[] }
 ): Promise<BackendCatalogResponse> {
   return backendFetch<BackendCatalogResponse>(baseURL, "v1/accommodations/search", request);
 }
 
 export async function fetchTransport(
   baseURL: string,
-  request: { origin: string; destination: string; departureDate?: string; returnDate?: string; adults: number; modes: string[] }
+  request: { origin: string; destination: string; departureDate?: string; returnDate?: string; adults: number; childrenAges?: number[]; modes: string[] }
 ): Promise<BackendTransportResponse> {
   return backendFetch<BackendTransportResponse>(baseURL, "v1/quotes/transport", request);
 }
@@ -321,6 +321,11 @@ export interface AssistantInterpretContext {
   origin: string;
   dayCount: number;
   travelers: number;
+  adults?: number;
+  childrenAges?: number[];
+  rooms?: number;
+  seniorTravelers?: number;
+  mobilityNeed?: "none" | "stroller" | "wheelchair";
   budgetPerPerson?: number;
   pace: string;
   travelMode: string;

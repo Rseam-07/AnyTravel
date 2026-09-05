@@ -98,7 +98,7 @@ struct HiltonOfficialDirectClient {
                 hotelCode: code,
                 checkIn: checkIn,
                 checkOut: checkOut,
-                adults: logistics.travelers
+                adults: logistics.effectiveAdults
             )
             let tags = Self.uniqueStrings(
                 Self.strings(hotel["sellingPoints"])

@@ -13,6 +13,11 @@ const allowedActionTypes = new Set([
   "set_skip_transport",
   "set_day_count",
   "set_travelers",
+  "set_adults",
+  "set_children_ages",
+  "set_rooms",
+  "set_seniors",
+  "set_mobility",
   "set_budget",
   "set_start_date",
   "set_end_date",
@@ -120,7 +125,14 @@ export function validateAssistantRequest(request) {
         ? source.interests.map(String).map((value) => value.slice(0, 40)).slice(0, 12)
         : [],
       origin: String(source.origin || "").trim().slice(0, 120),
-      travelers: clampInteger(source.travelers, 1, 8, 1),
+      travelers: clampInteger(source.travelers, 1, 12, 1),
+      adults: clampInteger(source.adults, 1, 8, null),
+      childrenAges: normalizeChildrenAges(source.childrenAges),
+      rooms: clampInteger(source.rooms, 1, 4, null),
+      seniorTravelers: clampInteger(source.seniorTravelers, 0, 8, 0),
+      mobilityNeed: ["none", "stroller", "wheelchair"].includes(source.mobilityNeed)
+        ? source.mobilityNeed
+        : "none",
       startDate: validDay(source.startDate) ? source.startDate : null,
       endDate: validDay(source.endDate) ? source.endDate : null,
       longDistanceMode: allowedLongDistanceModes.has(source.longDistanceMode) ? source.longDistanceMode : null,
@@ -165,8 +177,22 @@ export function normalizeAssistantPayload(content, places = []) {
       const value = clampInteger(candidate.value, 1, 7, null);
       if (value !== null) actions.push({ type, value: String(value) });
     } else if (type === "set_travelers") {
+      const value = clampInteger(candidate.value, 1, 12, null);
+      if (value !== null) actions.push({ type, value: String(value) });
+    } else if (type === "set_adults") {
       const value = clampInteger(candidate.value, 1, 8, null);
       if (value !== null) actions.push({ type, value: String(value) });
+    } else if (type === "set_children_ages") {
+      const ages = normalizeChildrenAges(candidate.value);
+      actions.push({ type, value: ages.join(",") });
+    } else if (type === "set_rooms") {
+      const value = clampInteger(candidate.value, 1, 4, null);
+      if (value !== null) actions.push({ type, value: String(value) });
+    } else if (type === "set_seniors") {
+      const value = clampInteger(candidate.value, 0, 8, null);
+      if (value !== null) actions.push({ type, value: String(value) });
+    } else if (type === "set_mobility" && ["none", "stroller", "wheelchair"].includes(String(candidate.value))) {
+      actions.push({ type, value: String(candidate.value) });
     } else if (type === "set_budget") {
       const value = clampInteger(candidate.value, 1_000, 30_000, null);
       if (value !== null) actions.push({ type, value: String(value) });
@@ -202,6 +228,16 @@ function clampInteger(value, minimum, maximum, fallback) {
   return Math.min(Math.max(Math.round(number), minimum), maximum);
 }
 
+function normalizeChildrenAges(value) {
+  const values = Array.isArray(value)
+    ? value
+    : String(value ?? "").split(/[，,、;；\s]+/).filter(Boolean);
+  return values
+    .map((age) => Number(age))
+    .filter((age) => Number.isInteger(age) && age >= 0 && age <= 17)
+    .slice(0, 6);
+}
+
 function validDay(value) {
   const text = String(value || "");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
@@ -226,7 +262,12 @@ const systemPrompt = `你是 AnyTravel 的旅行意图控制器。用户可以�
 - set_destination: 用户明确说出的城市或区域
 - set_origin: 出发城市
 - set_day_count: 1 到 7
-- set_travelers: 1 到 8
+- set_travelers: 1 到 12
+- set_adults: 成人数，1 到 8
+- set_children_ages: 儿童年龄数组或逗号分隔年龄，0 到 17 岁，最多 6 个
+- set_rooms: 房间数，1 到 4
+- set_seniors: 需要照顾的老人数量，0 到 8
+- set_mobility: none | stroller | wheelchair
 - set_pace: relaxed | balanced | full
 - set_travel_mode: walking | transit | driving
 - set_long_distance_mode: auto | train | flight | driving | coach

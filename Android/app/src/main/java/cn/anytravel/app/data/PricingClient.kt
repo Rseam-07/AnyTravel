@@ -103,8 +103,9 @@ class PricingClient {
             destination = draft.destination,
             checkIn = start.toString(),
             checkOut = start.plusDays(draft.nights.toLong().coerceAtLeast(1)).toString(),
-            adults = draft.travelers,
-            rooms = ((draft.travelers + 1) / 2).coerceAtLeast(1),
+            adults = draft.effectiveAdults,
+            childrenAges = draft.effectiveChildrenAges,
+            rooms = draft.effectiveRooms,
             hotels = accommodations.map {
                 HotelRequest(it.id, it.name, it.coordinate.latitude, it.coordinate.longitude, it.officialWebsiteURL)
             }
@@ -148,8 +149,9 @@ class PricingClient {
             destination = draft.destination,
             checkIn = start.toString(),
             checkOut = start.plusDays(draft.nights.toLong().coerceAtLeast(1)).toString(),
-            adults = draft.travelers,
-            rooms = ((draft.travelers + 1) / 2).coerceAtLeast(1),
+            adults = draft.effectiveAdults,
+            childrenAges = draft.effectiveChildrenAges,
+            rooms = draft.effectiveRooms,
             size = 20,
             anchors = plan.days.flatMap { it.stops }
                 .sortedBy { it.popularityRank }
@@ -231,7 +233,8 @@ class PricingClient {
             departureDate = draft.startDate,
             returnDate = LocalDate.parse(draft.startDate)
                 .plusDays((draft.dayCount - 1).coerceAtLeast(0).toLong()).toString(),
-            adults = draft.travelers,
+            adults = draft.effectiveAdults,
+            childrenAges = draft.effectiveChildrenAges,
             modes = listOf("train", "flight")
         )
         val response = json.decodeFromString<TransportResponse>(
@@ -395,6 +398,7 @@ private data class AccommodationRequest(
     val checkIn: String,
     val checkOut: String,
     val adults: Int,
+    val childrenAges: List<Int>,
     val rooms: Int,
     val hotels: List<HotelRequest>
 )
@@ -408,6 +412,7 @@ private data class AccommodationCatalogRequest(
     val checkIn: String,
     val checkOut: String,
     val adults: Int,
+    val childrenAges: List<Int>,
     val rooms: Int,
     val size: Int,
     val anchors: List<String>
@@ -490,6 +495,7 @@ private data class TransportRequest(
     val departureDate: String,
     val returnDate: String?,
     val adults: Int,
+    val childrenAges: List<Int>,
     val modes: List<String>
 )
 

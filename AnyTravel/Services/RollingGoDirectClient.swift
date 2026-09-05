@@ -55,7 +55,7 @@ struct RollingGoDirectClient {
         let minimumCheckOut = calendar.date(byAdding: .day, value: 1, to: checkIn) ?? requestedCheckOut
         let checkOut = max(requestedCheckOut, minimumCheckOut)
         let stayNights = max(calendar.dateComponents([.day], from: checkIn, to: checkOut).day ?? 1, 1)
-        let adultsPerRoom = min(max(logistics.travelers / max((logistics.travelers + 1) / 2, 1), 1), 8)
+        let adultsPerRoom = min(max(Int(ceil(Double(logistics.effectiveAdults) / Double(logistics.effectiveRooms))), 1), 8)
         let requestedSize = min(max(size, 1), 20)
         let locations = [destination] + anchors
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -65,11 +65,13 @@ struct RollingGoDirectClient {
 
         let arguments = locations.enumerated().map { index, place in
             RollingGoSearchArguments(
-                originQuery: "查找\(destination)\(index == 0 ? "" : "靠近\(place)")适合\(logistics.travelers)人入住的酒店和民宿，比较\(stayNights)晚实时价格",
+                originQuery: "查找\(destination)\(index == 0 ? "" : "靠近\(place)")适合\(logistics.effectiveTotalTravelers)人入住的酒店和民宿，比较\(stayNights)晚实时价格",
                 place: place,
                 placeType: index == 0 ? "城市" : "景点",
                 checkInParam: .init(
                     adultCount: adultsPerRoom,
+                    childrenAges: logistics.effectiveChildrenAges,
+                    rooms: logistics.effectiveRooms,
                     checkInDate: Self.dayFormatter.string(from: checkIn),
                     stayNights: stayNights
                 ),
@@ -334,6 +336,8 @@ private struct RollingGoMCPRequest: Encodable {
 private struct RollingGoSearchArguments: Encodable {
     struct CheckIn: Encodable {
         var adultCount: Int
+        var childrenAges: [Int] = []
+        var rooms: Int = 1
         var checkInDate: String
         var stayNights: Int
     }

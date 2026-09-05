@@ -193,7 +193,7 @@ export class AccorOfficialAdapter {
           dateIn: request.checkIn,
           dateOut: request.checkOut,
           nbAdults: Math.min(Math.max(Number(request.adults || 1), 1), 8),
-          childrenAges: [],
+          childrenAges: request.childrenAges || [],
           selectionStep: 0,
           countryMarket: "CN",
           currency: "CNY",

@@ -40,6 +40,11 @@ export async function searchAccommodationCatalog(request) {
   const normalizedRequest = {
     ...request,
     adults: Math.min(Math.max(Number(request.adults || 1), 1), 8),
+    childrenAges: [...new Set(
+      (Array.isArray(request.childrenAges) ? request.childrenAges : [])
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value >= 0 && value <= 17)
+    )].slice(0, 6),
     rooms: Math.min(Math.max(Number(request.rooms || 1), 1), 4),
     size: Math.min(Math.max(Number(request.size || 20), 1), 20),
     anchors: [...new Set(
@@ -151,6 +156,13 @@ function validateRequest(request) {
   for (const hotel of request.hotels) {
     if (!hotel.id || !hotel.name) throw new RequestError("Every hotel needs id and name");
   }
+  request.adults = Math.min(Math.max(Number(request.adults || 1), 1), 8);
+  request.rooms = Math.min(Math.max(Number(request.rooms || 1), 1), 4);
+  request.childrenAges = [...new Set(
+    (Array.isArray(request.childrenAges) ? request.childrenAges : [])
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value >= 0 && value <= 17)
+  )].slice(0, 6);
 }
 
 function validateCatalogRequest(request) {
@@ -185,6 +197,11 @@ function validateTransportRequest(request) {
     throw new RequestError("modes must contain train or flight");
   }
   request.adults = Math.min(Math.max(Number(request.adults || 1), 1), 8);
+  request.childrenAges = [...new Set(
+    (Array.isArray(request.childrenAges) ? request.childrenAges : [])
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value >= 0 && value <= 17)
+  )].slice(0, 6);
 }
 
 export class RequestError extends Error {}

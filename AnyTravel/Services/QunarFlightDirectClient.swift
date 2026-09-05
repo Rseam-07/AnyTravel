@@ -136,7 +136,7 @@ struct QunarFlightDirectClient {
         var receivedCount = 0
         for journey in journeys {
             do {
-                let url = try Self.searchURL(for: journey, travelers: logistics.travelers)
+                let url = try Self.searchURL(for: journey, travelers: logistics.effectiveAdults + logistics.effectiveChildrenAges.count)
                 let snapshot = try await pageLoader(url)
                 guard !Task.isCancelled else { throw CancellationError() }
                 let parsed = Self.parseFlights(snapshot: snapshot)

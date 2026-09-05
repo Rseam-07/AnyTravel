@@ -477,6 +477,7 @@ a svg { flex: 0 0 auto; }
   font-size: 12px;
   font-weight: 680;
 }
+.ready-tool-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
 
 .panel-section-head { margin-bottom: 12px; }
 .panel-section-head > div { display: flex; flex-direction: column; }
@@ -542,6 +543,11 @@ a svg { flex: 0 0 auto; }
 
 .destination-confirmed > strong { display: block; font-size: 15px; }
 .destination-confirmed > span { display: block; margin: 3px 0 15px; color: var(--secondary-ink); font-size: 11.5px; }
+.change-preview { display: grid; gap: 7px; margin: 3px 0 11px; padding: 12px; border: 1px solid rgba(18, 110, 102, .2); border-radius: 16px; background: var(--route-soft); }
+.change-preview > strong { color: var(--route-dark); font-size: 12px; }
+.change-preview > div { display: grid; grid-template-columns: 64px 1fr; gap: 8px; align-items: baseline; }
+.change-preview > div span { color: var(--ink); font-size: 11px; font-weight: 740; }
+.change-preview > div small, .change-preview p { margin: 0; color: var(--secondary-ink); font-size: 10px; line-height: 1.45; }
 .recovery-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 12px 0; padding: 13px 14px; border: 1px solid rgba(18, 110, 102, .22); border-radius: 15px; background: var(--route-soft); }
 .recovery-card strong, .recovery-card span { display: block; }
 .recovery-card strong { font-size: 13px; }
@@ -720,6 +726,11 @@ input::placeholder { color: var(--secondary-ink); opacity: .68; }
   transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
   cursor: pointer;
 }
+.stop-actions { display: grid; gap: 4px; }
+.lock-control,
+.remove-stop { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 9px; color: var(--secondary-ink); opacity: .52; transition: transform 140ms ease, background 140ms ease, color 140ms ease, opacity 140ms ease; }
+.lock-control:hover, .lock-control.active { background: var(--route-soft); color: var(--route-dark); opacity: 1; }
+.lock-control:active { transform: scale(.9); }
 
 .itinerary-stop:hover { background: var(--glass-card); }
 .itinerary-stop:active { transform: scale(.992); }
@@ -752,8 +763,8 @@ input::placeholder { color: var(--secondary-ink); opacity: .68; }
 .stop-meta { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; color: var(--secondary-ink); font-size: 10.5px; line-height: 1.4; }
 .stop-meta > span,
 .meta-line { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
-.remove-stop { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 9px; color: var(--secondary-ink); opacity: .45; }
 .remove-stop:hover { background: var(--warm-soft); color: var(--danger); opacity: 1; }
+.remove-stop:disabled { cursor: not-allowed; opacity: .18; }
 
 .travel-leg { display: flex; justify-content: space-between; margin: -1px 36px -1px 44px; padding: 2px 12px 3px; border-left: 1.5px dashed color-mix(in srgb, var(--day-color) 42%, transparent); color: var(--secondary-ink); font-size: 9.5px; }
 
@@ -854,6 +865,12 @@ input::placeholder { color: var(--secondary-ink); opacity: .68; }
 }
 .booking-state.selected { color: var(--route-dark); background: color-mix(in srgb, var(--route) 13%, transparent); }
 .booking-state.confirmed { color: white; background: var(--route); }
+.booking-state.locked { gap: 3px; color: var(--route-dark); background: color-mix(in srgb, var(--route) 17%, transparent); }
+.lock-link { display: inline-flex; gap: 4px; align-items: center; }
+.lock-link.active { color: var(--route); }
+.lock-row-action { display: inline-flex; align-items: center; gap: 5px; margin-top: 7px; padding: 6px 9px; border-radius: 999px; background: var(--soft-surface); color: var(--secondary-ink); font-size: 10px; font-weight: 720; }
+.lock-row-action.active { background: var(--route-soft); color: var(--route-dark); }
+.lock-link:disabled, .lock-row-action:disabled { cursor: default; opacity: .72; }
 .booking-pending,
 .booking-confirmation,
 .booking-editor { margin-top: 9px; padding-top: 9px; border-top: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); }

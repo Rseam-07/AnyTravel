@@ -17,6 +17,11 @@ struct TravelAssistantContext: Codable, Equatable, Sendable {
     var places: [TravelAssistantPlaceContext]
     var origin = ""
     var travelers = 1
+    var adults = 1
+    var childrenAges: [Int] = []
+    var rooms = 1
+    var seniorTravelers = 0
+    var mobilityNeed = "none"
     var startDate: String?
     var endDate: String?
     var longDistanceMode: String?
@@ -37,6 +42,11 @@ enum TravelAssistantActionType: String, Codable, Sendable {
     case setLongDistanceMode = "set_long_distance_mode"
     case setDayCount = "set_day_count"
     case setTravelers = "set_travelers"
+    case setAdults = "set_adults"
+    case setChildrenAges = "set_children_ages"
+    case setRooms = "set_rooms"
+    case setSeniors = "set_seniors"
+    case setMobility = "set_mobility"
     case setBudget = "set_budget"
     case setStartDate = "set_start_date"
     case setEndDate = "set_end_date"
@@ -214,7 +224,24 @@ struct TravelAssistantClient {
                 return TravelAssistantAction(type: .setDayCount, value: String(min(max(number, 1), 7)))
             case .setTravelers:
                 guard let number = Int(action.value) else { return nil }
-                return TravelAssistantAction(type: .setTravelers, value: String(min(max(number, 1), 8)))
+                return TravelAssistantAction(type: .setTravelers, value: String(min(max(number, 1), 12)))
+            case .setAdults:
+                guard let number = Int(action.value) else { return nil }
+                return TravelAssistantAction(type: .setAdults, value: String(min(max(number, 1), 8)))
+            case .setChildrenAges:
+                let ages = action.value.split { ",，、;； ".contains($0) }
+                    .compactMap { Int($0) }
+                    .filter { (0...17).contains($0) }
+                    .prefix(6)
+                return TravelAssistantAction(type: .setChildrenAges, value: ages.map(String.init).joined(separator: ","))
+            case .setRooms:
+                guard let number = Int(action.value) else { return nil }
+                return TravelAssistantAction(type: .setRooms, value: String(min(max(number, 1), 4)))
+            case .setSeniors:
+                guard let number = Int(action.value) else { return nil }
+                return TravelAssistantAction(type: .setSeniors, value: String(min(max(number, 0), 8)))
+            case .setMobility:
+                return ["none", "stroller", "wheelchair"].contains(action.value) ? action : nil
             case .setBudget:
                 guard let number = Int(action.value) else { return nil }
                 return TravelAssistantAction(type: .setBudget, value: String(min(max(number, 1_000), 30_000)))
@@ -266,7 +293,7 @@ struct TravelAssistantClient {
     你是 AnyTravel 的旅行意图控制器。用户可以从一句完全自由的中文开始，也可以修改现有计划。只返回 JSON：
     {"reply":"简洁、温暖、略有诗意的中文回应","actions":[{"type":"动作","value":"值"}]}
     允许动作：
-    set_destination(城市或区域)、set_origin(出发城市)、set_day_count(1...7)、set_travelers(1...8)、set_budget(1000...30000)、set_pace(relaxed|balanced|full)、set_travel_mode(walking|transit|driving)、set_long_distance_mode(auto|train|flight|driving|coach)、set_start_date(yyyy-MM-dd)、set_end_date(yyyy-MM-dd)、set_accommodation_max_price(100...10000)、set_accommodation_sort(recommended|lowestPrice|closestToAttractions|closestToTransit)、add_interest/remove_interest(gardens|culture|food|nature|family|night)、generate_plan(true|false)、focus_place 与 remove_place（value 必须是 context.places 中完全相同的名称）。
+    set_destination(城市或区域)、set_origin(出发城市)、set_day_count(1...7)、set_travelers(1...12)、set_adults(1...8)、set_children_ages(0...17 岁的逗号分隔年龄，最多 6 个)、set_rooms(1...4)、set_seniors(0...8)、set_mobility(none|stroller|wheelchair)、set_budget(1000...30000)、set_pace(relaxed|balanced|full)、set_travel_mode(walking|transit|driving)、set_long_distance_mode(auto|train|flight|driving|coach)、set_start_date(yyyy-MM-dd)、set_end_date(yyyy-MM-dd)、set_accommodation_max_price(100...10000)、set_accommodation_sort(recommended|lowestPrice|closestToAttractions|closestToTransit)、add_interest/remove_interest(gardens|culture|food|nature|family|night)、generate_plan(true|false)、focus_place 与 remove_place（value 必须是 context.places 中完全相同的名称）。
     当用户明确要求规划、安排行程时返回 generate_plan=true；只是在探索目的地时不要擅自生成。地点会由地图服务核验，所以可以提取用户明确说出的目的地，但不要臆造。不要返回链接、代码或额外字段。无法安全操作时 actions 为空。
     """
 

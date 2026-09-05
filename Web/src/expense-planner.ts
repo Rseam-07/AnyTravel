@@ -1,5 +1,5 @@
 import type { AppState } from "./store";
-import type { BookingConfirmation, ProviderQuote } from "./types";
+import { effectiveParty, type BookingConfirmation, type ProviderQuote } from "./types";
 
 export type ExpenseSource = "confirmed" | "queried" | "reference" | "estimate" | "reserved";
 
@@ -79,7 +79,8 @@ export function buildExpenseSummary(state: AppState): ExpenseSummary {
   const { draft } = state;
   const travelers = Math.max(draft.travelers, 1);
   const nights = draft.skipAccommodation ? 0 : Math.max(draft.dayCount - 1, 1);
-  const rooms = Math.max(Math.ceil(travelers / 2), 1);
+  const party = effectiveParty(state.draft);
+  const rooms = party.rooms;
   const totalBudget = Math.max((draft.budgetPerPerson ?? 0) * travelers, 0);
   const rows: ExpenseLine[] = [];
 

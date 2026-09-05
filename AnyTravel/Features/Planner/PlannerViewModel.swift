@@ -12,6 +12,34 @@ final class PlannerViewModel {
         var selectedPlaceID: TravelPlace.ID?
     }
 
+    private struct ReconfigurationSnapshot {
+        var draft: TripDraft
+        var phase: PlannerPhase
+        var destination: DestinationResolution?
+        var originResolution: DestinationResolution?
+        var days: [ItineraryDay]
+        var selectedDayIndex: Int
+        var selectedPlaceID: TravelPlace.ID?
+        var accommodations: [AccommodationOption]
+        var selectedAccommodationID: AccommodationOption.ID?
+        var transportOptions: [TransportOption]
+        var selectedTransportID: TransportOption.ID?
+        var returnTransportOptions: [TransportOption]
+        var selectedReturnTransportID: TransportOption.ID?
+        var outboundTransferOptions: [LocalTransferOption]
+        var selectedOutboundTransferID: LocalTransferOption.ID?
+        var returnTransferOptions: [LocalTransferOption]
+        var selectedReturnTransferID: LocalTransferOption.ID?
+        var bookingConfirmations: [BookingConfirmation]
+        var planLocks: PlanLockState
+        var planMapFocus: PlanMapFocus
+        var accommodationSort: AccommodationSort
+        var accommodationMaxNightlyPrice: Int?
+        var accommodationMaxAttractionDistanceMeters: Double?
+        var accommodationLivePricesOnly: Bool
+        var accommodationOfficialSiteOnly: Bool
+    }
+
     private enum TransportQuoteSource: Equatable {
         case backend
         case railway
@@ -62,6 +90,8 @@ final class PlannerViewModel {
     var conditionsEditorPresented = false
     var canUndoItineraryChange = false
     var canRedoItineraryChange = false
+    var canUndoReconfiguration = false
+    var lastConditionChangeSummary: String?
     var planMapFocus: PlanMapFocus = .itinerary
     var accommodations: [AccommodationOption] = []
     var selectedAccommodationID: AccommodationOption.ID?
@@ -76,6 +106,7 @@ final class PlannerViewModel {
     var returnTransportOptions: [TransportOption] = []
     var selectedReturnTransportID: TransportOption.ID?
     var bookingConfirmations: [BookingConfirmation] = []
+    var planLocks = PlanLockState()
     var outboundTransferOptions: [LocalTransferOption] = []
     var selectedOutboundTransferID: LocalTransferOption.ID?
     var returnTransferOptions: [LocalTransferOption] = []
@@ -137,6 +168,7 @@ final class PlannerViewModel {
     @ObservationIgnored private var itineraryNeedsLogisticsRefresh = false
     @ObservationIgnored private var itineraryUndoStack: [ItineraryEditSnapshot] = []
     @ObservationIgnored private var itineraryRedoStack: [ItineraryEditSnapshot] = []
+    @ObservationIgnored private var reconfigurationUndoSnapshot: ReconfigurationSnapshot?
     @ObservationIgnored private var didBootstrap = false
     @ObservationIgnored private var plannedAttractionPlaces: [TravelPlace] = []
     @ObservationIgnored private var pendingPlanNoticeMessage: String?
@@ -276,7 +308,7 @@ final class PlannerViewModel {
     }
 
     var totalBudget: Int {
-        draft.budgetPerPerson * max(draft.logistics.travelers, 1)
+        draft.budgetPerPerson * max(draft.logistics.effectiveTotalTravelers, 1)
     }
 
     var canExportCalendar: Bool {
@@ -305,7 +337,8 @@ final class PlannerViewModel {
             accommodation: selectedAccommodation,
             travelMode: draft.travelMode,
             constraints: tourismConstraints(for: currentDay),
-            plannedDate: plannedDate
+            plannedDate: plannedDate,
+            lockedVisits: planLocks.visits.filter { $0.dayIndex == currentDay.index }
         )
     }
 
@@ -837,21 +870,28 @@ final class PlannerViewModel {
             return
         }
 
+        let wasReplanningExistingTrip = phase == .ready && !itineraryDays.isEmpty
+        let previousDays = itineraryDays
+        let previousSelectedDayIndex = selectedDayIndex
+        let undoSnapshot = wasReplanningExistingTrip ? currentReconfigurationSnapshot() : nil
+
         routeTask?.cancel()
         revealTask?.cancel()
         routesByDay = [:]
         failedSegmentsByDay = [:]
         selectedPlaceID = nil
-        selectedDayIndex = 0
+        selectedDayIndex = wasReplanningExistingTrip ? previousSelectedDayIndex : 0
         paceStatusMessage = nil
         let selectionNotice = pendingPlanNoticeMessage
         pendingPlanNoticeMessage = nil
         noticeMessage = nil
         errorMessage = nil
         quoteRefreshState = .idle
-        manuallySelectedAccommodationID = nil
-        returnTransportOptions = []
-        selectedReturnTransportID = nil
+        if !wasReplanningExistingTrip {
+            manuallySelectedAccommodationID = nil
+            returnTransportOptions = []
+            selectedReturnTransportID = nil
+        }
         clearLocalTransfers()
         focusedTransportDirection = .outbound
         activityTitle = "正在拾起沿途值得停留的地方"
@@ -867,12 +907,24 @@ final class PlannerViewModel {
             guard phase == .discovering else { return }
             activityTitle = "正在编排每天的脚步"
             activityDetail = "正在衡量距离、停留、用餐、休息与夜游时段"
-            itineraryDays = routePlanner.orderPlaces(
+            let generatedDays = routePlanner.orderPlaces(
                 places,
                 from: destination.coordinate,
                 draft: draft
             )
+            itineraryDays = wasReplanningExistingTrip
+                ? applyingPlanLocks(to: generatedDays, previousDays: previousDays)
+                : generatedDays
             guard !itineraryDays.isEmpty else { throw PlanningError.placesNotFound }
+
+            selectedDayIndex = wasReplanningExistingTrip
+                ? min(previousSelectedDayIndex, max(itineraryDays.count - 1, 0))
+                : 0
+            if let undoSnapshot {
+                reconfigurationUndoSnapshot = undoSnapshot
+                canUndoReconfiguration = true
+                lastConditionChangeSummary = "行程已重新编排；锁定内容保持原位"
+            }
 
             phase = .ready
             noticeMessage = selectionNotice
@@ -937,6 +989,83 @@ final class PlannerViewModel {
         containsEquivalentPlace(place)
     }
 
+    func isVisitLocked(_ place: TravelPlace) -> Bool {
+        planLocks.visits.contains { $0.placeID == place.id }
+    }
+
+    func toggleVisitLock(_ place: TravelPlace, in dayIndex: Int) {
+        if let existing = planLocks.visits.firstIndex(where: { $0.placeID == place.id }) {
+            planLocks.visits.remove(at: existing)
+            noticeMessage = "“\(place.name)”已恢复为可调整停靠。"
+            return
+        }
+        guard let day = itineraryDays.first(where: { $0.index == dayIndex }),
+              let orderIndex = day.stops.firstIndex(where: { $0.id == place.id }) else { return }
+        let plannedDate = draft.logistics.startDate.flatMap {
+            Calendar.current.date(byAdding: .day, value: day.index, to: $0)
+        }
+        let schedule = scheduleBuilder.build(
+            for: day,
+            pace: draft.pace,
+            accommodation: selectedAccommodation,
+            travelMode: draft.travelMode,
+            constraints: tourismConstraints(for: day),
+            plannedDate: plannedDate,
+            lockedVisits: planLocks.visits.filter { $0.dayIndex == day.index }
+        )
+        planLocks.visits.append(
+            LockedVisit(
+                placeID: place.id,
+                placeName: place.name,
+                dayIndex: dayIndex,
+                orderIndex: orderIndex,
+                timeText: schedule.first(where: { $0.placeID == place.id })?.timeText
+            )
+        )
+        noticeMessage = "已锁定“\(place.name)”的日期、顺序与可行时段；后续调整会绕开它。"
+    }
+
+    var isAccommodationLocked: Bool {
+        guard let selectedAccommodationID else { return false }
+        return planLocks.accommodationID == selectedAccommodationID
+    }
+
+    func toggleAccommodationLock() {
+        guard let selectedAccommodationID else { return }
+        if bookingConfirmation(kind: .accommodation, itemID: selectedAccommodationID) != nil {
+            noticeMessage = "这家住处已确认预订，因此会一直保留；撤销预订确认后才可解锁。"
+            return
+        }
+        if planLocks.accommodationID == selectedAccommodationID {
+            planLocks.accommodationID = nil
+            noticeMessage = "住处已恢复为可替换选择。"
+        } else {
+            planLocks.accommodationID = selectedAccommodationID
+            noticeMessage = "已锁定当前住处；刷新价格只更新渠道，不会换成另一家。"
+        }
+    }
+
+    func isTransportLocked(_ option: TransportOption) -> Bool {
+        option.journeyDirection == .returnTrip
+            ? planLocks.returnTransportID == option.id
+            : planLocks.outboundTransportID == option.id
+    }
+
+    func toggleTransportLock(_ option: TransportOption) {
+        if bookingConfirmation(kind: .transport, itemID: option.id) != nil {
+            noticeMessage = "这趟班次已确认预订，因此会一直保留；撤销预订确认后才可解锁。"
+            return
+        }
+        if option.journeyDirection == .returnTrip {
+            planLocks.returnTransportID = planLocks.returnTransportID == option.id ? nil : option.id
+        } else {
+            planLocks.outboundTransportID = planLocks.outboundTransportID == option.id ? nil : option.id
+        }
+        noticeMessage = isTransportLocked(option)
+            ? "已锁定这趟\(option.journeyDirection.title)；重新核价不会替换班次。"
+            : "这趟\(option.journeyDirection.title)已恢复为可替换选择。"
+    }
+
     @discardableResult
     func addPlace(_ place: TravelPlace, to dayIndex: Int, refreshRoute: Bool = true) -> Bool {
         guard let dayPosition = itineraryDays.firstIndex(where: { $0.index == dayIndex }) else { return false }
@@ -965,6 +1094,10 @@ final class PlannerViewModel {
     ) {
         guard !fromOffsets.isEmpty,
               let dayPosition = itineraryDays.firstIndex(where: { $0.index == dayIndex }) else { return }
+        if planLocks.visits.contains(where: { $0.dayIndex == dayIndex }) {
+            noticeMessage = "当天有锁定停靠。请先解锁，再整体拖动顺序。"
+            return
+        }
         let snapshot = currentItinerarySnapshot()
         itineraryDays[dayPosition].stops.move(fromOffsets: fromOffsets, toOffset: toOffset)
         guard itineraryDays != snapshot.days else { return }
@@ -982,6 +1115,14 @@ final class PlannerViewModel {
         in dayIndex: Int,
         refreshRoute: Bool = true
     ) {
+        guard !isVisitLocked(place) else {
+            noticeMessage = "“\(place.name)”已经锁定；解锁后才能改变顺序。"
+            return
+        }
+        if planLocks.visits.contains(where: { $0.dayIndex == dayIndex }) {
+            noticeMessage = "当天有锁定停靠。为避免越过固定时段，请先解锁再排序。"
+            return
+        }
         guard let dayPosition = itineraryDays.firstIndex(where: { $0.index == dayIndex }),
               let currentIndex = itineraryDays[dayPosition].stops.firstIndex(where: { $0.id == place.id }) else {
             return
@@ -1004,6 +1145,10 @@ final class PlannerViewModel {
         from dayIndex: Int,
         refreshRoute: Bool = true
     ) -> Bool {
+        guard !isVisitLocked(place) else {
+            noticeMessage = "“\(place.name)”已经锁定；解锁后才能移出行程。"
+            return false
+        }
         guard let dayPosition = itineraryDays.firstIndex(where: { $0.index == dayIndex }),
               itineraryDays[dayPosition].stops.contains(where: { $0.id == place.id }) else {
             return false
@@ -1030,6 +1175,10 @@ final class PlannerViewModel {
         to destinationDayIndex: Int,
         refreshRoute: Bool = true
     ) -> Bool {
+        guard !isVisitLocked(place) else {
+            noticeMessage = "“\(place.name)”已经锁定在第 \(sourceDayIndex + 1) 天；解锁后才能移动。"
+            return false
+        }
         guard sourceDayIndex != destinationDayIndex,
               let sourcePosition = itineraryDays.firstIndex(where: { $0.index == sourceDayIndex }),
               let destinationPosition = itineraryDays.firstIndex(where: { $0.index == destinationDayIndex }),
@@ -1129,22 +1278,83 @@ final class PlannerViewModel {
         refreshLogisticsInBackground()
     }
 
-    func applyConditionChanges() {
+    func conditionChangeImpacts(from previous: TripDraft, to next: TripDraft? = nil) -> [String] {
+        let next = next ?? draft
+        var impacts: [String] = []
+        if previous.dayCount != next.dayCount {
+            impacts.append("行程会从 \(previous.dayCount) 天调整为 \(next.dayCount) 天；锁定的停靠会优先留在原日与原顺序")
+        }
+        if previous.logistics.startDate != next.logistics.startDate
+            || previous.logistics.endDate != next.logistics.endDate {
+            impacts.append("住宿晚数、去返程班次与价格会按新日期重新核验")
+        }
+        if previous.logistics.effectiveTotalTravelers != next.logistics.effectiveTotalTravelers {
+            impacts.append("总价会按 \(next.logistics.effectiveTotalTravelers) 位同行者重新计算")
+        }
+        if previous.logistics.origin != next.logistics.origin
+            || previous.logistics.preferredLongDistanceMode != next.logistics.preferredLongDistanceMode
+            || previous.logistics.skipTransport != next.logistics.skipTransport {
+            impacts.append("大交通与门到门接驳会重新比较，已锁定或已确认的班次不会被替换")
+        }
+        if previous.logistics.skipAccommodation != next.logistics.skipAccommodation {
+            impacts.append(next.logistics.skipAccommodation ? "住宿模块会收起，已有确认仍会保留" : "会重新寻找符合预算与路线的住处")
+        }
+        if previous.travelMode != next.travelMode {
+            impacts.append("每天的移动时间与地图路线会按“\(next.travelMode.title)”重算")
+        }
+        if previous.budgetPerPerson != next.budgetPerPerson {
+            impacts.append("费用余量与推荐排序会按新预算更新")
+        }
+        return impacts
+    }
+
+    func applyConditionChanges(from previousDraft: TripDraft? = nil) {
+        let previousDraft = previousDraft ?? draft
+        let impacts = conditionChangeImpacts(from: previousDraft)
+        guard !impacts.isEmpty else {
+            noticeMessage = "旅行条件没有变化，原来的安排继续保留。"
+            return
+        }
+        reconfigurationUndoSnapshot = currentReconfigurationSnapshot(draftOverride: previousDraft)
+        canUndoReconfiguration = true
+        lastConditionChangeSummary = impacts.joined(separator: "；")
+
+        if previousDraft.dayCount != draft.dayCount {
+            reflowItineraryForCurrentDayCount()
+        }
         persistPlanningDefaults()
         routesByDay = [:]
         failedSegmentsByDay = [:]
         visibleLegCount = 0
         selectedPlaceID = nil
-        returnTransportOptions = []
-        selectedReturnTransportID = nil
         clearLocalTransfers()
-        quoteRefreshState = .stale("日期、人数或出发方式变了，住宿与交通需要重新核价。")
+        quoteRefreshState = .stale("条件变了，原选择先留在原处，住宿与交通正在重新核价。")
+        noticeMessage = "已应用调整。\(impacts.first ?? "相关内容正在重新计算")；可一键撤回。"
         fitCurrentDay(animated: true)
         routeTask?.cancel()
         routeTask = Task { [weak self] in
             await self?.loadRoutesForSelectedDay(reveal: true)
         }
         refreshLogisticsInBackground()
+    }
+
+    func undoReconfiguration() {
+        guard let snapshot = reconfigurationUndoSnapshot else { return }
+        routeTask?.cancel()
+        revealTask?.cancel()
+        logisticsTask?.cancel()
+        transferTask?.cancel()
+        restoreReconfigurationSnapshot(snapshot)
+        reconfigurationUndoSnapshot = nil
+        canUndoReconfiguration = false
+        lastConditionChangeSummary = nil
+        persistPlanningDefaults()
+        quoteRefreshState = .stale("已恢复调整前的日期与选择；旧报价已保留，刷新前请留意时间。")
+        noticeMessage = "已撤回整次调整，景点、住处、班次与选择都回到刚才之前。"
+        fitCurrentDay(animated: true)
+        routeTask = Task { [weak self] in
+            await self?.loadRoutesForSelectedDay(reveal: true)
+        }
     }
 
     func handleQuoteRefreshAction() {
@@ -1275,7 +1485,7 @@ final class PlannerViewModel {
             draft.logistics.preferredLongDistanceMode = longDistanceMode
         }
         if let dayCount = intent.dayCount { draft.dayCount = dayCount }
-        if let travelers = intent.travelers { draft.logistics.travelers = travelers }
+        if let travelers = intent.travelers { setTotalTravelerCount(travelers) }
         if let budget = intent.budgetPerPerson { draft.budgetPerPerson = min(max(budget, 1_000), 30_000) }
         if let maximum = intent.accommodationMaxPrice { accommodationMaxNightlyPrice = maximum }
         if let sort = intent.accommodationSort { accommodationSort = sort }
@@ -1370,12 +1580,21 @@ final class PlannerViewModel {
             && intent.removedInterests.isEmpty
             && intent.excludedPlaceTerm == nil
         if phase == .ready, onlyRequestsRelaxedPace {
+            let snapshot = currentReconfigurationSnapshot()
+            let previousDraft = draft
             adjustmentText = ""
             relaxCurrentPlan()
+            rememberReconfiguration(
+                snapshot,
+                previousDraft: previousDraft,
+                fallbackSummary: "已把行程铺得更松弛"
+            )
             return
         }
 
         let wasReady = phase == .ready
+        let previousDraft = draft
+        let reconfigurationSnapshot = wasReady ? currentReconfigurationSnapshot() : nil
         var planNeedsRegeneration = false
         var logisticsNeedRefresh = false
         var filtersChanged = false
@@ -1383,9 +1602,15 @@ final class PlannerViewModel {
         if let destination = intent.destination, destination != draft.destination {
             draft.destination = destination
             self.destination = nil
+            clearPlanContentForNewDestination()
             adjustmentText = ""
             await resolveDestination()
             if (wasReady || intent.shouldGeneratePlan), phase == .preferences { await generatePlan() }
+            rememberReconfiguration(
+                reconfigurationSnapshot,
+                previousDraft: previousDraft,
+                fallbackSummary: "目的地与整段路线已经重新展开"
+            )
             return
         }
         if let origin = intent.origin {
@@ -1409,7 +1634,7 @@ final class PlannerViewModel {
             planNeedsRegeneration = true
         }
         if let travelers = intent.travelers {
-            draft.logistics.travelers = travelers
+            setTotalTravelerCount(travelers)
             logisticsNeedRefresh = true
         }
         if let budget = intent.budgetPerPerson { draft.budgetPerPerson = budget }
@@ -1440,7 +1665,7 @@ final class PlannerViewModel {
             let filteredDays = itineraryDays.compactMap { day in
                 var updated = day
                 updated.stops.removeAll {
-                    $0.name.localizedCaseInsensitiveContains(excludedTerm)
+                    $0.name.localizedCaseInsensitiveContains(excludedTerm) && !isVisitLocked($0)
                 }
                 return updated.stops.isEmpty ? nil : updated
             }
@@ -1450,6 +1675,11 @@ final class PlannerViewModel {
             let updatedCount = itineraryDays.reduce(0) { $0 + $1.stops.count }
 
             if updatedCount < originalCount {
+                if let reconfigurationSnapshot {
+                    self.reconfigurationUndoSnapshot = reconfigurationSnapshot
+                    canUndoReconfiguration = true
+                    lastConditionChangeSummary = "移除了包含“\(excludedTerm)”的未锁定停靠"
+                }
                 routesByDay = [:]
                 failedSegmentsByDay = [:]
                 selectedDayIndex = itineraryDays.first?.index ?? 0
@@ -1469,7 +1699,20 @@ final class PlannerViewModel {
         adjustmentText = ""
         if intent.shouldGeneratePlan || (planNeedsRegeneration && phase == .ready) {
             await generatePlan()
+            if let reconfigurationSnapshot {
+                self.reconfigurationUndoSnapshot = reconfigurationSnapshot
+                canUndoReconfiguration = true
+                let impacts = conditionChangeImpacts(from: previousDraft)
+                lastConditionChangeSummary = impacts.isEmpty ? "已按这句话重新编排行程" : impacts.joined(separator: "；")
+            }
         } else {
+            if let reconfigurationSnapshot,
+               logisticsNeedRefresh || filtersChanged || draft != previousDraft {
+                self.reconfigurationUndoSnapshot = reconfigurationSnapshot
+                canUndoReconfiguration = true
+                let impacts = conditionChangeImpacts(from: previousDraft)
+                lastConditionChangeSummary = impacts.isEmpty ? "已按这句话更新选择条件" : impacts.joined(separator: "；")
+            }
             if logisticsNeedRefresh, phase == .ready { refreshLogisticsInBackground() }
             if filtersChanged, phase == .ready {
                 planMapFocus = .accommodation
@@ -1480,6 +1723,8 @@ final class PlannerViewModel {
     }
 
     private func applyAssistantActions(_ actions: [TravelAssistantAction]) async {
+        let previousDraft = draft
+        let reconfigurationSnapshot = phase == .ready ? currentReconfigurationSnapshot() : nil
         var routesNeedRefresh = false
         var logisticsNeedRefresh = false
         var planNeedsRegeneration = false
@@ -1525,7 +1770,31 @@ final class PlannerViewModel {
                 planNeedsRegeneration = phase == .ready
             case .setTravelers:
                 guard let value = Int(action.value) else { continue }
-                draft.logistics.travelers = min(max(value, 1), 8)
+                setTotalTravelerCount(value)
+                logisticsNeedRefresh = phase == .ready
+            case .setAdults:
+                guard let value = Int(action.value) else { continue }
+                setAdultCount(value)
+                logisticsNeedRefresh = phase == .ready
+            case .setChildrenAges:
+                let ages = action.value.split { ",，、;； ".contains($0) }
+                    .compactMap { Int($0) }
+                    .filter { (0...17).contains($0) }
+                    .prefix(6)
+                draft.logistics.childrenAges = Array(ages)
+                draft.logistics.travelers = draft.logistics.effectiveAdults + ages.count
+                logisticsNeedRefresh = phase == .ready
+            case .setRooms:
+                guard let value = Int(action.value) else { continue }
+                setRoomCount(value)
+                logisticsNeedRefresh = phase == .ready
+            case .setSeniors:
+                guard let value = Int(action.value) else { continue }
+                setSeniorTravelerCount(value)
+                logisticsNeedRefresh = phase == .ready
+            case .setMobility:
+                guard let value = MobilityNeed(rawValue: action.value) else { continue }
+                setMobilityNeed(value)
                 logisticsNeedRefresh = phase == .ready
             case .setBudget:
                 guard let budget = Int(action.value) else { continue }
@@ -1576,20 +1845,36 @@ final class PlannerViewModel {
         }
 
         if destinationChanged {
+            clearPlanContentForNewDestination()
             await resolveDestination()
             if shouldGeneratePlan, phase == .preferences { await generatePlan() }
+            rememberReconfiguration(
+                reconfigurationSnapshot,
+                previousDraft: previousDraft,
+                fallbackSummary: "目的地与整段路线已经重新展开"
+            )
             if let assistantReply { noticeMessage = assistantReply }
             return
         }
 
         if shouldGeneratePlan {
             await generatePlan()
+            rememberReconfiguration(
+                reconfigurationSnapshot,
+                previousDraft: previousDraft,
+                fallbackSummary: "已按这句话重新编排行程"
+            )
             if let assistantReply { noticeMessage = assistantReply }
             return
         }
 
         if planNeedsRegeneration, phase == .ready, !requestedRelaxation {
             await generatePlan()
+            rememberReconfiguration(
+                reconfigurationSnapshot,
+                previousDraft: previousDraft,
+                fallbackSummary: "已按新的偏好重新编排行程"
+            )
             if let assistantReply { noticeMessage = assistantReply }
             return
         }
@@ -1619,6 +1904,13 @@ final class PlannerViewModel {
            let day = itineraryDays.first(where: { $0.stops.contains(where: { $0.id == placeToFocus.id }) }) {
             selectedDayIndex = day.index
             selectPlace(placeToFocus)
+        }
+        if routesNeedRefresh || logisticsNeedRefresh || accommodationFilterChanged || requestedRelaxation {
+            rememberReconfiguration(
+                reconfigurationSnapshot,
+                previousDraft: previousDraft,
+                fallbackSummary: "已按这句话更新旅行条件"
+            )
         }
         persistPlanningDefaults()
         if let assistantReply { noticeMessage = assistantReply }
@@ -1661,7 +1953,12 @@ final class PlannerViewModel {
                 }
             },
             origin: draft.logistics.origin,
-            travelers: draft.logistics.travelers,
+            travelers: draft.logistics.effectiveTotalTravelers,
+            adults: draft.logistics.effectiveAdults,
+            childrenAges: draft.logistics.effectiveChildrenAges,
+            rooms: draft.logistics.effectiveRooms,
+            seniorTravelers: draft.logistics.effectiveSeniorTravelers,
+            mobilityNeed: (draft.logistics.mobilityNeed ?? .none).rawValue,
             startDate: draft.logistics.startDate.map { Self.assistantDayFormatter.string(from: $0) },
             endDate: draft.logistics.endDate.map { Self.assistantDayFormatter.string(from: $0) },
             longDistanceMode: draft.logistics.preferredLongDistanceMode?.rawValue,
@@ -1672,6 +1969,7 @@ final class PlannerViewModel {
 
     func relaxCurrentPlan() {
         guard phase == .ready, !itineraryDays.isEmpty else { return }
+        let previousDays = itineraryDays
         let previousDayCount = itineraryDays.count
         let totalStops = itineraryDays.reduce(0) { $0 + $1.stops.count }
         let result = planPacingService.makeRelaxedItinerary(
@@ -1694,13 +1992,14 @@ final class PlannerViewModel {
         draft.dayCount = result.days.count
         let relaxedStops = result.days.flatMap(\.stops)
         if let planningCenter = destination?.coordinate ?? relaxedStops.first?.coordinate {
-            itineraryDays = routePlanner.orderPlaces(
+            let generatedDays = routePlanner.orderPlaces(
                 relaxedStops,
                 from: planningCenter,
                 draft: draft
             )
+            itineraryDays = applyingPlanLocks(to: generatedDays, previousDays: previousDays)
         } else {
-            itineraryDays = result.days
+            itineraryDays = applyingPlanLocks(to: result.days, previousDays: previousDays)
         }
         selectedDayIndex = min(selectedDayIndex, max(result.days.count - 1, 0))
         selectedPlaceID = nil
@@ -1759,7 +2058,8 @@ final class PlannerViewModel {
                 selectedOutboundTransferID: selectedOutboundTransferID,
                 returnTransferOptions: returnTransferOptions,
                 selectedReturnTransferID: selectedReturnTransferID,
-                bookingConfirmations: bookingConfirmations
+                bookingConfirmations: bookingConfirmations,
+                planLocks: planLocks
             )
         )
 
@@ -1831,6 +2131,7 @@ final class PlannerViewModel {
             returnTransferOptions = snapshot.returnTransferOptions ?? []
             selectedReturnTransferID = snapshot.selectedReturnTransferID
             bookingConfirmations = snapshot.bookingConfirmations ?? []
+            planLocks = snapshot.planLocks ?? PlanLockState()
             transferRoutesByOptionID = [:]
             let snapshotPoints = (snapshot.transportOptions + returnTransportOptions).compactMap(\.arrivalAccessPoint)
                 + snapshot.accommodations.flatMap { Array($0.nearestAccessPoints.values) }
@@ -1852,8 +2153,10 @@ final class PlannerViewModel {
             returnTransferOptions = []
             selectedReturnTransferID = nil
             bookingConfirmations = []
+            planLocks = PlanLockState()
             transferRoutesByOptionID = [:]
         }
+        synchronizeBookingLocks()
         originResolution = nil
         focusedTransportDirection = .outbound
         destination = DestinationResolution(
@@ -1866,6 +2169,9 @@ final class PlannerViewModel {
         )
         phase = .ready
         quoteRefreshState = .stale("正在复核旅册里留下的价格与班次。")
+        reconfigurationUndoSnapshot = nil
+        canUndoReconfiguration = false
+        lastConditionChangeSummary = nil
         libraryPresented = false
         fitCurrentDay(animated: true)
         routeTask = Task { [weak self] in
@@ -1986,6 +2292,61 @@ final class PlannerViewModel {
         )
     }
 
+    func setTotalTravelerCount(_ value: Int) {
+        let total = min(max(value, 1), 8)
+        let children = Array(draft.logistics.effectiveChildrenAges.prefix(max(total - 1, 0)))
+        draft.logistics.childrenAges = children
+        draft.logistics.travelers = total
+        draft.logistics.adults = max(total - children.count, 1)
+        draft.logistics.seniorTravelers = min(draft.logistics.effectiveSeniorTravelers, draft.logistics.effectiveAdults)
+    }
+
+    func setAdultCount(_ value: Int) {
+        let adults = min(max(value, 1), 8)
+        draft.logistics.adults = adults
+        draft.logistics.travelers = adults + draft.logistics.effectiveChildrenAges.count
+        draft.logistics.seniorTravelers = min(draft.logistics.effectiveSeniorTravelers, adults)
+    }
+
+    func setChildAge(at index: Int, age: Int) {
+        var ages = draft.logistics.effectiveChildrenAges
+        guard ages.indices.contains(index) else { return }
+        ages[index] = min(max(age, 0), 17)
+        draft.logistics.childrenAges = ages
+    }
+
+    func addChild() {
+        var ages = draft.logistics.effectiveChildrenAges
+        guard ages.count < 6 else { return }
+        let adults = draft.logistics.effectiveAdults
+        ages.append(8)
+        draft.logistics.childrenAges = ages
+        draft.logistics.adults = adults
+        draft.logistics.travelers = adults + ages.count
+    }
+
+    func removeChild(at index: Int) {
+        var ages = draft.logistics.effectiveChildrenAges
+        guard ages.indices.contains(index) else { return }
+        let adults = draft.logistics.effectiveAdults
+        ages.remove(at: index)
+        draft.logistics.childrenAges = ages
+        draft.logistics.adults = adults
+        draft.logistics.travelers = adults + ages.count
+    }
+
+    func setRoomCount(_ value: Int) {
+        draft.logistics.rooms = min(max(value, 1), 4)
+    }
+
+    func setSeniorTravelerCount(_ value: Int) {
+        draft.logistics.seniorTravelers = min(max(value, 0), draft.logistics.effectiveAdults)
+    }
+
+    func setMobilityNeed(_ value: MobilityNeed) {
+        draft.logistics.mobilityNeed = value
+    }
+
     func adjustStartDate(by dayOffset: Int) {
         guard let currentStart = draft.logistics.startDate else { return }
         let calendar = Calendar.current
@@ -2101,8 +2462,12 @@ final class PlannerViewModel {
         let previousAccommodationName = selectedAccommodation?.name
         var accommodationDiscovery: AccommodationDiscoveryResult?
         if draft.logistics.skipAccommodation {
-            accommodations = []
-            selectedAccommodationID = nil
+            let fixedAccommodationID = bookingConfirmations.first(where: { $0.kind == .accommodation })?.itemID
+                ?? planLocks.accommodationID
+            if fixedAccommodationID == nil {
+                accommodations = []
+                selectedAccommodationID = nil
+            }
             accessPoints = await logisticsSearchService.discoverAccessPoints(
                 around: destination,
                 destinationName: draft.destination
@@ -2293,7 +2658,38 @@ final class PlannerViewModel {
     ) {
         // Catalog refreshes may contain dozens of hotels. A broad array animation
         // makes every Map annotation interpolate together and stalls older devices.
-        accommodations = discovery.options
+        let previousOptions = accommodations
+        let confirmedID = bookingConfirmations.first(where: { $0.kind == .accommodation })?.itemID
+        let fixedID = confirmedID
+            ?? planLocks.accommodationID
+            ?? manuallySelectedAccommodationID
+            ?? selectedAccommodationID
+        let fixedOption = fixedID.flatMap { id in previousOptions.first(where: { $0.id == id }) }
+        var refreshedOptions = discovery.options
+        if var fixedOption {
+            if let matchingIndex = refreshedOptions.firstIndex(where: {
+                $0.id == fixedOption.id
+                    || $0.name.localizedCaseInsensitiveCompare(fixedOption.name) == .orderedSame
+            }) {
+                let incoming = refreshedOptions[matchingIndex]
+                fixedOption.officialWebsiteURL = incoming.officialWebsiteURL ?? fixedOption.officialWebsiteURL
+                fixedOption.brand = incoming.brand ?? fixedOption.brand
+                fixedOption.starRating = incoming.starRating ?? fixedOption.starRating
+                fixedOption.guestRating = incoming.guestRating ?? fixedOption.guestRating
+                fixedOption.imageURL = incoming.imageURL ?? fixedOption.imageURL
+                fixedOption.amenities = incoming.amenities ?? fixedOption.amenities
+                fixedOption.tags = incoming.tags ?? fixedOption.tags
+                fixedOption.attractionDistanceMeters = incoming.attractionDistanceMeters
+                fixedOption.accessDistances = incoming.accessDistances
+                fixedOption.nearestAccessPoints = incoming.nearestAccessPoints
+                fixedOption.quotes = incoming.quotes.isEmpty ? fixedOption.quotes : incoming.quotes
+                fixedOption.recommendationReasons = incoming.recommendationReasons
+                refreshedOptions[matchingIndex] = fixedOption
+            } else {
+                refreshedOptions.append(fixedOption)
+            }
+        }
+        accommodations = refreshedOptions
         accessPoints = discovery.accessPoints
         let manualChoice = manuallySelectedAccommodationID.flatMap { currentID in
             accommodations.first(where: { $0.id == currentID })
@@ -2307,7 +2703,11 @@ final class PlannerViewModel {
             .min {
                 ($0.bestPricedQuote?.amountCNY ?? .max) < ($1.bestPricedQuote?.amountCNY ?? .max)
             }
-        selectedAccommodationID = manualChoice?.id
+        let fixedChoice = fixedID.flatMap { currentID in
+            accommodations.first(where: { $0.id == currentID })
+        }
+        selectedAccommodationID = fixedChoice?.id
+            ?? manualChoice?.id
             ?? (previousChoice?.bestPricedQuote != nil ? previousChoice?.id : nil)
             ?? lowestCurrentPrice?.id
             ?? previousChoice?.id
@@ -2315,11 +2715,20 @@ final class PlannerViewModel {
     }
 
     func selectAccommodation(_ option: AccommodationOption) {
+        if let bookedID = bookingConfirmations.first(where: { $0.kind == .accommodation })?.itemID,
+           bookedID != option.id {
+            noticeMessage = "已有住处被标记为已确认预订。请先撤销那条确认，再改选其他住处。"
+            return
+        }
+        let transfersExistingLock = planLocks.accommodationID != nil
         selectedAccommodationID = option.id
         manuallySelectedAccommodationID = option.id
+        if transfersExistingLock { planLocks.accommodationID = option.id }
         selectedPlaceID = nil
-        returnTransportOptions = []
-        selectedReturnTransportID = nil
+        if fixedTransportID(for: .returnTrip) == nil {
+            returnTransportOptions = []
+            selectedReturnTransportID = nil
+        }
         clearLocalTransfers()
         rebuildTransportOptions()
         if draft.logistics.hasDates,
@@ -2372,11 +2781,20 @@ final class PlannerViewModel {
     }
 
     func selectTransport(_ option: TransportOption) {
+        if let bookedID = bookingConfirmations.first(where: {
+            $0.kind == .transport && ($0.direction ?? .outbound) == option.journeyDirection
+        })?.itemID,
+           bookedID != option.id {
+            noticeMessage = "这一路已有班次被标记为已确认预订。请先撤销确认，再改选其他班次。"
+            return
+        }
         focusedTransportDirection = option.journeyDirection
         if option.journeyDirection == .returnTrip {
             selectedReturnTransportID = option.id
+            if planLocks.returnTransportID != nil { planLocks.returnTransportID = option.id }
         } else {
             selectedTransportID = option.id
+            if planLocks.outboundTransportID != nil { planLocks.outboundTransportID = option.id }
         }
         if let accessPoint = option.arrivalAccessPoint {
             fitCoordinates(
@@ -2389,6 +2807,26 @@ final class PlannerViewModel {
 
     func bookingConfirmation(kind: BookingItemKind, itemID: UUID) -> BookingConfirmation? {
         bookingConfirmations.first { $0.kind == kind && $0.itemID == itemID }
+    }
+
+    private func fixedTransportID(for direction: TransportDirection) -> TransportOption.ID? {
+        bookingConfirmations.first(where: {
+            $0.kind == .transport && ($0.direction ?? .outbound) == direction
+        })?.itemID
+            ?? (direction == .returnTrip ? planLocks.returnTransportID : planLocks.outboundTransportID)
+    }
+
+    private func synchronizeBookingLocks() {
+        for confirmation in bookingConfirmations {
+            switch confirmation.kind {
+            case .accommodation:
+                planLocks.accommodationID = confirmation.itemID
+            case .transport where confirmation.direction == .returnTrip:
+                planLocks.returnTransportID = confirmation.itemID
+            case .transport:
+                planLocks.outboundTransportID = confirmation.itemID
+            }
+        }
     }
 
     func confirmBooking(kind: BookingItemKind, itemID: UUID, note: String, actualAmountCNY: Int? = nil) {
@@ -2414,6 +2852,17 @@ final class PlannerViewModel {
         )
         bookingConfirmations.removeAll { $0.kind == kind && $0.itemID == itemID }
         bookingConfirmations.append(confirmation)
+        if kind == .accommodation {
+            selectedAccommodationID = itemID
+            manuallySelectedAccommodationID = itemID
+            planLocks.accommodationID = itemID
+        } else if direction == .returnTrip {
+            selectedReturnTransportID = itemID
+            planLocks.returnTransportID = itemID
+        } else {
+            selectedTransportID = itemID
+            planLocks.outboundTransportID = itemID
+        }
         noticeMessage = "已记录为你在外部平台完成的预订；库存与付款仍以原平台订单为准。"
     }
 
@@ -2534,7 +2983,7 @@ final class PlannerViewModel {
                 direction: .outbound,
                 accessPoint: accessPoint,
                 accommodation: accommodation,
-                travelers: draft.logistics.travelers,
+                travelers: draft.logistics.effectiveTotalTravelers,
                 referenceDate: selectedTransport?.arrivalTime
             )
         }
@@ -2547,7 +2996,7 @@ final class PlannerViewModel {
                 direction: .returnTrip,
                 accessPoint: accessPoint,
                 accommodation: accommodation,
-                travelers: draft.logistics.travelers,
+                travelers: draft.logistics.effectiveTotalTravelers,
                 referenceDate: leaveHotelAt
             )
         }
@@ -2584,13 +3033,20 @@ final class PlannerViewModel {
     private func rebuildTransportOptions() {
         guard let destination else { return }
         guard !draft.logistics.skipTransport else {
-            transportOptions = []
-            selectedTransportID = nil
-            returnTransportOptions = []
-            selectedReturnTransportID = nil
+            if fixedTransportID(for: .outbound) == nil {
+                transportOptions = []
+                selectedTransportID = nil
+            }
+            if fixedTransportID(for: .returnTrip) == nil {
+                returnTransportOptions = []
+                selectedReturnTransportID = nil
+            }
             clearLocalTransfers()
             return
         }
+        let previousOptions = transportOptions
+        let fixedID = fixedTransportID(for: .outbound) ?? selectedTransportID
+        let fixedOption = fixedID.flatMap { id in previousOptions.first(where: { $0.id == id }) }
         let previousMode = selectedTransport?.mode ?? draft.logistics.preferredLongDistanceMode
         transportOptions = transportEngine.buildOptions(
             origin: originResolution,
@@ -2599,12 +3055,26 @@ final class PlannerViewModel {
             selectedAccommodation: selectedAccommodation,
             draft: draft
         )
-        selectedTransportID = transportOptions.first(where: { $0.mode == previousMode })?.id
+        if let fixedOption, !transportOptions.contains(where: { $0.id == fixedOption.id }) {
+            transportOptions.append(fixedOption)
+        }
+        selectedTransportID = fixedID.flatMap { id in
+            transportOptions.first(where: { $0.id == id })?.id
+        }
+            ?? transportOptions.first(where: { $0.mode == previousMode })?.id
             ?? transportOptions.first(where: \.isRecommended)?.id
             ?? transportOptions.first?.id
     }
 
     private func refreshTransportQuotes() async throws -> PricingEnrichmentResult<[TransportOption]> {
+        let fixedOutboundID = fixedTransportID(for: .outbound) ?? selectedTransportID
+        let fixedReturnID = fixedTransportID(for: .returnTrip) ?? selectedReturnTransportID
+        let fixedOutboundOption = fixedOutboundID.flatMap { id in
+            transportOptions.first(where: { $0.id == id })
+        }
+        let fixedReturnOption = fixedReturnID.flatMap { id in
+            returnTransportOptions.first(where: { $0.id == id })
+        }
         let previousOutboundTitle = selectedTransport?.title
         let previousReturnTitle = selectedReturnTransport?.title
         let previousOutboundMode = selectedTransport?.mode
@@ -2701,18 +3171,32 @@ final class PlannerViewModel {
         }
         if activeResultCount == 0 { result.isCached = false }
         guard !Task.isCancelled else { throw CancellationError() }
-        let outboundOptions = result.value.filter { $0.journeyDirection == .outbound }
-        let inboundOptions = result.value.filter { $0.journeyDirection == .returnTrip }
+        var outboundOptions = result.value.filter { $0.journeyDirection == .outbound }
+        var inboundOptions = result.value.filter { $0.journeyDirection == .returnTrip }
+        if let fixedOutboundOption, !outboundOptions.contains(where: { $0.id == fixedOutboundOption.id }) {
+            outboundOptions.append(fixedOutboundOption)
+        }
+        if let fixedReturnOption, !inboundOptions.contains(where: { $0.id == fixedReturnOption.id }) {
+            inboundOptions.append(fixedReturnOption)
+        }
         // A search can replace dozens of fares. Keep that data update atomic so
         // it cannot hitch the map while the user is dragging the panel.
         transportOptions = outboundOptions
         returnTransportOptions = inboundOptions
+        if let fixedOutboundID,
+           transportOptions.contains(where: { $0.id == fixedOutboundID }) {
+            selectedTransportID = fixedOutboundID
+        }
+        if let fixedReturnID,
+           returnTransportOptions.contains(where: { $0.id == fixedReturnID }) {
+            selectedReturnTransportID = fixedReturnID
+        }
         let selectedOutbound = transportOptions.first(where: { $0.id == selectedTransportID })
-        if selectedOutbound == nil
+        if fixedOutboundID == nil && (selectedOutbound == nil
             || (!selectedOutbound!.quotes.contains(where: \.isCurrentPrice)
                 && transportOptions.contains {
                     $0.mode == previousOutboundMode && $0.quotes.contains(where: \.isCurrentPrice)
-                }) {
+                })) {
             selectedTransportID = transportOptions.first {
                 $0.mode == previousOutboundMode && $0.quotes.contains(where: \.isCurrentPrice)
             }?.id
@@ -2722,11 +3206,11 @@ final class PlannerViewModel {
                 ?? transportOptions.first?.id
         }
         let selectedReturn = returnTransportOptions.first(where: { $0.id == selectedReturnTransportID })
-        if selectedReturn == nil
+        if fixedReturnID == nil && (selectedReturn == nil
             || (!selectedReturn!.quotes.contains(where: \.isCurrentPrice)
                 && returnTransportOptions.contains {
                     $0.mode == previousReturnMode && $0.quotes.contains(where: \.isCurrentPrice)
-                }) {
+                })) {
             selectedReturnTransportID = returnTransportOptions.first {
                 $0.mode == previousReturnMode && $0.quotes.contains(where: \.isCurrentPrice)
             }?.id
@@ -2856,6 +3340,7 @@ final class PlannerViewModel {
         accommodations = []
         selectedAccommodationID = nil
         bookingConfirmations = []
+        planLocks = PlanLockState()
         manuallySelectedAccommodationID = nil
         accessPoints = []
         transportOptions = []
@@ -2875,9 +3360,35 @@ final class PlannerViewModel {
         activeSavedTripID = nil
         itineraryEditorPresented = false
         conditionsEditorPresented = false
+        reconfigurationUndoSnapshot = nil
+        canUndoReconfiguration = false
+        lastConditionChangeSummary = nil
         itineraryNeedsLogisticsRefresh = false
         clearItineraryHistory()
         cameraPosition = .region(Self.initialRegion)
+    }
+
+    private func clearPlanContentForNewDestination() {
+        routeTask?.cancel()
+        revealTask?.cancel()
+        logisticsTask?.cancel()
+        transferTask?.cancel()
+        itineraryDays = []
+        routesByDay = [:]
+        failedSegmentsByDay = [:]
+        selectedDayIndex = 0
+        selectedPlaceID = nil
+        accommodations = []
+        selectedAccommodationID = nil
+        manuallySelectedAccommodationID = nil
+        accessPoints = []
+        transportOptions = []
+        selectedTransportID = nil
+        returnTransportOptions = []
+        selectedReturnTransportID = nil
+        bookingConfirmations = []
+        planLocks = PlanLockState()
+        clearLocalTransfers()
     }
 
     func cycleMapAppearance() {
@@ -2919,6 +3430,7 @@ final class PlannerViewModel {
         message: String,
         refreshRoute: Bool
     ) {
+        synchronizeVisitLocksWithItinerary()
         for dayIndex in dayIndices {
             routesByDay[dayIndex] = nil
             failedSegmentsByDay[dayIndex] = nil
@@ -2938,12 +3450,150 @@ final class PlannerViewModel {
         }
     }
 
+    private func synchronizeVisitLocksWithItinerary() {
+        planLocks.visits = planLocks.visits.compactMap { lock in
+            for day in itineraryDays {
+                if let orderIndex = day.stops.firstIndex(where: { $0.id == lock.placeID }) {
+                    var updated = lock
+                    updated.dayIndex = day.index
+                    updated.orderIndex = orderIndex
+                    updated.placeName = day.stops[orderIndex].name
+                    return updated
+                }
+            }
+            return nil
+        }
+    }
+
     private func currentItinerarySnapshot() -> ItineraryEditSnapshot {
         ItineraryEditSnapshot(
             days: itineraryDays,
             selectedDayIndex: selectedDayIndex,
             selectedPlaceID: selectedPlaceID
         )
+    }
+
+    private func currentReconfigurationSnapshot(
+        draftOverride: TripDraft? = nil
+    ) -> ReconfigurationSnapshot {
+        ReconfigurationSnapshot(
+            draft: draftOverride ?? draft,
+            phase: phase,
+            destination: destination,
+            originResolution: originResolution,
+            days: itineraryDays,
+            selectedDayIndex: selectedDayIndex,
+            selectedPlaceID: selectedPlaceID,
+            accommodations: accommodations,
+            selectedAccommodationID: selectedAccommodationID,
+            transportOptions: transportOptions,
+            selectedTransportID: selectedTransportID,
+            returnTransportOptions: returnTransportOptions,
+            selectedReturnTransportID: selectedReturnTransportID,
+            outboundTransferOptions: outboundTransferOptions,
+            selectedOutboundTransferID: selectedOutboundTransferID,
+            returnTransferOptions: returnTransferOptions,
+            selectedReturnTransferID: selectedReturnTransferID,
+            bookingConfirmations: bookingConfirmations,
+            planLocks: planLocks,
+            planMapFocus: planMapFocus,
+            accommodationSort: accommodationSort,
+            accommodationMaxNightlyPrice: accommodationMaxNightlyPrice,
+            accommodationMaxAttractionDistanceMeters: accommodationMaxAttractionDistanceMeters,
+            accommodationLivePricesOnly: accommodationLivePricesOnly,
+            accommodationOfficialSiteOnly: accommodationOfficialSiteOnly
+        )
+    }
+
+    private func rememberReconfiguration(
+        _ snapshot: ReconfigurationSnapshot?,
+        previousDraft: TripDraft,
+        fallbackSummary: String
+    ) {
+        guard let snapshot else { return }
+        reconfigurationUndoSnapshot = snapshot
+        canUndoReconfiguration = true
+        let impacts = conditionChangeImpacts(from: previousDraft)
+        lastConditionChangeSummary = impacts.isEmpty ? fallbackSummary : impacts.joined(separator: "；")
+    }
+
+    private func restoreReconfigurationSnapshot(_ snapshot: ReconfigurationSnapshot) {
+        draft = snapshot.draft
+        phase = snapshot.phase
+        destination = snapshot.destination
+        originResolution = snapshot.originResolution
+        itineraryDays = snapshot.days
+        selectedDayIndex = itineraryDays.contains(where: { $0.index == snapshot.selectedDayIndex })
+            ? snapshot.selectedDayIndex
+            : itineraryDays.first?.index ?? 0
+        selectedPlaceID = snapshot.selectedPlaceID
+        accommodations = snapshot.accommodations
+        selectedAccommodationID = snapshot.selectedAccommodationID
+        manuallySelectedAccommodationID = snapshot.selectedAccommodationID
+        transportOptions = snapshot.transportOptions
+        selectedTransportID = snapshot.selectedTransportID
+        returnTransportOptions = snapshot.returnTransportOptions
+        selectedReturnTransportID = snapshot.selectedReturnTransportID
+        outboundTransferOptions = snapshot.outboundTransferOptions
+        selectedOutboundTransferID = snapshot.selectedOutboundTransferID
+        returnTransferOptions = snapshot.returnTransferOptions
+        selectedReturnTransferID = snapshot.selectedReturnTransferID
+        bookingConfirmations = snapshot.bookingConfirmations
+        planLocks = snapshot.planLocks
+        planMapFocus = snapshot.planMapFocus
+        accommodationSort = snapshot.accommodationSort
+        accommodationMaxNightlyPrice = snapshot.accommodationMaxNightlyPrice
+        accommodationMaxAttractionDistanceMeters = snapshot.accommodationMaxAttractionDistanceMeters
+        accommodationLivePricesOnly = snapshot.accommodationLivePricesOnly
+        accommodationOfficialSiteOnly = snapshot.accommodationOfficialSiteOnly
+        routesByDay = [:]
+        failedSegmentsByDay = [:]
+        transferRoutesByOptionID = [:]
+        visibleLegCount = 0
+    }
+
+    private func reflowItineraryForCurrentDayCount() {
+        guard let planningCenter = destination?.coordinate ?? itineraryDays.first?.stops.first?.coordinate else { return }
+        let previousDays = itineraryDays
+        let places = previousDays.flatMap(\.stops)
+        guard !places.isEmpty else { return }
+        let generated = routePlanner.orderPlaces(places, from: planningCenter, draft: draft)
+        itineraryDays = applyingPlanLocks(to: generated, previousDays: previousDays)
+        selectedDayIndex = min(selectedDayIndex, max(itineraryDays.count - 1, 0))
+    }
+
+    private func applyingPlanLocks(
+        to generatedDays: [ItineraryDay],
+        previousDays: [ItineraryDay]
+    ) -> [ItineraryDay] {
+        guard !planLocks.visits.isEmpty, !generatedDays.isEmpty else { return generatedDays }
+        var result = generatedDays.enumerated().map { index, day in
+            ItineraryDay(index: index, stops: day.stops)
+        }
+        var retainedLocks: [LockedVisit] = []
+        let previousPlaces = previousDays.flatMap(\.stops)
+        let locks = planLocks.visits.sorted {
+            ($0.dayIndex, $0.orderIndex) < ($1.dayIndex, $1.orderIndex)
+        }
+
+        for var lock in locks {
+            guard let place = previousPlaces.first(where: { $0.id == lock.placeID })
+                ?? previousPlaces.first(where: { $0.name.localizedCaseInsensitiveCompare(lock.placeName) == .orderedSame })
+            else { continue }
+            for index in result.indices {
+                result[index].stops.removeAll {
+                    $0.id == place.id || $0.name.localizedCaseInsensitiveCompare(place.name) == .orderedSame
+                }
+            }
+            let targetDay = min(max(lock.dayIndex, 0), result.count - 1)
+            let targetOrder = min(max(lock.orderIndex, 0), result[targetDay].stops.count)
+            result[targetDay].stops.insert(place, at: targetOrder)
+            lock.dayIndex = targetDay
+            lock.orderIndex = targetOrder
+            retainedLocks.append(lock)
+        }
+        planLocks.visits = retainedLocks
+        return result
     }
 
     private func rememberItineraryForUndo(_ snapshot: ItineraryEditSnapshot? = nil) {

@@ -94,7 +94,8 @@ struct AccorOfficialDirectClient: @unchecked Sendable {
                         hotelCode: hotel.code,
                         checkIn: checkIn,
                         checkOut: checkOut,
-                        adults: logistics.travelers,
+                        adults: logistics.effectiveAdults,
+                        childrenAges: logistics.effectiveChildrenAges,
                         session: session,
                         endpoint: bffEndpoint,
                         apiKey: bffAPIKey
@@ -118,7 +119,7 @@ struct AccorOfficialDirectClient: @unchecked Sendable {
                 hotelCode: hotel.code,
                 checkIn: checkIn,
                 checkOut: checkOut,
-                adults: logistics.travelers
+                adults: logistics.effectiveAdults
             )
             let quote = ProviderQuote(
                 provider: .propertyOfficial,
@@ -212,6 +213,7 @@ struct AccorOfficialDirectClient: @unchecked Sendable {
         checkIn: Date,
         checkOut: Date,
         adults: Int,
+        childrenAges: [Int],
         session: URLSession,
         endpoint: URL,
         apiKey: String
@@ -221,7 +223,7 @@ struct AccorOfficialDirectClient: @unchecked Sendable {
             "dateIn": dayFormatter.string(from: checkIn),
             "dateOut": dayFormatter.string(from: checkOut),
             "nbAdults": min(max(adults, 1), 8),
-            "childrenAges": [],
+            "childrenAges": childrenAges,
             "selectionStep": 0,
             "countryMarket": "CN",
             "currency": "CNY",

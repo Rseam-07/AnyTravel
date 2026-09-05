@@ -17,6 +17,9 @@ export class RollingGoAdapter {
     const capturedAt = isoNow();
     try {
       const adultCount = Math.min(Math.max(Number(request.adults || 2), 1), 8);
+      const childrenAges = Array.isArray(request.childrenAges)
+        ? request.childrenAges.filter((age) => Number.isInteger(age) && age >= 0 && age <= 17).slice(0, 6)
+        : [];
       const requestedSize = Math.min(Math.max(Number(request.size || 20), 1), 20);
       const querySpecs = [{
         originQuery: `查找${request.destination}适合${adultCount}人入住的酒店、民宿和公寓，比较${stayNights}晚实时价格`,
@@ -40,7 +43,9 @@ export class RollingGoAdapter {
           checkInParam: {
             checkInDate: request.checkIn,
             stayNights,
-            adultCount
+            adultCount,
+            childrenAges,
+            rooms: Math.min(Math.max(Number(request.rooms || 1), 1), 4)
           }
         }
       })));
@@ -139,7 +144,9 @@ export class RollingGoAdapter {
         checkInParam: {
           checkInDate: request.checkIn,
           stayNights,
-          adultCount: Math.min(Math.max(Number(request.adults || 2), 1), 8)
+          adultCount: Math.min(Math.max(Number(request.adults || 2), 1), 8),
+          childrenAges: Array.isArray(request.childrenAges) ? request.childrenAges.slice(0, 6) : [],
+          rooms: Math.min(Math.max(Number(request.rooms || 1), 1), 4)
         },
         size: 3
       }

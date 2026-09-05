@@ -384,7 +384,11 @@ final class AnyTravelUITests: XCTestCase {
         let switchedOn = NSPredicate(format: "value == %@", "1")
         expectation(for: switchedOn, evaluatedWith: skipAccommodation)
         waitForExpectations(timeout: 2)
-        app.buttons["重新计算"].tap()
+        XCTAssertTrue(app.staticTexts["应用前先看会改变什么"].waitForExistence(timeout: 2))
+        let applyChanges = app.buttons["trip-conditions-apply"]
+        XCTAssertTrue(applyChanges.waitForExistence(timeout: 2))
+        XCTAssertTrue(applyChanges.isEnabled)
+        applyChanges.tap()
 
         let accommodationTab = app.buttons["住宿"]
         XCTAssertTrue(accommodationTab.waitForExistence(timeout: 3))
@@ -401,6 +405,14 @@ final class AnyTravelUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["编排行程"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["苏州博物馆"].exists)
         XCTAssertTrue(app.staticTexts["拙政园"].exists)
+        app.buttons["完成"].tap()
+
+        let undoReconfiguration = app.buttons["undo-reconfiguration"]
+        XCTAssertTrue(undoReconfiguration.waitForExistence(timeout: 3))
+        undoReconfiguration.tap()
+        app.buttons["住宿"].tap()
+        XCTAssertTrue(app.staticTexts["住宿比价 · 1/1家"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.staticTexts["已跳过住宿"].exists)
     }
 
     func testArrivalDateCanMoveBackwardAndForward() {

@@ -24,7 +24,7 @@ AnyTravel 是一款地图优先的开源 iOS 与 Android 旅行规划应用。�
 
 下载：[iOS 0.8.2 无签名 IPA](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.8.2) · [Android 0.8.2 通用 Release 预览 APK](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.8.2)
 
-Web 版（开发中）：位于 [Web/](Web/README.md)，React + TypeScript + MapLibre GL，桌面为 Apple Maps 式大屏横排（左面板 + 全屏地图 + 底部轨道），移动端为三档底部面板；`cd Web && npm install && npm run dev` 后访问 `http://127.0.0.1:5182`。已跑通：目的地/条件输入、141 个国内目的地离线攻略、OSM 景点与营业时间、空间聚类方案、OSRM 耗时、天气、住宿比价、12306 去返程、去哪儿门票、自然语言白名单动作、费用对比、旅册、分享链接与可安装 PWA 外壳。
+Web 版（开发中）：位于 [Web/](Web/README.md)，React + TypeScript + MapLibre GL，桌面为 Apple Maps 式大屏横排（左面板 + 全屏地图 + 底部轨道），移动端为三档底部面板；`cd Web && npm install && npm run dev` 后访问 `http://127.0.0.1:5182`。已跑通：目的地/条件输入、141 个国内目的地离线攻略、OSM 景点与营业时间、空间聚类方案、OSRM 耗时、天气、住宿比价、12306 去返程、去哪儿门票、自然语言白名单动作、费用对比、旅册、分享链接与可安装 PWA 外壳。仓库已附 GitHub Pages 工作流，推送 `main` 后会自动将 `Web/dist` 部署到 `https://<账号>.github.io/AnyTravel/`；实时住行报价仍需配置公共 HTTPS 后端。
 
 1.0 当前以 [一次旅行可用性清单](Documentation/V1_USER_JOURNEY_CHECKLIST.md) 逐项验收。目标是三端全新安装后直接规划、编辑、保存并查询住行，不要求用户理解 API、Key 或本机节点；公网服务、正规签名和真机矩阵未通过前不会把预览包称为 1.0。
 

@@ -422,7 +422,7 @@ private final class PlanPDFDocument {
         }
         let metadata = [
             dateText,
-            "\(payload.draft.logistics.travelers) 人同行",
+            "\(payload.draft.logistics.effectiveTotalTravelers) 人同行",
             "¥\(payload.draft.budgetPerPerson.formatted(.number.grouping(.automatic))) / 人",
             "\(payload.draft.pace.title)节奏"
         ].joined(separator: "   ·   ")

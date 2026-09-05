@@ -393,17 +393,99 @@ struct PlannerPanel: View {
             .background(AnyTravelPalette.inputSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
             inlineCounter(
-                title: "同行人数",
+                title: "同行总人数",
                 symbol: "person.2.fill",
-                valueText: "\(model.draft.logistics.travelers) 人",
+                valueText: "\(model.draft.logistics.effectiveTotalTravelers) 人",
                 decrementLabel: "减少人数",
                 incrementLabel: "增加人数",
-                decrementDisabled: model.draft.logistics.travelers <= 1,
-                incrementDisabled: model.draft.logistics.travelers >= 8,
-                decrement: { model.draft.logistics.travelers = max(1, model.draft.logistics.travelers - 1) },
-                increment: { model.draft.logistics.travelers = min(8, model.draft.logistics.travelers + 1) },
+                decrementDisabled: model.draft.logistics.effectiveTotalTravelers <= 1,
+                incrementDisabled: model.draft.logistics.effectiveTotalTravelers >= 8,
+                decrement: { model.setTotalTravelerCount(model.draft.logistics.effectiveTotalTravelers - 1) },
+                increment: { model.setTotalTravelerCount(model.draft.logistics.effectiveTotalTravelers + 1) },
                 valueIdentifier: "preferences-travelers-value"
             )
+
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: 9) {
+                    inlineCounter(
+                        title: "成人",
+                        symbol: "person.fill",
+                        valueText: "\(model.draft.logistics.effectiveAdults) 人",
+                        decrementLabel: "减少一位成人",
+                        incrementLabel: "增加一位成人",
+                        decrementDisabled: model.draft.logistics.effectiveAdults <= 1,
+                        incrementDisabled: model.draft.logistics.effectiveAdults >= 8,
+                        decrement: { model.setAdultCount(model.draft.logistics.effectiveAdults - 1) },
+                        increment: { model.setAdultCount(model.draft.logistics.effectiveAdults + 1) },
+                        valueIdentifier: "preferences-adults-value"
+                    )
+                    ForEach(Array(model.draft.logistics.effectiveChildrenAges.enumerated()), id: \.offset) { index, age in
+                        HStack {
+                            Label("儿童 \(index + 1)", systemImage: "figure.and.child.holdinghands")
+                                .font(.caption.weight(.semibold))
+                            Spacer()
+                            Stepper("\(age)岁", value: Binding(
+                                get: { age },
+                                set: { model.setChildAge(at: index, age: $0) }
+                            ), in: 0...17)
+                            Button {
+                                model.removeChild(at: index)
+                            } label: {
+                                Image(systemName: "minus.circle")
+                            }
+                            .accessibilityLabel("删除第\(index + 1)名儿童")
+                        }
+                        .frame(minHeight: 44)
+                    }
+                    Button {
+                        model.addChild()
+                    } label: {
+                        Label("添加儿童年龄", systemImage: "plus.circle")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .disabled(model.draft.logistics.effectiveChildrenAges.count >= 6)
+                    inlineCounter(
+                        title: "房间",
+                        symbol: "bed.double.fill",
+                        valueText: "\(model.draft.logistics.effectiveRooms) 间",
+                        decrementLabel: "减少一间房",
+                        incrementLabel: "增加一间房",
+                        decrementDisabled: model.draft.logistics.effectiveRooms <= 1,
+                        incrementDisabled: model.draft.logistics.effectiveRooms >= 4,
+                        decrement: { model.setRoomCount(model.draft.logistics.effectiveRooms - 1) },
+                        increment: { model.setRoomCount(model.draft.logistics.effectiveRooms + 1) },
+                        valueIdentifier: "preferences-rooms-value"
+                    )
+                    inlineCounter(
+                        title: "老人",
+                        symbol: "figure.walk",
+                        valueText: "\(model.draft.logistics.effectiveSeniorTravelers) 人",
+                        decrementLabel: "减少一位老人",
+                        incrementLabel: "增加一位老人",
+                        decrementDisabled: model.draft.logistics.effectiveSeniorTravelers <= 0,
+                        incrementDisabled: model.draft.logistics.effectiveSeniorTravelers >= model.draft.logistics.effectiveAdults,
+                        decrement: { model.setSeniorTravelerCount(model.draft.logistics.effectiveSeniorTravelers - 1) },
+                        increment: { model.setSeniorTravelerCount(model.draft.logistics.effectiveSeniorTravelers + 1) },
+                        valueIdentifier: "preferences-seniors-value"
+                    )
+                    Picker("步行与无障碍偏好", selection: Binding(
+                        get: { model.draft.logistics.mobilityNeed ?? .none },
+                        set: model.setMobilityNeed
+                    )) {
+                        ForEach(MobilityNeed.allCases) { need in
+                            Text(need.title).tag(need)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    Text("儿童年龄会发送给支持该字段的住宿渠道；儿童票与无障碍设施仍需在购买前复核。")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, 4)
+            } label: {
+                Label("成人、儿童与房间", systemImage: "person.3.sequence.fill")
+                    .font(.caption.weight(.semibold))
+            }
 
             if model.draft.logistics.hasDates,
                let startDate = model.draft.logistics.startDate,
@@ -653,6 +735,36 @@ struct PlannerPanel: View {
                 .buttonStyle(AnyTravelPressStyle())
             }
 
+            if model.canUndoReconfiguration {
+                Button {
+                    withAnimation(AnyTravelMotion.snappy(reduceMotion: reduceMotion)) {
+                        model.undoReconfiguration()
+                    }
+                } label: {
+                    HStack(spacing: 9) {
+                        Image(systemName: "arrow.uturn.backward.circle.fill")
+                            .font(.title3)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("撤回刚才整次调整")
+                                .font(.caption.weight(.bold))
+                            if let summary = model.lastConditionChangeSummary {
+                                Text(summary)
+                                    .font(.caption2)
+                                    .lineLimit(2)
+                            }
+                        }
+                        Spacer(minLength: 4)
+                    }
+                    .foregroundStyle(AnyTravelPalette.routeDark)
+                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                    .background(AnyTravelPalette.route.opacity(0.10), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                }
+                .buttonStyle(AnyTravelPressStyle())
+                .accessibilityIdentifier("undo-reconfiguration")
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
             if let exportStatusMessage = model.exportStatusMessage {
                 HStack(spacing: 7) {
                     ProgressView().controlSize(.small)
@@ -744,7 +856,7 @@ struct PlannerPanel: View {
         case .itinerary: "\(destination) · \(model.currentDay?.title ?? "行程")"
         case .accommodation: "住宿比价 · \(model.filteredAccommodations.count)/\(model.accommodations.count)家"
         case .transport: "\(selectedTransportDirection.title)方式 · \(activeTransportSelection?.mode.shortTitle ?? "待选择")"
-        case .budget: "完整费用 · \(model.draft.logistics.travelers)人"
+        case .budget: "完整费用 · \(model.draft.logistics.effectiveTotalTravelers)人"
         }
     }
 
@@ -1105,6 +1217,12 @@ struct PlannerPanel: View {
 
                 if let selected = model.selectedAccommodation {
                     quoteStrip(selected.quotes)
+                    decisionLockButton(
+                        title: "固定这家住处",
+                        locked: model.isAccommodationLocked,
+                        confirmed: model.bookingConfirmation(kind: .accommodation, itemID: selected.id) != nil,
+                        action: model.toggleAccommodationLock
+                    )
                     bookingStatusCard(kind: .accommodation, itemID: selected.id)
                 }
             }
@@ -1264,6 +1382,12 @@ struct PlannerPanel: View {
                         quoteRefreshBanner
                         if let selectedOption {
                             quoteStrip(selectedOption.quotes)
+                            decisionLockButton(
+                                title: "固定这趟\(selectedOption.journeyDirection.title)",
+                                locked: model.isTransportLocked(selectedOption),
+                                confirmed: model.bookingConfirmation(kind: .transport, itemID: selectedOption.id) != nil,
+                                action: { model.toggleTransportLock(selectedOption) }
+                            )
                             bookingStatusCard(kind: .transport, itemID: selectedOption.id)
                         }
                     }
@@ -1749,6 +1873,34 @@ struct PlannerPanel: View {
         )
         .accessibilityAddTraits(selected ? .isSelected : [])
         .animation(AnyTravelMotion.snappy(reduceMotion: reduceMotion), value: selected)
+    }
+
+    private func decisionLockButton(
+        title: String,
+        locked: Bool,
+        confirmed: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: locked || confirmed ? "lock.fill" : "lock.open")
+                    .contentTransition(.symbolEffect(.replace))
+                Text(confirmed ? "已预订，自动固定" : locked ? "已固定，点此解锁" : title)
+                    .font(.caption.weight(.semibold))
+                Spacer()
+                if locked || confirmed {
+                    Text("刷新不替换")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .foregroundStyle(AnyTravelPalette.routeDark)
+            .padding(.horizontal, 11)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background(AnyTravelPalette.route.opacity(locked || confirmed ? 0.12 : 0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(AnyTravelPressStyle())
+        .accessibilityLabel(confirmed ? "已预订并自动固定" : locked ? "解锁当前选择" : title)
     }
 
     private func bookingStatusCard(kind: BookingItemKind, itemID: UUID) -> some View {

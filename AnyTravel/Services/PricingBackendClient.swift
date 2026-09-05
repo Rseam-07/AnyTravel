@@ -109,8 +109,9 @@ struct PricingBackendClient {
             destination: destination,
             checkIn: Self.dayFormatter.string(from: startDate),
             checkOut: Self.dayFormatter.string(from: endDate),
-            adults: max(logistics.travelers, 1),
-            rooms: max((logistics.travelers + 1) / 2, 1),
+            adults: logistics.effectiveAdults,
+            childrenAges: logistics.effectiveChildrenAges,
+            rooms: logistics.effectiveRooms,
             size: 20,
             anchors: Array(anchors
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -211,8 +212,9 @@ struct PricingBackendClient {
             destination: destination,
             checkIn: Self.dayFormatter.string(from: startDate),
             checkOut: Self.dayFormatter.string(from: endDate),
-            adults: max(logistics.travelers, 1),
-            rooms: max((logistics.travelers + 1) / 2, 1),
+            adults: logistics.effectiveAdults,
+            childrenAges: logistics.effectiveChildrenAges,
+            rooms: logistics.effectiveRooms,
             hotels: accommodations.map {
                 .init(
                     id: $0.id,
@@ -281,7 +283,8 @@ struct PricingBackendClient {
             destination: destination,
             departureDate: Self.dayFormatter.string(from: departureDate),
             returnDate: logistics.endDate.map { Self.dayFormatter.string(from: $0) },
-            adults: max(logistics.travelers, 1),
+            adults: logistics.effectiveAdults,
+            childrenAges: logistics.effectiveChildrenAges,
             modes: ["train", "flight"]
         )
 
@@ -737,6 +740,7 @@ private struct AccommodationQuoteRequest: Codable {
     let checkIn: String
     let checkOut: String
     let adults: Int
+    let childrenAges: [Int]
     let rooms: Int
     let hotels: [Hotel]
 }
@@ -746,6 +750,7 @@ private struct AccommodationCatalogRequest: Codable {
     var checkIn: String
     var checkOut: String
     var adults: Int
+    var childrenAges: [Int]
     var rooms: Int
     var size: Int
     var anchors: [String]
@@ -771,6 +776,7 @@ private struct TransportQuoteRequest: Codable {
     var departureDate: String
     var returnDate: String?
     var adults: Int
+    var childrenAges: [Int]
     var modes: [String]
 }
 

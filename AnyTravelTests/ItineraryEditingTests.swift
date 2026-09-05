@@ -96,6 +96,51 @@ final class ItineraryEditingTests: XCTestCase {
     }
 
     @MainActor
+    func testLockedVisitCannotBeMovedOrRemoved() throws {
+        let model = try makeModel()
+        let first = place("拙政园", latitude: 31.3265)
+        let second = place("苏州博物馆", latitude: 31.3247)
+        model.itineraryDays = [ItineraryDay(index: 0, stops: [first, second])]
+        model.selectedDayIndex = 0
+
+        model.toggleVisitLock(first, in: 0)
+        model.movePlace(first, by: 1, in: 0, refreshRoute: false)
+        XCTAssertFalse(model.removePlace(first, from: 0, refreshRoute: false))
+
+        XCTAssertEqual(model.currentStops.map(\.name), ["拙政园", "苏州博物馆"])
+        XCTAssertTrue(model.isVisitLocked(first))
+        XCTAssertTrue(model.noticeMessage?.contains("锁定") == true)
+    }
+
+    @MainActor
+    func testConditionChangeKeepsItineraryAndCanBeUndoneAsOneStep() throws {
+        let model = try makeModel()
+        let first = place("拙政园", latitude: 31.3265)
+        let second = place("苏州博物馆", latitude: 31.3247)
+        model.phase = .ready
+        model.itineraryDays = [ItineraryDay(index: 0, stops: [first, second])]
+        model.selectedDayIndex = 0
+        model.toggleVisitLock(first, in: 0)
+        let originalDraft = model.draft
+
+        model.draft.logistics.travelers = 3
+        model.draft.budgetPerPerson = 6_000
+        model.applyConditionChanges(from: originalDraft)
+
+        XCTAssertEqual(model.currentStops.map(\.id), [first.id, second.id])
+        XCTAssertEqual(model.draft.logistics.travelers, 3)
+        XCTAssertTrue(model.canUndoReconfiguration)
+        XCTAssertTrue(model.lastConditionChangeSummary?.contains("总价") == true)
+
+        model.undoReconfiguration()
+
+        XCTAssertEqual(model.draft, originalDraft)
+        XCTAssertEqual(model.currentStops.map(\.id), [first.id, second.id])
+        XCTAssertTrue(model.isVisitLocked(first))
+        XCTAssertFalse(model.canUndoReconfiguration)
+    }
+
+    @MainActor
     func testGlobalMapActionsAlwaysProduceAnObservableResponse() throws {
         let model = try makeModel()
 

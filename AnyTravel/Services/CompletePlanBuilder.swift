@@ -140,8 +140,9 @@ struct ExpensePlanner {
         itineraryDays: [ItineraryDay] = [],
         bookingConfirmations: [BookingConfirmation] = []
     ) -> [ExpenseLine] {
-        let totalBudget = draft.budgetPerPerson * max(draft.logistics.travelers, 1)
-        let rooms = max((draft.logistics.travelers + 1) / 2, 1)
+        let totalTravelers = draft.logistics.effectiveAdults + draft.logistics.effectiveChildrenAges.count
+        let totalBudget = draft.budgetPerPerson * max(totalTravelers, 1)
+        let rooms = draft.logistics.effectiveRooms
         let nights = draft.logistics.skipAccommodation ? 0 : max(draft.logistics.nights, max(draft.dayCount - 1, 0))
 
         let transportQuote = transport?.quotes.bestUsableQuote
@@ -152,8 +153,8 @@ struct ExpensePlanner {
         let returnConfirmation = returnTransport.flatMap { option in
             bookingConfirmations.first { $0.kind == .transport && $0.itemID == option.id }
         }
-        let quotedOutboundAmount = totalAmount(for: transportQuote, travelers: draft.logistics.travelers)
-        let quotedReturnAmount = totalAmount(for: returnTransportQuote, travelers: draft.logistics.travelers)
+        let quotedOutboundAmount = totalAmount(for: transportQuote, travelers: totalTravelers)
+        let quotedReturnAmount = totalAmount(for: returnTransportQuote, travelers: totalTravelers)
         let roundTripEnvelope = Int(Double(totalBudget) * 0.24)
         let outboundAmount = outboundConfirmation?.actualAmountCNY ?? quotedOutboundAmount ?? roundTripEnvelope / 2
         let returnAmount = returnConfirmation?.actualAmountCNY ?? quotedReturnAmount ?? quotedOutboundAmount ?? (roundTripEnvelope - outboundAmount)
@@ -167,7 +168,7 @@ struct ExpensePlanner {
             accommodationAmount = 0
         } else if let confirmed = hotelConfirmation?.actualAmountCNY {
             accommodationAmount = confirmed
-        } else if let quote = hotelQuote, let quoted = accommodationTotal(for: quote, travelers: draft.logistics.travelers, nights: nights, rooms: rooms) {
+        } else if let quote = hotelQuote, let quoted = accommodationTotal(for: quote, travelers: totalTravelers, nights: nights, rooms: rooms) {
             accommodationAmount = quoted
         } else {
             accommodationAmount = Int(Double(totalBudget) * 0.34)
@@ -234,7 +235,7 @@ struct ExpensePlanner {
         let ticketLine = ticketExpenseLine(
             for: itineraryDays,
             totalBudget: totalBudget,
-            travelers: draft.logistics.travelers
+            travelers: totalTravelers
         )
 
         let accommodationPending: [String]
@@ -378,7 +379,8 @@ struct ScheduleBuilder {
         accommodation: AccommodationOption?,
         travelMode: TravelMode = .walking,
         constraints: TourismDayConstraints = .none,
-        plannedDate: Date? = nil
+        plannedDate: Date? = nil,
+        lockedVisits: [LockedVisit] = []
     ) -> [ScheduleItem] {
         let rhythm = policy.rhythm(for: pace)
         var result: [ScheduleItem] = []
@@ -474,7 +476,11 @@ struct ScheduleBuilder {
                 }
             }
 
-            let visitMinutes = policy.visitMinutes(for: stop, pace: pace)
+            let lockedRange = lockedVisits
+                .first(where: { $0.placeID == stop.id })
+                .flatMap { parsedRange($0.timeText) }
+            let defaultVisitMinutes = policy.visitMinutes(for: stop, pace: pace)
+            let visitMinutes = lockedRange.map { max($0.end - $0.start, 15) } ?? defaultVisitMinutes
             let openingState = policy.openingState(for: stop, on: plannedDate)
             let openingWindow: TourismPlanningPolicy.OpeningWindow? = if case let .open(window) = openingState {
                 window
@@ -494,6 +500,9 @@ struct ScheduleBuilder {
                     )
                 )
             }
+            if let lockedRange, currentMinute < lockedRange.start {
+                currentMinute = lockedRange.start
+            }
             let start = currentMinute
             currentMinute += visitMinutes
             let mealNote = stop.interest == .food && lunchIncluded ? " · 这一站兼作正餐" : ""
@@ -511,12 +520,20 @@ struct ScheduleBuilder {
             } else {
                 openingNote = " · 开放与预约请复核"
             }
+            let lockNote: String
+            if let lockedRange {
+                lockNote = start == lockedRange.start
+                    ? " · 已锁定此时段"
+                    : " · 锁定时段与前序安排冲突，已顺延并保留停留时长"
+            } else {
+                lockNote = ""
+            }
             result.append(
                 ScheduleItem(
                     id: "\(day.index)-\(stop.id)",
                     timeText: rangeText(from: start, to: currentMinute),
                     title: stop.name,
-                    detail: "\(stop.interest.visitIntroduction) · 预计停留\(policy.durationText(visitMinutes))\(mealNote)\(openingNote)\(ticketNote)",
+                    detail: "\(stop.interest.visitIntroduction) · 预计停留\(policy.durationText(visitMinutes))\(mealNote)\(openingNote)\(ticketNote)\(lockNote)",
                     placeID: stop.id
                 )
             )
@@ -582,6 +599,26 @@ struct ScheduleBuilder {
 
     private func rangeText(from start: Int, to end: Int) -> String {
         "\(policy.clock(start))–\(policy.clock(end))"
+    }
+
+    private func parsedRange(_ text: String?) -> (start: Int, end: Int)? {
+        guard let text else { return nil }
+        let pieces = text.split(separator: "–", maxSplits: 1).map(String.init)
+        guard pieces.count == 2,
+              let start = clockMinutes(pieces[0]),
+              let end = clockMinutes(pieces[1]),
+              end > start else { return nil }
+        return (start, end)
+    }
+
+    private func clockMinutes(_ text: String) -> Int? {
+        let pieces = text.split(separator: ":", maxSplits: 1)
+        guard pieces.count == 2,
+              let hour = Int(pieces[0]),
+              let minute = Int(pieces[1]),
+              (0..<24).contains(hour),
+              (0..<60).contains(minute) else { return nil }
+        return hour * 60 + minute
     }
 }
 

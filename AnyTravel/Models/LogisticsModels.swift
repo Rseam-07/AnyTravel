@@ -5,9 +5,35 @@ struct TripLogistics: Codable, Equatable, Hashable, Sendable {
     var startDate: Date?
     var endDate: Date?
     var travelers = 1
+    // Optional so older saved trips decode without migration prompts.
+    var adults: Int?
+    var childrenAges: [Int]?
+    var rooms: Int?
+    var seniorTravelers: Int?
+    var mobilityNeed: MobilityNeed?
     var preferredLongDistanceMode: LongDistanceMode?
     var skipAccommodation = false
     var skipTransport = false
+
+    var effectiveAdults: Int {
+        min(max(adults ?? max(travelers - effectiveChildrenAges.count, 1), 1), 8)
+    }
+
+    var effectiveChildrenAges: [Int] {
+        (childrenAges ?? []).filter { (0...17).contains($0) }.prefix(6).map { $0 }
+    }
+
+    var effectiveRooms: Int {
+        min(max(rooms ?? Int(ceil(Double(max(travelers, 1)) / 2.0)), 1), 4)
+    }
+
+    var effectiveSeniorTravelers: Int {
+        min(max(seniorTravelers ?? 0, 0), effectiveAdults)
+    }
+
+    var effectiveTotalTravelers: Int {
+        min(max(effectiveAdults + effectiveChildrenAges.count, 1), 12)
+    }
 
     var hasDates: Bool { startDate != nil && endDate != nil }
 
@@ -15,6 +41,22 @@ struct TripLogistics: Codable, Equatable, Hashable, Sendable {
         guard !skipAccommodation else { return 0 }
         guard let startDate, let endDate else { return 0 }
         return max(Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0, 0)
+    }
+}
+
+enum MobilityNeed: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
+    case none
+    case stroller
+    case wheelchair
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .none: "普通步行"
+        case .stroller: "婴儿车友好"
+        case .wheelchair: "无障碍优先"
+        }
     }
 }
 
@@ -568,6 +610,7 @@ struct LogisticsSnapshot: Codable, Hashable, Sendable {
     var returnTransferOptions: [LocalTransferOption]? = nil
     var selectedReturnTransferID: LocalTransferOption.ID? = nil
     var bookingConfirmations: [BookingConfirmation]? = nil
+    var planLocks: PlanLockState? = nil
 }
 
 enum QuoteRefreshState: Equatable, Sendable {

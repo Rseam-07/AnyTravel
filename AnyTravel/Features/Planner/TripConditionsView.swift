@@ -12,8 +12,11 @@ struct TripConditionsView: View {
                     TextField("例如：上海", text: $model.draft.logistics.origin)
                         .textInputAutocapitalization(.never)
                     Stepper(
-                        "同行人数：\(model.draft.logistics.travelers)人",
-                        value: $model.draft.logistics.travelers,
+                        "同行人数：\(model.draft.logistics.effectiveTotalTravelers)人",
+                        value: Binding(
+                            get: { model.draft.logistics.effectiveTotalTravelers },
+                            set: model.setTotalTravelerCount
+                        ),
                         in: 1...8
                     )
                     Stepper(
@@ -33,6 +36,69 @@ struct TripConditionsView: View {
                     .accessibilityIdentifier("trip-conditions-day-count")
                 } header: {
                     Text("从哪里出发，和谁同行")
+                }
+
+                Section {
+                    Stepper(
+                        "成人：\(model.draft.logistics.effectiveAdults)人",
+                        value: Binding(
+                            get: { model.draft.logistics.effectiveAdults },
+                            set: model.setAdultCount
+                        ),
+                        in: 1...8
+                    )
+                    ForEach(Array(model.draft.logistics.effectiveChildrenAges.enumerated()), id: \.offset) { index, age in
+                        HStack {
+                            Stepper(
+                                "儿童 \(index + 1)：\(age)岁",
+                                value: Binding(
+                                    get: { age },
+                                    set: { model.setChildAge(at: index, age: $0) }
+                                ),
+                                in: 0...17
+                            )
+                            Button {
+                                model.removeChild(at: index)
+                            } label: {
+                                Image(systemName: "minus.circle")
+                            }
+                            .accessibilityLabel("删除第\(index + 1)名儿童")
+                        }
+                    }
+                    Button {
+                        model.addChild()
+                    } label: {
+                        Label("添加儿童年龄", systemImage: "plus.circle")
+                    }
+                    .disabled(model.draft.logistics.effectiveChildrenAges.count >= 6)
+                    Stepper(
+                        "房间：\(model.draft.logistics.effectiveRooms)间",
+                        value: Binding(
+                            get: { model.draft.logistics.effectiveRooms },
+                            set: model.setRoomCount
+                        ),
+                        in: 1...4
+                    )
+                    Stepper(
+                        "老人：\(model.draft.logistics.effectiveSeniorTravelers)人",
+                        value: Binding(
+                            get: { model.draft.logistics.effectiveSeniorTravelers },
+                            set: model.setSeniorTravelerCount
+                        ),
+                        in: 0...max(model.draft.logistics.effectiveAdults, 1)
+                    )
+                    Picker("步行与无障碍偏好", selection: Binding(
+                        get: { model.draft.logistics.mobilityNeed ?? .none },
+                        set: model.setMobilityNeed
+                    )) {
+                        ForEach(MobilityNeed.allCases) { need in
+                            Text(need.title).tag(need)
+                        }
+                    }
+                } header: {
+                    Text("成人、儿童与房间")
+                } footer: {
+                    Text("儿童年龄会发送给支持该字段的住宿渠道；儿童票与无障碍设施仍需在购买前复核。")
                 }
 
                 Section {
@@ -102,6 +168,20 @@ struct TripConditionsView: View {
                 } header: {
                     Text("行走与抵达")
                 }
+
+                if !changeImpacts.isEmpty {
+                    Section {
+                        ForEach(Array(changeImpacts.enumerated()), id: \.offset) { _, impact in
+                            Label(impact, systemImage: "arrow.triangle.branch")
+                                .font(.subheadline)
+                                .foregroundStyle(AnyTravelPalette.secondaryInk)
+                        }
+                    } header: {
+                        Text("应用前先看会改变什么")
+                    } footer: {
+                        Text("锁定与已确认的景点、住处和班次会优先保留；应用后可从主面板整次撤回。")
+                    }
+                }
             }
             .navigationTitle("调整旅行条件")
             .navigationBarTitleDisplayMode(.inline)
@@ -113,17 +193,24 @@ struct TripConditionsView: View {
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("重新计算") {
-                        model.applyConditionChanges()
+                    Button(changeImpacts.isEmpty ? "没有改动" : "应用 \(changeImpacts.count) 项") {
+                        model.applyConditionChanges(from: originalDraft)
                         dismiss()
                     }
                     .fontWeight(.semibold)
+                    .disabled(changeImpacts.isEmpty)
+                    .accessibilityIdentifier("trip-conditions-apply")
                 }
             }
         }
         .onAppear {
             if originalDraft == nil { originalDraft = model.draft }
         }
+    }
+
+    private var changeImpacts: [String] {
+        guard let originalDraft else { return [] }
+        return model.conditionChangeImpacts(from: originalDraft)
     }
 
     private func dateAdjustmentRow(

@@ -167,6 +167,29 @@ final class TourismPlanningTests: XCTestCase {
         XCTAssertTrue(schedule.contains { $0.title == "午餐与休息" })
     }
 
+    func testLockedVisitKeepsItsFeasibleTimeRange() throws {
+        let stop = place("园林", latitude: 31.300, longitude: 120.600, interest: .gardens)
+        let day = ItineraryDay(index: 0, stops: [stop])
+        let lock = LockedVisit(
+            placeID: stop.id,
+            placeName: stop.name,
+            dayIndex: 0,
+            orderIndex: 0,
+            timeText: "10:30–12:30"
+        )
+
+        let schedule = ScheduleBuilder().build(
+            for: day,
+            pace: .relaxed,
+            accommodation: nil,
+            lockedVisits: [lock]
+        )
+        let visit = try XCTUnwrap(schedule.first { $0.placeID == stop.id })
+
+        XCTAssertEqual(visit.timeText, "10:30–12:30")
+        XCTAssertTrue(visit.detail.contains("已锁定此时段"))
+    }
+
     func testFamilyHeavyDayIsReportedAsOverCapacity() {
         let day = ItineraryDay(index: 0, stops: [
             place("亲子馆一", latitude: 31.300, longitude: 120.600, interest: .family),

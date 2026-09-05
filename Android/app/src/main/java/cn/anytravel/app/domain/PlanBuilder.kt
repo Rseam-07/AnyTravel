@@ -9,7 +9,9 @@ import cn.anytravel.app.model.ExpenseLine
 import cn.anytravel.app.model.ExpenseSource
 import cn.anytravel.app.model.ItineraryDay
 import cn.anytravel.app.model.LocalTravelMode
+import cn.anytravel.app.model.LockedVisit
 import cn.anytravel.app.model.LongDistanceMode
+import cn.anytravel.app.model.PlanLockState
 import cn.anytravel.app.model.PriceQuote
 import cn.anytravel.app.model.QuoteKind
 import cn.anytravel.app.model.QuoteUnit
@@ -151,12 +153,14 @@ class PlanBuilder {
             option.quotes.filter { it.isCurrentPrice() }.mapNotNull { it.amountCNY }.minOrNull()
                 ?: Int.MAX_VALUE
         }
-        val previousAccommodation = accommodations.firstOrNull { it.id == plan.selectedAccommodationId }
+        val fixedAccommodationId = plan.locks.accommodationId
+            ?: plan.bookingConfirmations.firstOrNull { it.kind == cn.anytravel.app.model.BookingKind.ACCOMMODATION }?.itemId
+            ?: plan.selectedAccommodationId
+        val previousAccommodation = accommodations.firstOrNull { it.id == fixedAccommodationId }
         val selectedAccommodationId = when {
-            previousAccommodation?.quotes?.any { it.isCurrentPrice() } == true -> previousAccommodation.id
+            previousAccommodation != null -> previousAccommodation.id
             accommodations.any { option -> option.quotes.any { it.isCurrentPrice() } } ->
                 accommodations.first { option -> option.quotes.any { it.isCurrentPrice() } }.id
-            previousAccommodation != null -> previousAccommodation.id
             else -> accommodations.firstOrNull()?.id
         }
         val selectedAccommodation = accommodations.firstOrNull { it.id == selectedAccommodationId }
@@ -165,14 +169,16 @@ class PlanBuilder {
             mergeTransports(plan.transports, liveTransports),
             selectedAccommodation
         )
-        val previousTransport = transports.firstOrNull { it.id == plan.selectedTransportId }
+        val confirmedTransportIds = plan.bookingConfirmations
+            .filter { it.kind == cn.anytravel.app.model.BookingKind.TRANSPORT }
+            .mapTo(mutableSetOf()) { it.itemId }
+        val fixedTransportId = plan.selectedTransportId
+            ?.takeIf { it in plan.locks.transportIds || it in confirmedTransportIds }
+            ?: plan.locks.transportIds.firstOrNull()
+            ?: confirmedTransportIds.firstOrNull()
+            ?: plan.selectedTransportId
+        val previousTransport = transports.firstOrNull { it.id == fixedTransportId }
         val selectedTransportId = when {
-            previousTransport?.quotes?.any { it.isCurrentPrice() } == true -> previousTransport.id
-            previousTransport != null && transports.any {
-                it.direction == previousTransport.direction && it.mode == previousTransport.mode && it.quotes.any(PriceQuote::isCurrentPrice)
-            } -> transports.first {
-                it.direction == previousTransport.direction && it.mode == previousTransport.mode && it.quotes.any(PriceQuote::isCurrentPrice)
-            }.id
             previousTransport != null -> previousTransport.id
             else -> transports.firstOrNull {
                 it.direction == cn.anytravel.app.model.TransportDirection.OUTBOUND && it.quotes.any(PriceQuote::isCurrentPrice)
@@ -186,6 +192,73 @@ class PlanBuilder {
             transports = transports,
             selectedTransportId = selectedTransportId,
             expenses = buildExpenses(plan.draft, selectedAccommodation, selectedTransport, transports, plan.days, plan.bookingConfirmations)
+        )
+    }
+
+    /** Preserve fixed visits and chosen/confirmed products when a fresh plan is generated. */
+    fun applyLocks(generated: CompletePlan, previous: CompletePlan): CompletePlan {
+        if (previous.locks == PlanLockState() && previous.bookingConfirmations.isEmpty()) return generated
+        val oldStops = previous.days.flatMap { it.stops }
+        val mutableStops = generated.days.map { it.stops.toMutableList() }.toMutableList()
+        val normalizedLocks = mutableListOf<LockedVisit>()
+        previous.locks.visits
+            .sortedWith(compareBy<LockedVisit> { it.dayIndex }.thenBy { it.orderIndex })
+            .forEach { lock ->
+                val old = oldStops.firstOrNull {
+                    it.id == lock.placeId || normalizedPlaceName(it.name) == normalizedPlaceName(lock.placeName)
+                } ?: return@forEach
+                mutableStops.forEach { stops ->
+                    stops.removeAll {
+                        it.id == lock.placeId || normalizedPlaceName(it.name) == normalizedPlaceName(lock.placeName)
+                    }
+                }
+                val dayIndex = lock.dayIndex.coerceIn(mutableStops.indices)
+                val orderIndex = lock.orderIndex.coerceIn(0, mutableStops[dayIndex].size)
+                mutableStops[dayIndex].add(orderIndex, old)
+                normalizedLocks += lock.copy(placeId = old.id, dayIndex = dayIndex, orderIndex = orderIndex)
+            }
+        var result = generated.copy(
+            locks = previous.locks.copy(visits = normalizedLocks),
+            bookingConfirmations = previous.bookingConfirmations
+        )
+        result = updateItinerary(
+            result,
+            result.days.mapIndexed { index, day -> day.copy(stops = mutableStops.getOrElse(index) { mutableListOf() }) },
+            "已围绕锁定内容重新衔接其余行程"
+        )
+        if (normalizedLocks.isNotEmpty()) {
+            val priorSchedules = previous.days.flatMap { it.schedule }.associateBy { it.placeId }
+            result = result.copy(days = result.days.map { day ->
+                day.copy(schedule = day.schedule.map { item ->
+                    val lock = normalizedLocks.firstOrNull { it.placeId == item.placeId }
+                    val old = priorSchedules[lock?.placeId]
+                    if (lock == null) item else item.copy(timeText = lock.timeText ?: old?.timeText ?: item.timeText)
+                })
+            })
+        }
+
+        val fixedAccommodationId = previous.locks.accommodationId
+            ?: previous.bookingConfirmations.firstOrNull { it.kind == cn.anytravel.app.model.BookingKind.ACCOMMODATION }?.itemId
+            ?: previous.selectedAccommodationId
+        val fixedAccommodation = previous.accommodations.firstOrNull { it.id == fixedAccommodationId }
+        if (fixedAccommodation != null && result.accommodations.none { it.id == fixedAccommodation.id }) {
+            result = result.copy(accommodations = result.accommodations + fixedAccommodation)
+        }
+        fixedAccommodationId
+            ?.takeIf { id -> result.accommodations.any { it.id == id } }
+            ?.let { result = selectAccommodation(result, it) }
+
+        val fixedTransportIds = previous.locks.transportIds + previous.bookingConfirmations
+            .filter { it.kind == cn.anytravel.app.model.BookingKind.TRANSPORT }
+            .map { it.itemId }
+        val retainedTransports = previous.transports.filter { it.id in fixedTransportIds || it.id == previous.selectedTransportId }
+        val transports = (result.transports + retainedTransports).distinctBy { it.id }
+        result = result.copy(transports = transports)
+        val preferredTransportId = previous.selectedTransportId?.takeIf { id -> transports.any { it.id == id } }
+            ?: fixedTransportIds.firstOrNull { id -> transports.any { it.id == id } }
+        preferredTransportId?.let { result = selectTransport(result, it) }
+        return updateBookingConfirmations(result, previous.bookingConfirmations).copy(
+            locks = previous.locks.copy(visits = normalizedLocks)
         )
     }
 
@@ -739,8 +812,9 @@ class PlanBuilder {
         days: List<ItineraryDay>,
         confirmations: List<cn.anytravel.app.model.BookingConfirmation> = emptyList()
     ): List<ExpenseLine> {
-        val totalBudget = draft.budgetPerPerson * draft.travelers.coerceAtLeast(1)
-        val rooms = ((draft.travelers + 1) / 2).coerceAtLeast(1)
+        val totalTravelers = draft.effectiveTotalTravelers
+        val totalBudget = draft.budgetPerPerson * totalTravelers.coerceAtLeast(1)
+        val rooms = draft.effectiveRooms
         val selectedByDirection = { direction: cn.anytravel.app.model.TransportDirection ->
             transport?.takeIf { it.direction == direction }
                 ?: transports.filter { it.direction == direction }
@@ -756,7 +830,7 @@ class PlanBuilder {
                     id = "outbound-transport",
                     title = "去程大交通",
                     option = selectedByDirection(cn.anytravel.app.model.TransportDirection.OUTBOUND),
-                    travelers = draft.travelers,
+                    travelers = totalTravelers,
                     reserve = (totalBudget * 0.12).roundToInt(),
                     confirmations = confirmations
                 ),
@@ -764,7 +838,7 @@ class PlanBuilder {
                     id = "return-transport",
                     title = "返程大交通",
                     option = selectedByDirection(cn.anytravel.app.model.TransportDirection.RETURN),
-                    travelers = draft.travelers,
+                    travelers = totalTravelers,
                     reserve = (totalBudget * 0.12).roundToInt(),
                     confirmations = confirmations
                 )
@@ -772,14 +846,14 @@ class PlanBuilder {
         }
 
         val hotelQuote = accommodation?.quotes?.filter(PriceQuote::isCurrentPrice)
-            ?.minByOrNull { accommodationTotal(it, draft.travelers, draft.nights, rooms) ?: Int.MAX_VALUE }
+            ?.minByOrNull { accommodationTotal(it, totalTravelers, draft.nights, rooms) ?: Int.MAX_VALUE }
         val hotelConfirmation = accommodation?.let { selected ->
             confirmations.firstOrNull { it.kind == cn.anytravel.app.model.BookingKind.ACCOMMODATION && it.itemId == selected.id }
         }
         val hotelAmount = when {
             draft.skipAccommodation -> 0
             hotelConfirmation?.actualAmountCNY != null -> hotelConfirmation.actualAmountCNY
-            hotelQuote != null -> accommodationTotal(hotelQuote, draft.travelers, draft.nights, rooms)
+            hotelQuote != null -> accommodationTotal(hotelQuote, totalTravelers, draft.nights, rooms)
                 ?: (totalBudget * 0.34).roundToInt()
             else -> (totalBudget * 0.34).roundToInt()
         }
@@ -824,7 +898,7 @@ class PlanBuilder {
                 ExpenseSource.BUDGET,
                 if (ticketableCount == 0) emptyList() else listOf("${ticketableCount}处景点票价")
             ),
-            ExpenseLine("meals", "餐饮", "${draft.travelers}人 × ${draft.dayCount}天 · 按轻松节奏预留", (totalBudget * 0.17).roundToInt(), ExpenseSource.BUDGET),
+            ExpenseLine("meals", "餐饮", "${totalTravelers}人 × ${draft.dayCount}天 · 按轻松节奏预留", (totalBudget * 0.17).roundToInt(), ExpenseSource.BUDGET),
             ExpenseLine("local", "市内交通", "地铁、公交与必要打车的预算额度", (totalBudget * 0.07).roundToInt(), ExpenseSource.BUDGET),
             ExpenseLine("buffer", "机动金", "价格波动、临时调整与未计入的零散费用", (totalBudget * 0.05).roundToInt(), ExpenseSource.BUDGET)
         )

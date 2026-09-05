@@ -3,6 +3,7 @@ import type { ProviderQuote, TicketQuote, TransportOption, TripDraft } from "./t
 export function quoteTripKey(draft: TripDraft, planGeneratedAt?: string): string {
   return JSON.stringify([
     draft.origin, draft.destination, draft.startDate, draft.dayCount, draft.travelers,
+    draft.party,
     draft.skipAccommodation, draft.skipTransport, draft.longDistanceMode, planGeneratedAt
   ]);
 }

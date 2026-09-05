@@ -1,4 +1,4 @@
-import type { AccommodationOption, BookingConfirmation, Plan, TicketQuote, TransportOption, TravelPlace, TripDraft } from "./types";
+import type { AccommodationOption, BookingConfirmation, Plan, PlanLockState, TicketQuote, TransportOption, TravelPlace, TripDraft } from "./types";
 
 export interface TripSnapshot {
   plan: Plan | null;
@@ -11,6 +11,7 @@ export interface TripSnapshot {
   selectedOutboundID: string | null;
   selectedReturnID: string | null;
   bookingConfirmations: BookingConfirmation[];
+  planLocks: PlanLockState;
 }
 
 export interface SavedTrip {
@@ -34,6 +35,12 @@ const bookingConfirmation = (value: unknown) => object(value) && typeof value.id
   typeof value.title === "string" && typeof value.confirmedAt === "string" &&
   (value.actualAmountCNY == null || (Number.isFinite(value.actualAmountCNY) && value.actualAmountCNY > 0)) &&
   (value.note == null || typeof value.note === "string");
+const planLocks = (value: unknown) => object(value) && Array.isArray(value.visits) && value.visits.every((visit: any) =>
+  object(visit) && typeof visit.placeID === "string" && typeof visit.placeName === "string" &&
+  Number.isInteger(visit.dayIndex) && visit.dayIndex >= 0 && Number.isInteger(visit.orderIndex) && visit.orderIndex >= 0 &&
+  (visit.arriveMinute == null || Number.isFinite(visit.arriveMinute)) &&
+  (visit.leaveMinute == null || Number.isFinite(visit.leaveMinute))) &&
+  [value.accommodationID, value.outboundTransportID, value.returnTransportID].every(id => id == null || typeof id === "string");
 
 export function validDraft(value: unknown): value is TripDraft {
   return object(value) && typeof value.destination === "string" && typeof value.origin === "string" &&
@@ -52,7 +59,8 @@ function decodeTrip(value: unknown): SavedTrip {
         !Array.isArray(snapshot.accommodations) || !snapshot.accommodations.every(a => object(a) && typeof a.id === "string" && quotes(a.quotes)) ||
         !Array.isArray(snapshot.transports) || !snapshot.transports.every(t => object(t) && typeof t.id === "string" && quotes(t.quotes)) ||
         !object(snapshot.tickets) || (snapshot.bookingConfirmations != null &&
-          (!Array.isArray(snapshot.bookingConfirmations) || !snapshot.bookingConfirmations.every(bookingConfirmation)))) {
+          (!Array.isArray(snapshot.bookingConfirmations) || !snapshot.bookingConfirmations.every(bookingConfirmation))) ||
+        (snapshot.planLocks != null && !planLocks(snapshot.planLocks))) {
       throw new Error("行程快照格式不完整");
     }
     if (snapshot.plan != null && (!object(snapshot.plan) || !Array.isArray(snapshot.plan.days) || !Array.isArray(snapshot.plan.notes) ||
@@ -63,6 +71,7 @@ function decodeTrip(value: unknown): SavedTrip {
     snapshot.transports = snapshot.transports.map(t => ({ ...t,
       departureTime: dateOrUndefined(t.departureTime), arrivalTime: dateOrUndefined(t.arrivalTime) }));
     snapshot.bookingConfirmations = snapshot.bookingConfirmations ?? [];
+    snapshot.planLocks = snapshot.planLocks ?? { visits: [] };
   }
   return value as SavedTrip;
 }
@@ -115,7 +124,7 @@ export function snapshotTrip(state: TripSnapshot & { draft: TripDraft }, id: str
       plan: state.plan, places: state.places, accommodations: state.accommodations, transports: state.transports,
       tickets: state.tickets, selectedDay: state.selectedDay, selectedAccommodationID: state.selectedAccommodationID,
       selectedOutboundID: state.selectedOutboundID, selectedReturnID: state.selectedReturnID,
-      bookingConfirmations: state.bookingConfirmations
+      bookingConfirmations: state.bookingConfirmations, planLocks: state.planLocks
     }
   };
 }
@@ -131,6 +140,7 @@ export function restoredSnapshot(trip: SavedTrip): TripSnapshot {
     selectedAccommodationID: saved?.selectedAccommodationID ?? null,
     selectedOutboundID: saved?.selectedOutboundID ?? null,
     selectedReturnID: saved?.selectedReturnID ?? null,
-    bookingConfirmations: saved?.bookingConfirmations ?? []
+    bookingConfirmations: saved?.bookingConfirmations ?? [],
+    planLocks: saved?.planLocks ?? { visits: [] }
   };
 }

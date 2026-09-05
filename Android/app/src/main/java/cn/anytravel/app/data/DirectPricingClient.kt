@@ -142,7 +142,9 @@ class DirectPricingClient {
                         val code = hotel["objectID"]?.stringValue()?.trim().orEmpty()
                         val name = hotel["name"]?.stringValue()?.trim().orEmpty()
                         if (code.isBlank() || name.length < 2) return@async null
-                        val rate = runCatching { accorRate(code, checkIn, checkOut, draft.travelers) }.getOrNull()
+                        val rate = runCatching {
+                            accorRate(code, checkIn, checkOut, draft.effectiveAdults, draft.effectiveChildrenAges)
+                        }.getOrNull()
                         accorHotelOption(
                             hotel = hotel,
                             code = code,
@@ -151,7 +153,8 @@ class DirectPricingClient {
                             nights = nights,
                             checkIn = checkIn,
                             checkOut = checkOut,
-                            travelers = draft.travelers,
+                            adults = draft.effectiveAdults,
+                            rooms = draft.effectiveRooms,
                             capturedAt = capturedAt,
                             stopCoordinates = stopCoordinates,
                             accessPoints = accessPoints
@@ -171,7 +174,13 @@ class DirectPricingClient {
         }.getOrElse { DirectHotels(issues = listOf("雅高官网暂时没有回应：${shortError(it)}")) }
     }
 
-    private suspend fun accorRate(code: String, checkIn: LocalDate, checkOut: LocalDate, travelers: Int): JsonObject? {
+    private suspend fun accorRate(
+        code: String,
+        checkIn: LocalDate,
+        checkOut: LocalDate,
+        adults: Int,
+        childrenAges: List<Int>
+    ): JsonObject? {
         val body = buildJsonObject {
             put("operationName", "HotelPageHot")
             put("query", ACCOR_HOTEL_OFFERS_QUERY)
@@ -179,8 +188,8 @@ class DirectPricingClient {
                 put("hotelOffersHotelId", code)
                 put("dateIn", checkIn.toString())
                 put("dateOut", checkOut.toString())
-                put("nbAdults", travelers.coerceIn(1, 8))
-                put("childrenAges", buildJsonArray { })
+                put("nbAdults", adults.coerceIn(1, 8))
+                put("childrenAges", buildJsonArray { childrenAges.forEach(::add) })
                 put("selectionStep", 0)
                 put("countryMarket", "CN")
                 put("currency", "CNY")
@@ -229,7 +238,8 @@ class DirectPricingClient {
         nights: Int,
         checkIn: LocalDate,
         checkOut: LocalDate,
-        travelers: Int,
+        adults: Int,
+        rooms: Int,
         capturedAt: String,
         stopCoordinates: List<Coordinate>,
         accessPoints: List<AccessPoint>
@@ -255,8 +265,8 @@ class DirectPricingClient {
                 "hotelCode" to code,
                 "checkIn" to checkIn.toString(),
                 "checkOut" to checkOut.toString(),
-                "numberOfRooms" to "1",
-                "adults" to travelers.coerceIn(1, 8).toString()
+                "numberOfRooms" to rooms.coerceIn(1, 4).toString(),
+                "adults" to adults.coerceIn(1, 8).toString()
             )
         ).toString()
         val brand = hotel.first("brandLabel", "brand")?.stringValue()
@@ -341,7 +351,8 @@ class DirectPricingClient {
                         "ctyhocn" to code,
                         "arrivalDate" to checkIn.toString(),
                         "departureDate" to checkIn.plusDays(draft.nights.coerceAtLeast(1).toLong()).toString(),
-                        "room1NumAdults" to draft.travelers.coerceIn(1, 8).toString()
+                        "room1NumAdults" to draft.effectiveAdults.coerceIn(1, 8).toString(),
+                        "numRooms" to draft.effectiveRooms.coerceIn(1, 4).toString()
                     )
                 ).toString()
                 val brand = hiltonBrandName(hotel["brandCode"]?.stringValue())
@@ -398,11 +409,13 @@ class DirectPricingClient {
             put("params", buildJsonObject {
                 put("name", "searchHotels")
                 put("arguments", buildJsonObject {
-                    put("originQuery", "查找${draft.destination}适合${draft.travelers}人入住的酒店、民宿和公寓，比较${nights}晚实时价格")
+                    put("originQuery", "查找${draft.destination}适合${draft.effectiveTotalTravelers}人入住的酒店、民宿和公寓，比较${nights}晚实时价格")
                     put("place", draft.destination)
                     put("placeType", "城市")
                     put("checkInParam", buildJsonObject {
-                        put("adultCount", (draft.travelers / ((draft.travelers + 1) / 2).coerceAtLeast(1)).coerceIn(1, 8))
+                        put("adultCount", (draft.effectiveAdults / draft.effectiveRooms).coerceAtLeast(1).coerceIn(1, 8))
+                        put("rooms", draft.effectiveRooms)
+                        put("childrenAges", buildJsonArray { draft.effectiveChildrenAges.forEach(::add) })
                         put("checkInDate", checkIn.toString())
                         put("stayNights", nights)
                     })

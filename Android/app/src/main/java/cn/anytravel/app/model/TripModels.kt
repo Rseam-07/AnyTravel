@@ -56,6 +56,13 @@ enum class LongDistanceMode(val title: String) {
 }
 
 @Serializable
+enum class MobilityNeed(val title: String) {
+    NONE("普通步行"),
+    STROLLER("婴儿车友好"),
+    WHEELCHAIR("无障碍优先")
+}
+
+@Serializable
 @Immutable
 data class TripDraft(
     val origin: String = "上海",
@@ -64,6 +71,13 @@ data class TripDraft(
     val dayCount: Int = 3,
     val budgetPerPerson: Int = 3_000,
     val travelers: Int = 2,
+    // Nullable fields keep drafts written by pre-1.0 builds backwards compatible.
+    // The effective helpers below derive sensible values when these keys are absent.
+    val adults: Int? = null,
+    val childrenAges: List<Int> = emptyList(),
+    val rooms: Int? = null,
+    val seniorTravelers: Int? = null,
+    val mobilityNeed: MobilityNeed = MobilityNeed.NONE,
     val interests: Set<TripInterest> = setOf(TripInterest.GARDENS, TripInterest.CULTURE, TripInterest.FOOD),
     val pace: TripPace = TripPace.RELAXED,
     val localTravelMode: LocalTravelMode = LocalTravelMode.WALKING,
@@ -72,6 +86,28 @@ data class TripDraft(
     val skipTransport: Boolean = false
 ) {
     val nights: Int get() = if (skipAccommodation) 0 else (dayCount - 1).coerceAtLeast(1)
+    val effectiveChildrenAges: List<Int> get() = childrenAges.filter { it in 0..17 }.take(6)
+    val effectiveAdults: Int get() = (adults ?: (travelers - effectiveChildrenAges.size).coerceAtLeast(1)).coerceIn(1, 8)
+    val effectiveRooms: Int get() = (rooms ?: ((travelers + 1) / 2).coerceAtLeast(1)).coerceIn(1, 4)
+    val effectiveSeniorTravelers: Int get() = (seniorTravelers ?: 0).coerceIn(0, effectiveAdults)
+    val effectiveTotalTravelers: Int get() = (effectiveAdults + effectiveChildrenAges.size).coerceIn(1, 12)
+
+    fun withTotalTravelers(total: Int): TripDraft {
+        val nextTotal = total.coerceIn(1, 12)
+        val keptChildren = effectiveChildrenAges.take((nextTotal - 1).coerceAtLeast(0))
+        val nextAdults = (nextTotal - keptChildren.size).coerceAtLeast(1).coerceAtMost(8)
+        return copy(travelers = nextAdults + keptChildren.size, adults = nextAdults, childrenAges = keptChildren)
+    }
+
+    fun withAdults(count: Int): TripDraft {
+        val nextAdults = count.coerceIn(1, 8)
+        return copy(adults = nextAdults, travelers = (nextAdults + effectiveChildrenAges.size).coerceIn(1, 12))
+    }
+
+    fun withChildren(ages: List<Int>): TripDraft {
+        val nextChildren = ages.filter { it in 0..17 }.take(6)
+        return copy(childrenAges = nextChildren, travelers = (effectiveAdults + nextChildren.size).coerceIn(1, 12))
+    }
 }
 
 @Serializable
@@ -108,6 +144,24 @@ data class ItineraryDay(
 ) {
     val title: String get() = "第 ${index + 1} 天"
 }
+
+@Serializable
+@Immutable
+data class LockedVisit(
+    val placeId: String,
+    val placeName: String,
+    val dayIndex: Int,
+    val orderIndex: Int,
+    val timeText: String? = null
+)
+
+@Serializable
+@Immutable
+data class PlanLockState(
+    val visits: List<LockedVisit> = emptyList(),
+    val accommodationId: String? = null,
+    val transportIds: Set<String> = emptySet()
+)
 
 @Serializable
 @Immutable
@@ -292,7 +346,8 @@ data class CompletePlan(
     val failedRouteSegmentCount: Int = 0,
     val selectedPlaceIDs: Set<String> = emptySet(),
     val planningNotes: List<String> = emptyList(),
-    val bookingConfirmations: List<BookingConfirmation> = emptyList()
+    val bookingConfirmations: List<BookingConfirmation> = emptyList(),
+    val locks: PlanLockState = PlanLockState()
 ) {
     val selectedAccommodation: AccommodationOption?
         get() = accommodations.firstOrNull { it.id == selectedAccommodationId }

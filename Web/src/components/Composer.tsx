@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Baby, Landmark, MoonStar, Search, Sparkles, Trees, UtensilsCrossed, Images } from "lucide-react";
 import { nominatimSearch, type NominatimPlace } from "../api";
 import { useApp } from "../store";
-import { INTERESTS, PACE_META, type Interest, type Pace } from "../types";
+import { INTERESTS, PACE_META, effectiveParty, type Interest, type MobilityNeed, type Pace, type TravelerProfile } from "../types";
 import { knowledgeCitiesRef } from "../knowledge";
+import { draftChangeImpacts } from "../plan-locks";
 
 const INTEREST_ICONS = {
   gardens: Landmark,
@@ -136,8 +137,20 @@ export default function Composer() {
 
 /** Conditions form shared by the desktop side panel and the mobile sheet. */
 export function ConditionsCard() {
-  const { state, updateDraft, generatePlan } = useApp();
-  const draft = state.draft;
+  const { state, updateDraft, generatePlan, applyDraftChanges } = useApp();
+  const editingExistingPlan = Boolean(state.plan);
+  const [draft, setDraft] = useState(state.draft);
+  useEffect(() => setDraft(state.draft), [state.draft, state.plan?.generatedAt]);
+  const changeDraft = (patch: Partial<typeof draft>) => {
+    setDraft((current) => ({ ...current, ...patch }));
+    if (!editingExistingPlan) updateDraft(patch);
+  };
+  const party = effectiveParty(draft);
+  const changeParty = (patch: Partial<TravelerProfile>) => {
+    const next = { ...party, ...patch };
+    changeDraft({ party: next, travelers: next.adults + next.childrenAges.length });
+  };
+  const impacts = editingExistingPlan ? draftChangeImpacts(state.draft, draft) : [];
   return (
     <div>
       <div className="section-title">这次怎么走</div>
@@ -149,7 +162,7 @@ export function ConditionsCard() {
             type="text"
             placeholder="比如：上海"
             value={draft.origin}
-            onChange={(e) => updateDraft({ origin: e.target.value })}
+            onChange={(e) => changeDraft({ origin: e.target.value })}
           />
         </div>
         <div className="field">
@@ -158,31 +171,81 @@ export function ConditionsCard() {
             id="trip-start-date"
             type="date"
             value={draft.startDate ?? ""}
-            onChange={(e) => updateDraft({ startDate: e.target.value })}
+            onChange={(e) => changeDraft({ startDate: e.target.value })}
           />
         </div>
         <div className="field">
           <label>天数</label>
           <div className="stepper">
-            <button aria-label="减少一天" onClick={() => updateDraft({ dayCount: Math.max(draft.dayCount - 1, 1) })} disabled={draft.dayCount <= 1}>
+            <button aria-label="减少一天" onClick={() => changeDraft({ dayCount: Math.max(draft.dayCount - 1, 1) })} disabled={draft.dayCount <= 1}>
               −
             </button>
             <span>{draft.dayCount} 天</span>
-            <button aria-label="增加一天" onClick={() => updateDraft({ dayCount: Math.min(draft.dayCount + 1, 14) })} disabled={draft.dayCount >= 14}>
+            <button aria-label="增加一天" onClick={() => changeDraft({ dayCount: Math.min(draft.dayCount + 1, 14) })} disabled={draft.dayCount >= 14}>
               +
             </button>
           </div>
         </div>
         <div className="field">
-          <label>同行人数</label>
+          <label>同行总人数</label>
           <div className="stepper">
-            <button aria-label="减少一人" onClick={() => updateDraft({ travelers: Math.max(draft.travelers - 1, 1) })} disabled={draft.travelers <= 1}>
+            <button aria-label="减少一位成人" onClick={() => changeParty({ adults: Math.max(party.adults - 1, 1) })} disabled={party.adults <= 1}>
               −
             </button>
-            <span>{draft.travelers} 人</span>
-            <button aria-label="增加一人" onClick={() => updateDraft({ travelers: Math.min(draft.travelers + 1, 10) })} disabled={draft.travelers >= 10}>
+            <span>{party.adults + party.childrenAges.length} 人</span>
+            <button aria-label="增加一位成人" onClick={() => changeParty({ adults: Math.min(party.adults + 1, 8) })} disabled={party.adults >= 8}>
               +
             </button>
+          </div>
+        </div>
+        <div className="field" style={{ gridColumn: "1 / -1" }}>
+          <label>同行结构与住宿</label>
+          <div style={{ display: "grid", gap: 10, padding: 12, borderRadius: 16, background: "var(--surface-muted, rgba(0,0,0,.035))" }}>
+            <div className="stepper">
+              <span style={{ flex: 1 }}>成人 {party.adults} 人</span>
+              <button aria-label="减少一位成人" onClick={() => changeParty({ adults: Math.max(party.adults - 1, 1) })} disabled={party.adults <= 1}>−</button>
+              <button aria-label="增加一位成人" onClick={() => changeParty({ adults: Math.min(party.adults + 1, 8) })} disabled={party.adults >= 8}>+</button>
+            </div>
+            {party.childrenAges.map((age, index) => (
+              <div className="stepper" key={`${index}-${age}`}>
+                <label htmlFor={`child-age-${index}`} style={{ flex: 1 }}>儿童 {index + 1} 岁</label>
+                <input
+                  id={`child-age-${index}`}
+                  aria-label={`儿童${index + 1}年龄`}
+                  type="number"
+                  min={0}
+                  max={17}
+                  value={age}
+                  onChange={(event) => {
+                    const ages = [...party.childrenAges];
+                    ages[index] = Math.min(Math.max(Number(event.target.value) || 0, 0), 17);
+                    changeParty({ childrenAges: ages });
+                  }}
+                  style={{ width: 66 }}
+                />
+                <button aria-label={`删除第${index + 1}名儿童`} onClick={() => changeParty({ childrenAges: party.childrenAges.filter((_, childIndex) => childIndex !== index) })}>×</button>
+              </div>
+            ))}
+            <button className="chip-btn" onClick={() => changeParty({ childrenAges: [...party.childrenAges, 8].slice(0, 6) })} disabled={party.childrenAges.length >= 6}>
+              + 添加儿童年龄
+            </button>
+            <div className="stepper">
+              <span style={{ flex: 1 }}>房间 {party.rooms} 间</span>
+              <button aria-label="减少一间房" onClick={() => changeParty({ rooms: Math.max(party.rooms - 1, 1) })} disabled={party.rooms <= 1}>−</button>
+              <button aria-label="增加一间房" onClick={() => changeParty({ rooms: Math.min(party.rooms + 1, 4) })} disabled={party.rooms >= 4}>+</button>
+            </div>
+            <div className="stepper">
+              <span style={{ flex: 1 }}>其中老人 {party.seniorTravelers} 人</span>
+              <button aria-label="减少一位老人" onClick={() => changeParty({ seniorTravelers: Math.max(party.seniorTravelers - 1, 0) })} disabled={party.seniorTravelers <= 0}>−</button>
+              <button aria-label="增加一位老人" onClick={() => changeParty({ seniorTravelers: Math.min(party.seniorTravelers + 1, party.adults) })} disabled={party.seniorTravelers >= party.adults}>+</button>
+            </div>
+            <label htmlFor="trip-mobility">步行与无障碍偏好</label>
+            <select id="trip-mobility" value={party.mobilityNeed} onChange={(event) => changeParty({ mobilityNeed: event.target.value as MobilityNeed })}>
+              <option value="none">普通步行</option>
+              <option value="stroller">需要婴儿车友好路线</option>
+              <option value="wheelchair">需要无障碍路线</option>
+            </select>
+            <small className="sub-text">儿童年龄会发送给支持该字段的住宿渠道；儿童票、婴儿票与无障碍设施仍需在购买前复核。</small>
           </div>
         </div>
         <div className="field">
@@ -193,12 +256,12 @@ export function ConditionsCard() {
             value={draft.budgetPerPerson ?? ""}
             min={100}
             step={100}
-            onChange={(e) => updateDraft({ budgetPerPerson: Number(e.target.value) || undefined })}
+            onChange={(e) => changeDraft({ budgetPerPerson: Number(e.target.value) || undefined })}
           />
         </div>
         <div className="field">
           <label htmlFor="trip-pace">节奏</label>
-          <select id="trip-pace" value={draft.pace} onChange={(e) => updateDraft({ pace: e.target.value as Pace })}>
+          <select id="trip-pace" value={draft.pace} onChange={(e) => changeDraft({ pace: e.target.value as Pace })}>
             {(Object.keys(PACE_META) as Pace[]).map((pace) => (
               <option key={pace} value={pace}>
                 {PACE_META[pace].title} · {PACE_META[pace].note}
@@ -208,7 +271,7 @@ export function ConditionsCard() {
         </div>
         <div className="field">
           <label htmlFor="trip-transport-mode">市内移动（估算）</label>
-          <select id="trip-transport-mode" value={draft.transportMode} onChange={(e) => updateDraft({ transportMode: e.target.value as TripDraftTransportMode })}>
+          <select id="trip-transport-mode" value={draft.transportMode} onChange={(e) => changeDraft({ transportMode: e.target.value as TripDraftTransportMode })}>
             <option value="transit">地铁公交</option>
             <option value="walking">步行</option>
             <option value="driving">打车/自驾</option>
@@ -230,7 +293,7 @@ export function ConditionsCard() {
                       const next = selected
                         ? draft.interests.filter((i) => i !== interest.id)
                         : [...draft.interests, interest.id];
-                      updateDraft({ interests: next.length === 0 ? (["gardens"] as Interest[]) : next });
+                      changeDraft({ interests: next.length === 0 ? (["gardens"] as Interest[]) : next });
                     }}
                   >
                     <Icon size={15} aria-hidden="true" /> {interest.title}
@@ -241,16 +304,34 @@ export function ConditionsCard() {
           </div>
         </div>
       </div>
+      {editingExistingPlan && impacts.length > 0 && (
+        <div className="change-preview" role="status" aria-label="本次调整影响预览">
+          <strong>应用前先看会改变什么</strong>
+          {impacts.map((impact) => (
+            <div key={impact.key}>
+              <span>{impact.title}</span>
+              <small>{impact.detail}</small>
+            </div>
+          ))}
+          <p>带锁标记和已预订内容不会被替换；应用后可一步撤销。</p>
+        </div>
+      )}
       <button
         className="generate-btn"
         style={{ width: "100%", marginTop: 4 }}
-        disabled={state.phase === "planning" || !draft.destination}
-        onClick={() => void generatePlan()}
+        disabled={state.phase === "planning" || !draft.destination || (editingExistingPlan && impacts.length === 0)}
+        onClick={() => void (editingExistingPlan ? applyDraftChanges(draft) : generatePlan())}
       >
-        {state.phase === "planning" ? "规划中…" : "让旅程展开"}
+        {state.phase === "planning"
+          ? "规划中…"
+          : editingExistingPlan
+            ? impacts.length > 0 ? `应用 ${impacts.length} 项调整` : "原方案没有变化"
+            : "让旅程展开"}
       </button>
       <div className="sub-text" style={{ marginTop: 8, lineHeight: 1.6 }}>
-        条件可以随时改：日期、人数、预算、节奏、兴趣与城市内移动方式；重新生成会替换方案，也可以先“存进旅册”。
+        {editingExistingPlan
+          ? "日期、人数和预算只刷新相关报价；需要重排时也会先保住锁定内容。"
+          : "条件可以随时改：日期、人数、预算、节奏、兴趣与城市内移动方式。"}
       </div>
     </div>
   );

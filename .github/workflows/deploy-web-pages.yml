@@ -1,0 +1,61 @@
+name: Deploy AnyTravel Web to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Web/**"
+      - "Config/ServiceDefaults.json"
+      - ".github/workflows/deploy-web-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: Web/package-lock.json
+
+      - name: Install Web dependencies
+        run: npm ci --prefix Web
+
+      - name: Build Web
+        env:
+          ANYTRAVEL_SERVICE_URL: ${{ vars.ANYTRAVEL_SERVICE_URL }}
+        run: npm run build --prefix Web
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: Web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

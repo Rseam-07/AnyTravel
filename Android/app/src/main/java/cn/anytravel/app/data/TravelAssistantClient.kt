@@ -45,6 +45,11 @@ data class TravelAssistantContext(
     val places: List<TravelAssistantPlaceContext>,
     val origin: String,
     val travelers: Int,
+    val adults: Int,
+    val childrenAges: List<Int>,
+    val rooms: Int,
+    val seniorTravelers: Int,
+    val mobilityNeed: String,
     val startDate: String?,
     val endDate: String?,
     val longDistanceMode: String?,
@@ -75,7 +80,12 @@ data class TravelAssistantContext(
                 interests = draft.interests.map { it.name.lowercase() }.sorted(),
                 places = places.take(80),
                 origin = draft.origin,
-                travelers = draft.travelers.coerceIn(1, 8),
+                travelers = draft.effectiveTotalTravelers,
+                adults = draft.effectiveAdults,
+                childrenAges = draft.effectiveChildrenAges,
+                rooms = draft.effectiveRooms,
+                seniorTravelers = draft.effectiveSeniorTravelers,
+                mobilityNeed = draft.mobilityNeed.name.lowercase(),
                 startDate = start?.toString(),
                 endDate = start?.plusDays((draft.dayCount - 1).coerceAtLeast(0).toLong())?.toString(),
                 longDistanceMode = draft.preferredLongDistanceMode?.name?.lowercase(),
@@ -244,7 +254,13 @@ class TravelAssistantClient {
                 "set_long_distance_mode" -> value.takeIf { it in setOf("auto", "train", "flight", "driving", "coach") }
                 "set_skip_accommodation", "set_skip_transport" -> value.lowercase().takeIf { it in setOf("true", "false") }
                 "set_day_count" -> value.toIntOrNull()?.coerceIn(1, 7)?.toString()
-                "set_travelers" -> value.toIntOrNull()?.coerceIn(1, 8)?.toString()
+                "set_travelers" -> value.toIntOrNull()?.coerceIn(1, 12)?.toString()
+                "set_adults" -> value.toIntOrNull()?.coerceIn(1, 8)?.toString()
+                "set_children_ages" -> value.split(',', '，', '、', ';', '；', ' ').mapNotNull { it.toIntOrNull() }
+                    .filter { it in 0..17 }.take(6).joinToString(",")
+                "set_rooms" -> value.toIntOrNull()?.coerceIn(1, 4)?.toString()
+                "set_seniors" -> value.toIntOrNull()?.coerceIn(0, 8)?.toString()
+                "set_mobility" -> value.takeIf { it in setOf("none", "stroller", "wheelchair") }
                 "set_budget" -> value.toIntOrNull()?.coerceIn(1_000, 30_000)?.toString()
                 "set_start_date", "set_end_date" -> value.takeIf(::validDay)
                 "set_accommodation_max_price" -> value.toIntOrNull()?.coerceIn(100, 10_000)?.toString()
@@ -273,7 +289,7 @@ class TravelAssistantClient {
         private val systemPrompt = """
             你是 AnyTravel 的旅行意图控制器。用户可以用完全自由的中文开始或修改旅行。只返回 JSON：
             {"reply":"简洁、温暖、略有诗意的中文回应","actions":[{"type":"动作","value":"值"}]}
-            允许动作：set_destination、set_origin、set_day_count(1...7)、set_travelers(1...8)、set_budget(1000...30000)、set_pace(relaxed|balanced|full)、set_travel_mode(walking|transit|driving)、set_long_distance_mode(auto|train|flight|driving|coach)、set_skip_accommodation/set_skip_transport(true|false)、set_start_date/set_end_date(yyyy-MM-dd)、set_accommodation_max_price(100...10000)、set_accommodation_sort(recommended|lowestPrice|closestToAttractions|closestToTransit)、add_interest/remove_interest(gardens|culture|food|nature|family|night)、generate_plan(true|false)、focus_place/remove_place（地点名必须来自 context.places）。
+            允许动作：set_destination、set_origin、set_day_count(1...7)、set_travelers(1...12)、set_adults(1...8)、set_children_ages(0...17 岁的逗号分隔年龄，最多 6 个)、set_rooms(1...4)、set_seniors(0...8)、set_mobility(none|stroller|wheelchair)、set_budget(1000...30000)、set_pace(relaxed|balanced|full)、set_travel_mode(walking|transit|driving)、set_long_distance_mode(auto|train|flight|driving|coach)、set_skip_accommodation/set_skip_transport(true|false)、set_start_date/set_end_date(yyyy-MM-dd)、set_accommodation_max_price(100...10000)、set_accommodation_sort(recommended|lowestPrice|closestToAttractions|closestToTransit)、add_interest/remove_interest(gardens|culture|food|nature|family|night)、generate_plan(true|false)、focus_place/remove_place（地点名必须来自 context.places）。
             明确要求规划时返回 generate_plan=true。不要臆造地点，不要返回链接、代码或额外字段；无法安全执行时 actions 为空。回复不超过 120 个汉字。
         """.trimIndent()
     }
