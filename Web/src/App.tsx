@@ -1,4 +1,4 @@
-import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Component, lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   BedDouble,
   ChevronDown,
@@ -14,7 +14,7 @@ import {
   WalletCards
 } from "lucide-react";
 import { AppProvider, useApp } from "./store";
-import MapView, { type MapSection } from "./components/MapView";
+import type { MapSection } from "./components/MapView";
 import Composer, { ConditionsCard } from "./components/Composer";
 import ChatPanel from "./components/ChatPanel";
 import SettingsPanel from "./components/SettingsPanel";
@@ -28,6 +28,11 @@ const READY_TABS = [
   { id: "transport", title: "交通", icon: TrainFront },
   { id: "budget", title: "费用", icon: WalletCards }
 ] satisfies { id: ReadyTab; title: string; icon: typeof MapIcon }[];
+
+// MapLibre is the largest dependency. Keeping it outside the interaction
+// bundle lets the title, recovery action and planning controls become usable
+// while the actual map engine is being parsed on slower phones.
+const MapView = lazy(() => import("./components/MapView"));
 
 export default function App() {
   return (
@@ -81,7 +86,9 @@ function Shell() {
 
   return (
     <div className={`app${mapDark ? " dark" : ""}`}>
-      <MapView dark={mapDark} onDarkChange={setMapDark} activeSection={mapSection} />
+      <Suspense fallback={<div className="map-loading" role="status"><span>地图正在舒展开来…</span></div>}>
+        <MapView dark={mapDark} onDarkChange={setMapDark} activeSection={mapSection} />
+      </Suspense>
       <TopChrome
         onReset={app.resetAll}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -237,7 +244,7 @@ function PanelScaffold({
 }
 
 function DestinationStart() {
-  const { state, resolveDestination } = useApp();
+  const { state, resolveDestination, restoreLastSession } = useApp();
   const [choosing, setChoosing] = useState<string | null>(null);
   const examples = ["苏州", "杭州", "成都"];
 
@@ -245,6 +252,16 @@ function DestinationStart() {
     <div className="destination-start">
       <p className="eyebrow">从地图出发，不填长表格</p>
       <h1>想把哪里变成一段行程？</h1>
+      {state.recoveryTrip && !state.draft.destination && (
+        <div className="recovery-card" role="status">
+          <div>
+            <strong>上次走到 {state.recoveryTrip.draft.destination}</strong>
+            <span>{state.recoveryTrip.snapshot?.plan ? "路线、选择和历史报价都还在" : "未完成的条件已经替你留好"}</span>
+          </div>
+          <button className="chip-btn" onClick={restoreLastSession}>继续上次旅程</button>
+        </div>
+      )}
+      {state.storageIssue && <div className="issue-note" role="alert">{state.storageIssue}</div>}
       <Composer />
       <div className="destination-examples" aria-label="推荐目的地">
         {examples.map((city) => (
@@ -406,33 +423,71 @@ function MobileLayer({
 }
 
 function LibraryPanel({ onClose }: { onClose: () => void }) {
-  const { state, loadTrip, deleteTrip } = useApp();
+  const { state, loadTrip, deleteTrip, restoreDeletedTrip } = useApp();
+  const activeTrips = state.savedTrips.filter(trip => !trip.deletedAt);
+  const deletedTrips = state.savedTrips.filter(trip => trip.deletedAt);
+  const card = useRef<HTMLElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+    const previousFocus = document.activeElement as HTMLElement | null;
+    card.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        closeRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const controls = [...(card.current?.querySelectorAll<HTMLElement>("button:not(:disabled), summary, a[href]") ?? [])]
+        .filter(element => element.getClientRects().length > 0);
+      const first = controls[0], last = controls[controls.length - 1];
+      if (!first) return;
+      if (event.shiftKey && (document.activeElement === first || !card.current?.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [onClose]);
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      window.removeEventListener("keydown", handleKey);
+      previousFocus?.focus();
+    };
+  }, []);
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="library-title" onClick={(event) => event.stopPropagation()}>
+      <section ref={card} className="modal-card" role="dialog" aria-modal="true" aria-labelledby="library-title" onClick={(event) => event.stopPropagation()}>
         <div className="modal-head">
           <div>
             <h2 id="library-title">旅册</h2>
             <p className="sub-text">在这台浏览器保存的行程</p>
           </div>
-          <button className="chip-btn" onClick={onClose}>完成</button>
+          <button className="chip-btn" onClick={onClose} aria-label="关闭旅册">完成</button>
         </div>
-        {state.savedTrips.length === 0 && <div className="empty-note">还没有保存的行程。</div>}
-        {state.savedTrips.map((trip) => (
+        {state.storageIssue && <div className="issue-note" role="alert">{state.storageIssue}</div>}
+        {activeTrips.length === 0 && <div className="empty-note">还没有保存的行程。</div>}
+        {activeTrips.map((trip) => (
           <div key={trip.id} className="trip-row">
-            <span className="t-title">{trip.title}</span>
+            <span className="t-title">{trip.title}<small>{trip.snapshot?.plan ? "完整方案" : "旧版条件"} · {new Date(trip.savedAt).toLocaleDateString("zh-CN")}</small></span>
             <button className="mini-btn" onClick={() => { loadTrip(trip.id); onClose(); }}>打开</button>
-            <button className="mini-btn danger" onClick={() => deleteTrip(trip.id)}>删除</button>
+            <button className="mini-btn danger" onClick={() => deleteTrip(trip.id)}>移到最近删除</button>
           </div>
         ))}
+        {deletedTrips.length > 0 && (
+          <details className="deleted-trips">
+            <summary>最近删除（{deletedTrips.length}）</summary>
+            {deletedTrips.map(trip => (
+              <div key={trip.id} className="trip-row deleted">
+                <span className="t-title">{trip.title}</span>
+                <button className="mini-btn" onClick={() => restoreDeletedTrip(trip.id)}>恢复</button>
+              </div>
+            ))}
+          </details>
+        )}
       </section>
     </div>
   );

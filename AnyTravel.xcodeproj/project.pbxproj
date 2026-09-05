@@ -47,6 +47,7 @@
 		8C7AFA58D6D1E09C64BCD08A /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33630F3E25704ED5383C8668 /* SettingsView.swift */; };
 		8D3539422AAE14CE97E655B9 /* AccorOfficialDirectClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FA9FB70A4D223952A8FEC5C /* AccorOfficialDirectClientTests.swift */; };
 		8EA8295936C70171BDC03F6A /* MapSearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AAE82ECAEB622DF3A7E6C5D /* MapSearchService.swift */; };
+		995EC10FA655E542E3461886 /* ServiceDefaults.json in Resources */ = {isa = PBXBuildFile; fileRef = AAF6B72924732D03AFE25013 /* ServiceDefaults.json */; };
 		9C195F8E1D217B5A99CE5A70 /* PlannerPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BADCBDDA5A5397B526E0467B /* PlannerPanel.swift */; };
 		9D3DAFAC03BCC0DB51ED729E /* Railway12306DirectClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E83F0F89B3E79AB64B86359B /* Railway12306DirectClientTests.swift */; };
 		A3D9C071B43904A52016D071 /* ActivityShareView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8D65A05785DC3DD4DD52CE1 /* ActivityShareView.swift */; };
@@ -139,6 +140,7 @@
 		63BC96FA0D8051AF60149EFE /* ItineraryEditingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItineraryEditingTests.swift; sourceTree = "<group>"; };
 		643378348B1B3036FB9FAD78 /* RollingGoDirectClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RollingGoDirectClient.swift; sourceTree = "<group>"; };
 		708B887F36EEA46735ACA271 /* PlannerChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerChrome.swift; sourceTree = "<group>"; };
+		71B0417D18703F71DB17D6CE /* AnyTravelRelease.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = AnyTravelRelease.xcconfig; sourceTree = "<group>"; };
 		7708700674772FD51B6B009B /* TripModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripModels.swift; sourceTree = "<group>"; };
 		7A967FB8EE0FB4B887D0175E /* ItineraryEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItineraryEditorView.swift; sourceTree = "<group>"; };
 		7BB63E34BB9911E0C20BBB33 /* NetworkIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkIdentity.swift; sourceTree = "<group>"; };
@@ -156,6 +158,7 @@
 		9DC6ACAC464479C81F4114F9 /* QunarFlightDirectClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QunarFlightDirectClient.swift; sourceTree = "<group>"; };
 		9F1E17F823F0E156E2C00159 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		AA21B2A889F7EAC5B340FF45 /* PlanPacingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanPacingService.swift; sourceTree = "<group>"; };
+		AAF6B72924732D03AFE25013 /* ServiceDefaults.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = ServiceDefaults.json; sourceTree = "<group>"; };
 		AF3931AA047D5FC4C87AD5AB /* CompletePlanBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletePlanBuilder.swift; sourceTree = "<group>"; };
 		B4B42D0557B340BF5F6D8600 /* AnyTravelMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnyTravelMotion.swift; sourceTree = "<group>"; };
 		B8D65A05785DC3DD4DD52CE1 /* ActivityShareView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityShareView.swift; sourceTree = "<group>"; };
@@ -271,6 +274,8 @@
 			isa = PBXGroup;
 			children = (
 				2B490BAC7D77D71767A91D97 /* AnyTravel.xcconfig */,
+				71B0417D18703F71DB17D6CE /* AnyTravelRelease.xcconfig */,
+				AAF6B72924732D03AFE25013 /* ServiceDefaults.json */,
 			);
 			path = Config;
 			sourceTree = "<group>";
@@ -493,6 +498,7 @@
 				C03AEC237C189C7C2604D2C7 /* DomesticGuideKnowledge.json in Resources */,
 				5AB74A309D10C2C072F7726F /* LaunchScreen.storyboard in Resources */,
 				7A636E096AC05DD145055CD7 /* PrivacyInfo.xcprivacy in Resources */,
+				995EC10FA655E542E3461886 /* ServiceDefaults.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -836,7 +842,7 @@
 		};
 		F24AE07EDB926810CC644139 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 2B490BAC7D77D71767A91D97 /* AnyTravel.xcconfig */;
+			baseConfigurationReference = 71B0417D18703F71DB17D6CE /* AnyTravelRelease.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;

@@ -1,0 +1,6 @@
+// Production clients contain only the public AnyTravel service address.
+// Provider and model credentials belong on the server and must never be
+// included in a distributable IPA.
+ANYTRAVEL_ROLLINGGO_API_KEY =
+ANYTRAVEL_AMAP_WEB_SERVICE_KEY =
+ANYTRAVEL_ZAI_API_KEY =

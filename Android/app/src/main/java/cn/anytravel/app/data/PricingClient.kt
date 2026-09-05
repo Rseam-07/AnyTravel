@@ -13,7 +13,7 @@ import cn.anytravel.app.model.TripDraft
 import cn.anytravel.app.model.distanceText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.supervisorScope
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -32,8 +32,8 @@ class PricingClient {
         baseURL: String,
         plan: CompletePlan,
         accessPoints: List<AccessPoint>
-    ): PricingRefreshResult = coroutineScope {
-        val normalized = normalizeBaseURL(baseURL)
+    ): PricingRefreshResult = supervisorScope {
+        val normalized = normalizePricingServiceURL(baseURL)
         val draft = plan.draft
         val accommodations = plan.accommodations
         val catalogRequest = async {
@@ -86,9 +86,12 @@ class PricingClient {
     }
 
     suspend fun healthCheck(baseURL: String): Boolean = runCatching {
-        val normalized = normalizeBaseURL(baseURL)
-        request(URL(normalized, "health"), "GET", null).isNotBlank()
+        val normalized = normalizePricingServiceURL(baseURL)
+        val health = json.decodeFromString<ServiceHealth>(request(URL(normalized, "health"), "GET", null))
+        health.service == "anytravel-companion" && health.status == "ok"
     }.getOrDefault(false)
+
+    @Serializable private data class ServiceHealth(val service: String, val status: String)
 
     private suspend fun fetchAccommodationQuotes(
         baseURL: URL,
@@ -287,17 +290,6 @@ class PricingClient {
         return response.body
     }
 
-    private fun normalizeBaseURL(value: String): URL {
-        val trimmed = value.trim()
-        if (trimmed.isBlank()) throw PricingException("请先在设置中填写报价节点地址")
-        val uri = runCatching { URI(trimmed) }.getOrNull()
-            ?: throw PricingException("报价节点地址格式不正确")
-        if (uri.scheme !in setOf("http", "https") || uri.host.isNullOrBlank()) {
-            throw PricingException("报价节点必须使用 http 或 https")
-        }
-        return URL(trimmed.trimEnd('/') + "/")
-    }
-
     private fun providerTitle(value: String) = when (value.lowercase()) {
         "rollinggo" -> "RollingGo"
         "ctrip" -> "携程"
@@ -360,6 +352,23 @@ class PricingClient {
     private fun clockText(value: String): String = runCatching {
         DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault()).format(Instant.parse(value))
     }.getOrDefault(value.takeLast(5))
+}
+
+internal fun normalizePricingServiceURL(value: String): URL {
+    val trimmed = value.trim()
+    if (trimmed.isBlank()) throw PricingException("还没有连接默认在线服务")
+    val uri = runCatching { URI(trimmed) }.getOrNull()
+        ?: throw PricingException("在线服务地址格式不正确")
+    val scheme = uri.scheme?.lowercase()
+    val host = uri.host?.lowercase()?.removePrefix("[")?.removeSuffix("]")
+    val isLocal = host in setOf("localhost", "127.0.0.1", "::1")
+    if (host.isNullOrBlank() || (scheme != "https" && !(scheme == "http" && isLocal))) {
+        throw PricingException("在线服务必须使用 HTTPS；本机调试可使用 localhost")
+    }
+    if (uri.rawUserInfo != null || uri.rawQuery != null || uri.rawFragment != null) {
+        throw PricingException("在线服务地址不能包含账号、查询参数或片段")
+    }
+    return URL(trimmed.trimEnd('/') + "/")
 }
 
 data class PricingRefreshResult(

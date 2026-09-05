@@ -1,4 +1,7 @@
 import http from "node:http";
+import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
+import { serveWeb } from "./web-host.mjs";
 import { AMapError, searchAMapPlaces } from "./amap-service.mjs";
 import { AssistantError, interpretAssistantRequest } from "./assistant-service.mjs";
 import { GeocodeError, geocodeCity } from "./geocode-service.mjs";
@@ -11,32 +14,34 @@ import {
 } from "./quote-service.mjs";
 import { QunarTicketError, searchQunarTicketQuotes } from "./qunar-ticket-service.mjs";
 
-const port = Number(process.env.PORT || 8787);
-const host = process.env.HOST || "127.0.0.1";
+export function createApp({ env = process.env, webRoot = fileURLToPath(new URL("../../Web/dist", import.meta.url)) } = {}) {
 const rateBuckets = new Map();
-
 const server = http.createServer(async (request, response) => {
-  setSecurityHeaders(response);
+  setSecurityHeaders(request, response, env);
   if (request.method === "OPTIONS") {
     response.writeHead(204).end();
     return;
   }
 
   try {
-    enforceRateLimit(request);
+    if (request.url?.startsWith("/v1/")) enforceRateLimit(request, rateBuckets, env);
     if (request.method === "GET" && request.url === "/health") {
       sendJSON(response, 200, {
         status: "ok",
         service: "anytravel-companion",
-        assistant: process.env.DEEPSEEK_API_KEY || process.env.ZAI_API_KEY ? "configured" : "disabled",
-        amap: process.env.AMAP_API_KEY ? "configured" : "disabled",
-        oneBoundCtrip: process.env.ONEBOUND_API_KEY && process.env.ONEBOUND_API_SECRET ? "configured" : "disabled",
-        ctripSession: process.env.CTRIP_SCRAPER_ENABLED === "true" ? "configured" : "disabled",
-        ctripFlights: (process.env.CTRIP_FLIGHT_SCRAPER_ENABLED ?? process.env.CTRIP_SCRAPER_ENABLED) === "true"
+        schemaVersion: 1,
+        rollinggo: env.ROLLINGGO_API_KEY ? "configured" : "disabled",
+        railway12306: "public",
+        fliggyFlights: "public",
+        assistant: env.DEEPSEEK_API_KEY || env.ZAI_API_KEY ? "configured" : "disabled",
+        amap: env.AMAP_API_KEY ? "configured" : "disabled",
+        oneBoundCtrip: env.ONEBOUND_API_KEY && env.ONEBOUND_API_SECRET ? "configured" : "disabled",
+        ctripSession: env.CTRIP_SCRAPER_ENABLED === "true" ? "configured" : "disabled",
+        ctripFlights: (env.CTRIP_FLIGHT_SCRAPER_ENABLED ?? env.CTRIP_SCRAPER_ENABLED) === "true"
           ? "configured"
           : "disabled",
-        tongchengSession: process.env.TONGCHENG_SCRAPER_ENABLED === "true" ? "configured" : "disabled",
-        elongOpenAPI: process.env.ELONG_USER && process.env.ELONG_APP_KEY && process.env.ELONG_SECRET_KEY
+        tongchengSession: env.TONGCHENG_SCRAPER_ENABLED === "true" ? "configured" : "disabled",
+        elongOpenAPI: env.ELONG_USER && env.ELONG_APP_KEY && env.ELONG_SECRET_KEY
           ? "configured"
           : "disabled",
         accorOfficial: "public",
@@ -48,7 +53,7 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === "POST" && request.url === "/v1/assistant/interpret") {
       const body = await readJSON(request);
-      sendJSON(response, 200, await interpretAssistantRequest(body));
+      sendJSON(response, 200, await interpretAssistantRequest(body, { env }));
       return;
     }
     if (request.method === "POST" && request.url === "/v1/places/search") {
@@ -86,6 +91,7 @@ const server = http.createServer(async (request, response) => {
       sendJSON(response, 200, await searchQunarTicketQuotes(body));
       return;
     }
+    if (await serveWeb(request, response, webRoot)) return;
     sendJSON(response, 404, { error: "not_found" });
   } catch (error) {
     const status = error instanceof RequestError || error instanceof QunarTicketError
@@ -97,6 +103,7 @@ const server = http.createServer(async (request, response) => {
         : error instanceof OverpassError ? 400
         : error instanceof GeocodeError ? 400
         : error.code === "RATE_LIMIT" ? 429 : 500;
+    if (status === 429) response.setHeader("retry-after", "60");
     sendJSON(response, status, {
       error: error instanceof AssistantError || error instanceof AMapError || error instanceof OverpassError || error instanceof GeocodeError
         ? error.code
@@ -105,23 +112,40 @@ const server = http.createServer(async (request, response) => {
     });
   }
 });
+server.requestTimeout = 60_000;
+server.headersTimeout = 15_000;
+return server;
+}
 
-server.listen(port, host, () => {
-  process.stdout.write(`AnyTravel pricing node listening on http://${host}:${port}\n`);
-});
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const port = Number(process.env.PORT || 8787), host = process.env.HOST || "127.0.0.1";
+  createApp().listen(port, host, () => {
+    process.stdout.write(`AnyTravel listening on http://${host}:${port}\n`);
+  });
+}
 
-function setSecurityHeaders(response) {
+function setSecurityHeaders(request, response, env) {
   response.setHeader("content-type", "application/json; charset=utf-8");
   response.setHeader("cache-control", "no-store");
   response.setHeader("x-content-type-options", "nosniff");
-  response.setHeader("access-control-allow-origin", "*");
+  response.setHeader("referrer-policy", "strict-origin-when-cross-origin");
+  const origins = String(env.CORS_ALLOW_ORIGINS || "").split(",").map(value => value.trim()).filter(Boolean);
+  if (request.headers.origin && origins.includes(request.headers.origin)) {
+    response.setHeader("access-control-allow-origin", request.headers.origin);
+    response.setHeader("vary", "Origin");
+  }
   response.setHeader("access-control-allow-headers", "content-type");
   response.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
 }
 
-function enforceRateLimit(request) {
-  const ip = request.socket.remoteAddress || "unknown";
+function enforceRateLimit(request, rateBuckets, env) {
+  const forwarded = env.TRUST_PROXY === "true" ? String(request.headers["x-forwarded-for"] || "").split(",")[0].trim() : "";
+  const ip = forwarded || request.socket.remoteAddress || "unknown";
   const now = Date.now();
+  for (const [key, entry] of rateBuckets) if (now - entry.startsAt >= 60_000) rateBuckets.delete(key);
+  if (!rateBuckets.has(ip) && rateBuckets.size >= 5_000) {
+    const error = new Error("rate_limit"); error.code = "RATE_LIMIT"; throw error;
+  }
   const bucket = rateBuckets.get(ip) || { startsAt: now, count: 0 };
   if (now - bucket.startsAt >= 60_000) {
     bucket.startsAt = now;

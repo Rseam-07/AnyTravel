@@ -48,6 +48,7 @@ export interface TravelPlace {
 }
 
 export interface TicketQuote {
+  isStale?: boolean;
   provider: string;
   amountCNY?: number | null;
   capturedAt?: string;

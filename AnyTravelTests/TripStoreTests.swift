@@ -134,4 +134,38 @@ final class TripStoreTests: XCTestCase {
         XCTAssertTrue(store.trips.isEmpty)
         XCTAssertNotNil(store.lastErrorMessage)
     }
+
+    @MainActor
+    func testCorruptPrimaryFallsBackToBackupAndPreservesOriginalBeforeNextSave() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let fileURL = directory.appendingPathComponent("trips.json")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let first = SavedTrip(
+            title: "苏州 · 旧版本",
+            draft: TripDraft(destination: "苏州"),
+            destinationCenter: Coordinate(latitude: 31.2989, longitude: 120.5853),
+            days: []
+        )
+        let latest = SavedTrip(
+            title: "杭州 · 新版本",
+            draft: TripDraft(destination: "杭州"),
+            destinationCenter: Coordinate(latitude: 30.2741, longitude: 120.1551),
+            days: []
+        )
+        let writer = TripStore(fileURL: fileURL)
+        try writer.save(first)
+        try writer.save(latest)
+        try Data("{broken".utf8).write(to: fileURL, options: .atomic)
+
+        let recovered = TripStore(fileURL: fileURL)
+        XCTAssertEqual(recovered.trips.map(\.id), [first.id])
+        XCTAssertEqual(recovered.trips.first?.title, first.title)
+        XCTAssertTrue(recovered.lastErrorMessage?.contains("上次备份") == true)
+        try recovered.save(latest)
+
+        XCTAssertEqual(TripStore(fileURL: fileURL).trips.first?.title, latest.title)
+        XCTAssertEqual(try String(contentsOf: fileURL.appendingPathExtension("unreadable"), encoding: .utf8), "{broken")
+    }
 }

@@ -394,16 +394,16 @@ private fun PlannerPanelHost(
                     state = state,
                     onDraftChange = viewModel::updateDraft,
                     onGenerate = viewModel::generatePlan,
-                    dragHandleModifier = dragModifier,
-                    modifier = panelModifier
+                    modifier = dragModifier,
+                    panelModifier = panelModifier
                 )
             } else {
                 DraftPanel(
                     state = state,
                     onDraftChange = viewModel::updateDraft,
                     onGenerate = viewModel::generatePlan,
-                    dragHandleModifier = dragModifier,
-                    modifier = panelModifier
+                    modifier = dragModifier,
+                    panelModifier = panelModifier
                 )
             }
         } else {
@@ -411,8 +411,8 @@ private fun PlannerPanelHost(
                 state = state,
                 viewModel = viewModel,
                 compact = compact,
-                dragHandleModifier = dragModifier,
-                modifier = panelModifier
+                modifier = dragModifier,
+                panelModifier = panelModifier
             )
         }
     }
@@ -508,18 +508,18 @@ private fun CompactDraftPanel(
     state: PlannerUiState,
     onDraftChange: ((TripDraft) -> TripDraft) -> Unit,
     onGenerate: () -> Unit,
-    dragHandleModifier: Modifier,
-    modifier: Modifier = Modifier
+    modifier: Modifier,
+    panelModifier: Modifier = Modifier
 ) {
     Surface(
-        modifier = modifier.navigationBarsPadding().imePadding(),
+        modifier = panelModifier.navigationBarsPadding().imePadding(),
         shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
         tonalElevation = 12.dp,
         shadowElevation = 18.dp
     ) {
         Column(Modifier.padding(horizontal = 16.dp)) {
-            DragHandle(dragHandleModifier.height(32.dp))
+            DragHandle(modifier.height(32.dp))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = state.draft.destination,
@@ -548,12 +548,12 @@ private fun DraftPanel(
     state: PlannerUiState,
     onDraftChange: ((TripDraft) -> TripDraft) -> Unit,
     onGenerate: () -> Unit,
-    dragHandleModifier: Modifier,
-    modifier: Modifier = Modifier
+    modifier: Modifier,
+    panelModifier: Modifier = Modifier
 ) {
     var showDatePicker by remember { mutableStateOf(false) }
     Surface(
-        modifier = modifier.navigationBarsPadding().imePadding(),
+        modifier = panelModifier.navigationBarsPadding().imePadding(),
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
         tonalElevation = 12.dp,
@@ -564,7 +564,7 @@ private fun DraftPanel(
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            item { DragHandle(dragHandleModifier.height(32.dp)) }
+            item { DragHandle(modifier.height(32.dp)) }
             item {
                 Text("下一次旅行，你想前往哪里？", style = MaterialTheme.typography.headlineSmall)
                 Spacer(Modifier.height(6.dp))
@@ -777,25 +777,25 @@ private fun PlanPanel(
     state: PlannerUiState,
     viewModel: PlannerViewModel,
     compact: Boolean,
-    dragHandleModifier: Modifier,
-    modifier: Modifier = Modifier
+    modifier: Modifier,
+    panelModifier: Modifier = Modifier
 ) {
     val plan = state.plan ?: return
     val context = LocalContext.current
     Surface(
-        modifier = modifier.navigationBarsPadding(),
+        modifier = panelModifier.navigationBarsPadding(),
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
         tonalElevation = 12.dp,
         shadowElevation = 20.dp
     ) {
         if (compact) {
-            CompactPlanBar(state, viewModel, dragHandleModifier)
+            CompactPlanBar(state, viewModel, modifier)
             return@Surface
         }
         Column {
             Box(
-                dragHandleModifier
+                modifier
                     .fillMaxWidth()
                     .height(26.dp)
                     .clickable(role = Role.Button, onClick = viewModel::togglePanel)
@@ -895,11 +895,11 @@ private fun PlanPanel(
 }
 
 @Composable
-private fun CompactPlanBar(state: PlannerUiState, viewModel: PlannerViewModel, dragHandleModifier: Modifier) {
+private fun CompactPlanBar(state: PlannerUiState, viewModel: PlannerViewModel, modifier: Modifier) {
     var request by remember { mutableStateOf("") }
     Column(Modifier.padding(horizontal = 16.dp)) {
         Box(
-            dragHandleModifier.fillMaxWidth().height(32.dp).clickable(onClick = viewModel::togglePanel),
+            modifier.fillMaxWidth().height(32.dp).clickable(onClick = viewModel::togglePanel),
             contentAlignment = Alignment.Center
         ) { DragHandle() }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1480,6 +1480,7 @@ private fun SettingsSheet(
 ) {
     val context = LocalContext.current
     var url by remember(state.backendURL) { mutableStateOf(state.backendURL) }
+    var advanced by remember { mutableStateOf(false) }
     var assistantMode by remember(state.assistantMode) { mutableStateOf(state.assistantMode) }
     var customBaseURL by remember(state.customAssistantBaseURL) { mutableStateOf(state.customAssistantBaseURL) }
     var customModel by remember(state.customAssistantModel) { mutableStateOf(state.customAssistantModel) }
@@ -1492,13 +1493,17 @@ private fun SettingsSheet(
         ) {
             item {
                 Text("旅途偏好与价格渠道", style = MaterialTheme.typography.headlineSmall)
-                Text("内置公开数据源会直接读取当日酒店价、航班价与 12306 班次；自建节点可继续补充更多渠道。", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+                Text("规划和住行查询沿用应用预设，无需填写接口或密钥。选择不等于预订，付款前请在原平台复核价格与退改条件。", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
             }
+            item {
+                TextButton(onClick = { advanced = !advanced }) { Text(if (advanced) "收起自建服务设置" else "自建服务（高级选项）") }
+            }
+            if (advanced) {
             item {
                 OutlinedTextField(
                     value = url,
                     onValueChange = { url = it },
-                    label = { Text("AnyTravel 报价节点") },
+                    label = { Text("自建服务地址") },
                     placeholder = { Text("例如 http://10.0.2.2:8787/") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
@@ -1513,8 +1518,10 @@ private fun SettingsSheet(
             }
             state.backendHealthy?.let { healthy ->
                 item {
-                    DataBoundaryCard(if (healthy) "节点连接正常，可以刷新酒店与交通数据。" else "节点没有回应，请检查地址、网络与服务状态。")
+                    DataBoundaryCard(if (healthy) "已连接 AnyTravel，是否有房有票以每次查询为准。" else "在线服务暂未连接，内置规划仍可用，请稍后重试。")
                 }
+            }
+            item { TextButton(onClick = { onSaveURL(""); url = "" }) { Text("恢复应用预设") } }
             }
             item { HorizontalDivider() }
             item {
@@ -1534,7 +1541,7 @@ private fun SettingsSheet(
             }
             if (assistantMode == AssistantProviderMode.MANAGED) {
                 item {
-                    DataBoundaryCard("默认由 GLM-5.3-Flash 理解旅途语言；填写伴随服务地址时优先经由你的节点，否则由应用内置连接直达。")
+                    DataBoundaryCard("无需配置。只发送这次的问题与当前旅行条件；向导暂时不可用时，仍可继续本机基础规划。")
                 }
             } else {
                 item {

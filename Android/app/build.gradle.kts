@@ -1,4 +1,5 @@
 import java.util.Properties
+import groovy.json.JsonSlurper
 
 plugins {
     id("com.android.application")
@@ -11,8 +12,10 @@ val localSecrets = Properties().apply {
     if (source.isFile) source.inputStream().use(::load)
 }
 
-fun buildConfigString(name: String): String {
-    val value = (localSecrets.getProperty(name) ?: System.getenv(name) ?: "")
+val serviceDefaults = JsonSlurper().parse(rootProject.file("../Config/ServiceDefaults.json")) as Map<*, *>
+
+fun buildConfigString(name: String, fallback: String = ""): String {
+    val value = (localSecrets.getProperty(name) ?: System.getenv(name) ?: fallback)
         .replace("\\", "\\\\")
         .replace("\"", "\\\"")
     return "\"$value\""
@@ -42,14 +45,20 @@ android {
         buildConfigField("String", "MAP_STYLE_URL", "\"https://tiles.openfreemap.org/styles/liberty\"")
         buildConfigField("String", "MAP_LIGHT_STYLE_URL", "\"https://tiles.openfreemap.org/styles/positron\"")
         buildConfigField("String", "MAP_DARK_STYLE_URL", "\"https://tiles.openfreemap.org/styles/dark\"")
-        buildConfigField("String", "ROLLINGGO_API_KEY", buildConfigString("ROLLINGGO_API_KEY"))
-        buildConfigField("String", "AMAP_API_KEY", buildConfigString("AMAP_API_KEY"))
-        buildConfigField("String", "ZAI_API_KEY", buildConfigString("ZAI_API_KEY"))
+        buildConfigField("String", "SERVICE_BASE_URL", buildConfigString("ANYTRAVEL_SERVICE_URL", serviceDefaults["serviceBaseURL"] as? String ?: ""))
     }
 
     buildTypes {
+        debug {
+            buildConfigField("String", "ROLLINGGO_API_KEY", buildConfigString("ROLLINGGO_API_KEY"))
+            buildConfigField("String", "AMAP_API_KEY", buildConfigString("AMAP_API_KEY"))
+            buildConfigField("String", "ZAI_API_KEY", buildConfigString("ZAI_API_KEY"))
+        }
         release {
             isMinifyEnabled = false
+            buildConfigField("String", "ROLLINGGO_API_KEY", "\"\"")
+            buildConfigField("String", "AMAP_API_KEY", "\"\"")
+            buildConfigField("String", "ZAI_API_KEY", "\"\"")
             // Public preview builds stay installable without distributing a
             // private signing key. They run with release compiler settings;
             // the GitHub release still labels this debug-key signature clearly.

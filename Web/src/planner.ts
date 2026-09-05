@@ -352,6 +352,6 @@ export function bestQuote(quotes: ProviderQuote[]): ProviderQuote | undefined {
   return (
     quotes
       .filter((quote) => quote.amountCNY != null && quote.kind !== "demo")
-      .sort((a, b) => (a.amountCNY ?? 0) - (b.amountCNY ?? 0))[0] ?? quotes[0]
+      .sort((a, b) => Number(Boolean(a.isStale)) - Number(Boolean(b.isStale)) || (a.amountCNY ?? 0) - (b.amountCNY ?? 0))[0] ?? quotes[0]
   );
 }

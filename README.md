@@ -26,6 +26,8 @@ AnyTravel 是一款地图优先的开源 iOS 与 Android 旅行规划应用。�
 
 Web 版（开发中）：位于 [Web/](Web/README.md)，React + TypeScript + MapLibre GL，桌面为 Apple Maps 式大屏横排（左面板 + 全屏地图 + 底部轨道），移动端为三档底部面板；`cd Web && npm install && npm run dev` 后访问 `http://127.0.0.1:5182`。已跑通：目的地/条件输入、141 个国内目的地离线攻略、OSM 景点与营业时间、空间聚类方案、OSRM 耗时、天气、住宿比价、12306 去返程、去哪儿门票、自然语言白名单动作、费用对比、旅册、分享链接与可安装 PWA 外壳。
 
+1.0 当前以 [一次旅行可用性清单](Documentation/V1_USER_JOURNEY_CHECKLIST.md) 逐项验收。目标是三端全新安装后直接规划、编辑、保存并查询住行，不要求用户理解 API、Key 或本机节点；公网服务、正规签名和真机矩阵未通过前不会把预览包称为 1.0。
+
 <p align="center">
   <img src="Documentation/Screenshots/android-welcome.png" width="30%" alt="Android 欢迎页">
   <img src="Documentation/Screenshots/android-plan.png" width="30%" alt="Android 地图方案">
@@ -107,7 +109,7 @@ set -a; source .env; set +a
 npm start
 ```
 
-随后在 App 的“旅途偏好与价格渠道”中填写节点地址。模拟器可用 `http://127.0.0.1:8787/`；真机需使用同一局域网内电脑的 IP。携程采集前运行 `npm run login:ctrip`，同程采集前运行 `npm run login:tongcheng`，都由用户在弹出的浏览器里完成登录或验证。托管智能向导需要在 `.env` 配置 `ZAI_API_KEY`；高德补充搜索需要平台类型为“Web 服务”的 `AMAP_API_KEY`。完整请求示例见 [Backend/README.md](Backend/README.md)。
+开发调试可以在 App 的“高级设置”填写本机节点；正式 1.0 从 `Config/ServiceDefaults.json` 读取公共 HTTPS 地址，普通用户无需填写。携程采集前运行 `npm run login:ctrip`，同程采集前运行 `npm run login:tongcheng`，都由用户在弹出的浏览器里完成登录或验证。托管智能向导和高德地点补充的凭据只放服务端环境变量。完整请求示例见 [Backend README](Backend/README.md)，生产部署与门禁见 [公共服务部署](Documentation/PRODUCTION_SERVICE.md)。
 
 ## 验证
 
@@ -126,6 +128,8 @@ cd Backend && npm test
 ```
 
 0.8.2 验证结果：iOS 常规单元套件执行 86 项，其中 3 项联网用例按设计跳过，其余 83 项通过；界面套件执行 18 项，其中 2 项联网用例按设计跳过，其余 16 项通过。Android 常规单元套件执行 27 项，其中 2 项联网用例按设计跳过，其余 25 项通过；lint 与 Release 通用 APK 构建通过。Backend 53/53、Web 7/7、生产构建和国内目的地知识库校验通过。另行启用联网后，iOS 3 项价格源测试与 2 项价格卡片界面测试全部通过，0 跳过；Android 1 项真实聚合测试通过。iOS 设备 Release 构建通过。当前构建机没有 Android 设备或 emulator/system image，Xperia 1 II 与 connected Compose 仍未做设备级验收。发布与真机边界见 [接力交接](Documentation/HANDOFF.md)。
+
+当前未发布的 1.0 基础改动验证结果：Web 20/20、Backend 58/58；Android 共 32 项，其中 2 项联网用例按设计跳过、其余 30 项通过，Debug lint 无问题并完成 Release APK 构建；iOS 共 89 项，其中 3 项联网报价用例按设计跳过、其余 86 项通过，并完成未签名设备 Release 构建。公网默认服务地址、正式签名与真机矩阵仍未满足，因此这些结果不等同于 1.0 已发布。完整缺口与执行顺序见 [1.0 可用性清单](Documentation/V1_USER_JOURNEY_CHECKLIST.md)。
 
 0.6.3 发布前验证结果：57/57 iOS 单元测试、16/16 XCUITest、29/29 Node 测试通过。iPhone 17 Pro / iOS 26.5 模拟器覆盖 Apple 地图式三档面板拖拽、最小档自然语言输入、最大档内容浏览、人数和往返日期双向调整、自动规划地点去重，以及重置、设置、旅册、定位、地图样式和北向按钮的真实点击闭环；浅色偏好页和浅色/深色完整方案均完成截图检查。设备 Release 构建产物为 0.6.3（12）。所有服务端密钥只保存在被 Git 忽略的节点环境文件中。
 

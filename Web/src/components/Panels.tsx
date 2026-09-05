@@ -127,8 +127,7 @@ export function PlanPanel({ compact = false }: { compact?: boolean }) {
             title="存进旅册"
             aria-label="存进旅册"
             onClick={() => {
-              saveTrip();
-              setNotice("行程已收进旅册。");
+              if (saveTrip()) setNotice("完整方案已收进旅册。");
             }}
           >
             <Save size={17} aria-hidden="true" />
@@ -214,6 +213,7 @@ export function PlanPanel({ compact = false }: { compact?: boolean }) {
                     {ticket?.amountCNY != null && (
                       <span>
                         <Ticket size={13} aria-hidden="true" />门票起价 <b>{formatCNY(ticket.amountCNY)}</b>
+                        {ticket.isStale && <span className="stale-tag">历史记录，待刷新</span>}
                         {ticket.bookingURL && (
                           <a className="link-btn" href={ticket.bookingURL} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
                             查看来源
@@ -358,7 +358,7 @@ export function AccommodationPanel() {
         <details style={{ marginBottom: 10 }} open={false}>
           <summary className="chip-btn" style={{ cursor: "pointer" }}>
             价格渠道：{liveProviders.size > 0 ? `${liveProviders.size} 个可用` : "尚未接通"}
-            <span style={{ marginLeft: 6, opacity: 0.7 }}>（展开看哪些渠道缺配置）</span>
+            <span style={{ marginLeft: 6, opacity: 0.7 }}>（展开查看详情）</span>
           </summary>
           <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
             {state.accommodationIssues.map((issue, i) => (
@@ -366,7 +366,7 @@ export function AccommodationPanel() {
                 {issue.providerTitle}：{issue.detail ?? issue.status}
               </div>
             ))}
-            <div className="sub-text">配置方法见“设置 → 价格渠道健康”；启动本机节点后即可接通。</div>
+            <div className="sub-text">已有路线和保存内容不受影响；稍后刷新会继续尝试可用渠道。</div>
           </div>
         </details>
       )}
@@ -396,7 +396,7 @@ export function AccommodationPanel() {
         </div>
       )}
       {items.length === 0 && state.accommodationIssues.length === 0 && (
-        <div className="empty-note">正在等待住宿目录…如果一直没有结果，请检查设置的节点地址与渠道配置。</div>
+        <div className="empty-note">正在等待住宿信息…如果暂时没有结果，可以稍后重试或调整日期。</div>
       )}
       {sorted.map((item) => (
         <StayCard
@@ -446,6 +446,7 @@ function StayCard({
               <span className={`price ${quote.amountCNY == null ? "muted" : ""}`}>{formatCNY(quote.amountCNY)}</span>
               <span className="price-unit">{quote.unit === "total" ? "/总价" : "/晚"}</span>
               {quote.providerTitle && <span className="provider-tag">{quote.providerTitle}</span>}
+              {quote.isStale && <span className="stale-tag">历史价格</span>}
               {quote.roomName && (
                 <span className="provider-tag" style={{ maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis" }}>
                   {quote.roomName}
@@ -542,6 +543,7 @@ export function TransportPanel({ onGoConditions }: { onGoConditions?: () => void
               <span className={`price ${quote?.amountCNY == null ? "muted" : ""}`}>{quote ? formatCNY(quote.amountCNY) : "等待报价"}</span>
               <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
                 {quote && <span className="provider-tag">{quote.providerTitle}</span>}
+                {quote?.isStale && <span className="stale-tag">历史价格</span>}
                 {quote?.bookingURL && (
                   <a className="link-btn" href={quote.bookingURL} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
                     购买页

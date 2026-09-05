@@ -1,6 +1,20 @@
 import Foundation
 
 enum EmbeddedServiceConfiguration {
+    static var serviceURL: String {
+        let override = value(infoKey: "AnyTravelServiceURL", environmentKey: "ANYTRAVEL_SERVICE_URL")
+        return override.isEmpty ? publicDefaultsURL : override
+    }
+
+    private static let publicDefaultsURL: String = {
+        guard let url = Bundle.main.url(forResource: "ServiceDefaults", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let values = try? JSONDecoder().decode(PublicDefaults.self, from: data) else { return "" }
+        return values.serviceBaseURL
+    }()
+
+    private struct PublicDefaults: Decodable { var serviceBaseURL: String }
+
     static var rollingGoAPIKey: String {
         value(infoKey: "AnyTravelRollingGoAPIKey", environmentKey: "ROLLINGGO_API_KEY")
     }

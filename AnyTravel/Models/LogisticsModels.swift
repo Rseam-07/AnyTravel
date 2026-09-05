@@ -535,7 +535,7 @@ enum QuoteRefreshState: Equatable, Sendable {
         switch self {
         case .idle: "价格会在条件齐全后抵达"
         case .needsDates: "日期还没有落定"
-        case .needsService: "报价驿站尚未连接"
+        case .needsService: "在线价格暂时没有抵达"
         case .stale: "行程刚刚有了变化"
         case .refreshing: "正在带回这一刻的价格"
         case .updated: "这一刻的价格已经抵达"
@@ -548,11 +548,11 @@ enum QuoteRefreshState: Equatable, Sendable {
     var detail: String {
         switch self {
         case .idle:
-            "添上日期并连接报价节点后，可以读取渠道报价。"
+            "添上日期后，应用会自动读取当前渠道报价。"
         case .needsDates:
             "添上出发与返程日，才能按当日库存核价。"
         case .needsService:
-            "在设置中填入开源报价节点地址，密钥仍只留在服务端。"
+            "已有路线仍可查看。可以稍后重试；普通使用不需要填写任何接口。"
         case let .stale(message), let .failed(message):
             message
         case .refreshing:
@@ -582,7 +582,7 @@ enum QuoteRefreshState: Equatable, Sendable {
     var actionTitle: String? {
         switch self {
         case .idle, .needsDates: "补充条件"
-        case .needsService: "去连接"
+        case .needsService: "查看状态"
         case .stale, .partial, .noResults, .failed: "再试一次"
         case .refreshing, .updated: nil
         }

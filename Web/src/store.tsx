@@ -51,6 +51,9 @@ import { catalogPlaces } from "./catalog";
 import { knowledgeCitiesRef, knowledgePlaces, lookupCity, lookupCityCoordinate } from "./knowledge";
 import { normalizeActionType, parseAssistantEnvelope, partialAssistantReply, type AssistantAction } from "./chat";
 
+import { AUTOSAVE_KEY, readTripStorage, restoredSnapshot, snapshotTrip, validDraft, writeTripStorage, type SavedTrip } from "./trip-storage";
+import { hotelCheckOut, pickPreferredTransport, preserveSelectedItem, quoteTripKey, staleTicketQuotes } from "./quote-refresh";
+
 export type Phase = "welcome" | "compose" | "planning" | "ready" | "failure";
 
 export interface Focus {
@@ -59,12 +62,6 @@ export interface Focus {
   coordinate?: Coord;
 }
 
-export interface SavedTrip {
-  id: string;
-  title: string;
-  savedAt: string;
-  draft: TripDraft;
-}
 
 interface AppState {
   settings: WebSettings;
@@ -91,6 +88,9 @@ interface AppState {
   chatOpen: boolean;
   chatBusy: boolean;
   savedTrips: SavedTrip[];
+  recoveryTrip: SavedTrip | null;
+  currentTripID: string;
+  storageIssue: string | null;
   lastPlanCost: number | null;
 }
 
@@ -137,6 +137,9 @@ const initialState = (): AppState => ({
   chatOpen: false,
   chatBusy: false,
   savedTrips: [],
+  recoveryTrip: null,
+  currentTripID: crypto.randomUUID(),
+  storageIssue: null,
   lastPlanCost: null
 });
 
@@ -199,7 +202,9 @@ interface AppApi {
   saveSettings: (settings: WebSettings) => void;
   toggleChat: (open?: boolean) => void;
   sendChat: (text: string) => Promise<string>;
-  saveTrip: () => void;
+  saveTrip: () => boolean;
+  restoreDeletedTrip: (id: string) => void;
+  restoreLastSession: () => void;
   loadTrip: (id: string) => void;
   deleteTrip: (id: string) => void;
   shareURL: () => string;
@@ -214,22 +219,13 @@ export function useApp(): AppApi {
   return api;
 }
 
-const TRIP_KEY = "anytravel-web:trips";
 const DRAFT_KEY = "anytravel-web:draft";
-
-function loadTrips(): SavedTrip[] {
-  try {
-    const raw = localStorage.getItem(TRIP_KEY);
-    return raw ? (JSON.parse(raw) as SavedTrip[]) : [];
-  } catch {
-    return [];
-  }
-}
 
 function loadSavedDraft(): TripDraft | null {
   try {
     const raw = localStorage.getItem(DRAFT_KEY);
-    return raw ? (JSON.parse(raw) as TripDraft) : null;
+    const draft: unknown = raw ? JSON.parse(raw) : null;
+    return validDraft(draft) ? draft : null;
   } catch {
     return null;
   }
@@ -295,6 +291,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const stateRef = useRef({ ...state, lastChatReply: undefined as string | undefined });
   stateRef.current = { ...state, lastChatReply: stateRef.current.lastChatReply } as never;
   const [chatStream, setChatStream] = useState<string | null>(null);
+  const quoteRequestRef = useRef(0);
 
   const updateDraft = useCallback((patch: Partial<TripDraft>) => {
     stateRef.current.draft = { ...stateRef.current.draft, ...patch };
@@ -533,10 +530,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const draft = stateRef.current.draft;
     const base = stateRef.current.settings.backendURL;
     const plan = stateRef.current.plan;
-
-    let catalogItems: AccommodationOption[] = [];
-    let transportItems: TransportOption[] = [];
-    let backendSucceeded = false;
+    const requestID = ++quoteRequestRef.current;
+    const tripKey = quoteTripKey(draft, plan?.generatedAt);
 
     if (!draft.startDate) {
       dispatch({
@@ -552,73 +547,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Accommodation catalog via companion node (browser never holds provider keys).
-    try {
-      const catalog = await fetchAccommodationCatalog(base, {
+    const accommodationRequest = draft.skipAccommodation
+      ? Promise.resolve({ attempted: false, succeeded: true, items: [] as AccommodationOption[], issues: [] as ProviderIssue[] })
+      : fetchAccommodationCatalog(base, {
         destination: draft.destination,
         checkIn: draft.startDate,
-        checkOut: draft.startDate ? addDays(draft.startDate, draft.dayCount) : undefined,
+        checkOut: hotelCheckOut(draft.startDate, draft.dayCount),
         adults: draft.travelers,
         rooms: Math.max(Math.ceil(draft.travelers / 2), 1),
         size: 20,
         anchors: plan?.days.flatMap((d) => d.stops.map((s) => s.place.name)).slice(0, 6) ?? []
-      });
-      backendSucceeded = true;
-      const items: AccommodationOption[] = catalog.hotels.map((hotel) => ({
-        id: hotel.providerHotelID,
-        name: hotel.name,
-        brand: hotel.brand,
-        address: hotel.address,
-        coordinate:
-          hotel.latitude != null && hotel.longitude != null
-            ? { lat: hotel.latitude, lng: hotel.longitude }
-            : undefined,
-        starRating: hotel.starRating ?? undefined,
-        description: hotel.description,
-        imageURL: hotel.imageURL,
-        amenities: hotel.amenities,
-        tags: hotel.tags,
-        quotes: offersToQuotes(hotel),
-        nameDistanceMeters: 0,
-        nameMeters: 0
+      }).then(catalog => ({
+        attempted: true, succeeded: true,
+        items: catalog.hotels.map<AccommodationOption>((hotel) => ({
+          id: hotel.providerHotelID, name: hotel.name, brand: hotel.brand, address: hotel.address,
+          coordinate: hotel.latitude != null && hotel.longitude != null ? { lat: hotel.latitude, lng: hotel.longitude } : undefined,
+          starRating: hotel.starRating ?? undefined, description: hotel.description, imageURL: hotel.imageURL,
+          amenities: hotel.amenities, tags: hotel.tags, quotes: offersToQuotes(hotel), nameDistanceMeters: 0, nameMeters: 0
+        })),
+        issues: catalog.diagnostics.map(d => ({ ...d, providerTitle: providerDisplayName(d.provider) }))
+      })).catch(error => ({
+        attempted: true, succeeded: false, items: [] as AccommodationOption[],
+        issues: [{ provider: "service", providerTitle: "在线住宿服务", status: "failed", detail: error instanceof Error ? error.message : String(error) }]
       }));
-      catalogItems = items;
-      dispatch({ type: "setAccommodations", items, issues: catalog.diagnostics.map((d) => ({ ...d, providerTitle: providerDisplayName(d.provider) })) });
-    } catch (error) {
-      dispatch({
-        type: "setAccommodations",
-        items: [],
-        issues: [{ provider: "节点", providerTitle: "报价节点", status: "failed", detail: error instanceof Error ? error.message : String(error) }]
-      });
-    }
 
-    // Transport: railway + flights from the companion node.
-    if (!draft.skipTransport && draft.origin) {
-      try {
-        const transport = await fetchTransport(base, {
+    const transportRequest = draft.skipTransport || !draft.origin
+      ? Promise.resolve({ attempted: false, succeeded: true, items: [] as TransportOption[], issues: [] as ProviderIssue[] })
+      : fetchTransport(base, {
           origin: draft.origin,
           destination: draft.destination,
           departureDate: draft.startDate,
-          returnDate: draft.startDate ? addDays(draft.startDate, draft.dayCount - 1) : undefined,
+          returnDate: addDays(draft.startDate, draft.dayCount - 1),
           adults: draft.travelers,
           modes: ["train", "flight"]
-        });
-        backendSucceeded = true;
-        const items = transport.options.map(toTransportOption);
-        transportItems = items;
-        dispatch({
-          type: "setTransports",
-          items,
-          issues: transport.diagnostics.map((d) => ({ ...d, providerTitle: providerDisplayName(d.provider) }))
-        });
-      } catch (error) {
-        dispatch({
-          type: "setTransports",
-          items: [],
-          issues: [{ provider: "节点", providerTitle: "报价节点", status: "failed", detail: error instanceof Error ? error.message : String(error) }]
-        });
-      }
-    }
+        }).then(transport => ({
+          attempted: true, succeeded: true, items: transport.options.map(toTransportOption),
+          issues: transport.diagnostics.map(d => ({ ...d, providerTitle: providerDisplayName(d.provider) }))
+        })).catch(error => ({
+          attempted: true, succeeded: false, items: [] as TransportOption[],
+          issues: [{ provider: "service", providerTitle: "在线交通服务", status: "failed", detail: error instanceof Error ? error.message : String(error) }]
+        }));
 
     // Tickets for planned stops.
     const stopNames = plan?.days.flatMap((day) => day.stops
@@ -629,14 +597,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         address: stop.place.address,
         interest: stop.place.interest
       }))) ?? [];
-    if (stopNames.length > 0) {
-      try {
-        const tickets = await fetchTickets(base, {
+    const ticketRequest = stopNames.length === 0
+      ? Promise.resolve({ attempted: false, succeeded: true, tickets: {} as Record<string, TicketQuote>, issues: [] as ProviderIssue[] })
+      : fetchTickets(base, {
           destination: draft.destination,
           visitDate: draft.startDate,
           attractions: stopNames
-        });
-        backendSucceeded = true;
+        }).then(tickets => {
         const map: Record<string, TicketQuote> = {};
         for (const q of tickets.quotes) {
           const place = stopNames.find((s) => s.id === q.attractionID || s.name === q.name);
@@ -650,20 +617,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
             };
           }
         }
-        dispatch({ type: "setTickets", tickets: map, issues: tickets.diagnostics.map((d) => ({ ...d, providerTitle: providerDisplayName(d.provider) })) });
-      } catch {
-        /* tickets are best-effort */
-      }
-    }
+        return { attempted: true, succeeded: true, tickets: map,
+          issues: tickets.diagnostics.map(d => ({ ...d, providerTitle: providerDisplayName(d.provider) })) };
+      }).catch(error => ({
+        attempted: true, succeeded: false, tickets: {} as Record<string, TicketQuote>,
+        issues: [{ provider: "service", providerTitle: "在线门票服务", status: "failed", detail: error instanceof Error ? error.message : String(error) }]
+      }));
 
-    // Help the traveller finish the decisions: auto-select the best quote when
-    // nothing has been picked yet (user choices are never overwritten).
+    // Run independent searches together, then commit once. A slow response from
+    // an older city or date is discarded instead of being painted over a new trip.
+    const [accommodationResult, transportResult, ticketResult] = await Promise.all([
+      accommodationRequest, transportRequest, ticketRequest
+    ]);
+    if (requestID !== quoteRequestRef.current || quoteTripKey(stateRef.current.draft, stateRef.current.plan?.generatedAt) !== tripKey) return;
+
     const current = stateRef.current;
+    const catalogItems = draft.skipAccommodation ? [] : preserveSelectedItem(
+      accommodationResult.items, current.accommodations, current.selectedAccommodationID, accommodationResult.succeeded
+    );
+    const transportItems = draft.skipTransport ? [] : preserveSelectedItem(
+      transportResult.items, current.transports,
+      current.selectedOutboundID ?? current.selectedReturnID, transportResult.succeeded
+    );
+    // Preserve both directions independently if either chosen option disappeared.
+    const finalTransportItems = draft.skipTransport
+      ? []
+      : preserveSelectedItem(transportItems, current.transports, current.selectedReturnID, transportResult.succeeded);
+    const finalTickets = ticketResult.succeeded ? ticketResult.tickets : staleTicketQuotes(current.tickets);
+
     let selectedAccommodationID = current.selectedAccommodationID;
     let selectedOutboundID = current.selectedOutboundID;
     let selectedReturnID = current.selectedReturnID;
     const picks: string[] = [];
-    if (!selectedAccommodationID || !catalogItems.find((a) => a.id === selectedAccommodationID)) {
+    if (!draft.skipAccommodation && !selectedAccommodationID) {
       const priced = catalogItems
         .flatMap((a) => a.quotes
           .filter((q) => q.amountCNY != null && q.kind !== "demo")
@@ -672,35 +658,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
       selectedAccommodationID = priced?.id ?? null;
       if (priced) picks.push(`住宿：${priced.title} ¥${priced.amount}/晚（${priced.provider}）`);
     }
-    if (!selectedOutboundID || !transportItems.find((t) => t.id === selectedOutboundID)) {
-      const outbound = pickBestTransport(transportItems.filter((t) => t.direction === "outbound"));
+    if (!draft.skipTransport && !selectedOutboundID) {
+      const outbound = pickPreferredTransport(finalTransportItems.filter(t => t.direction === "outbound"), draft.longDistanceMode);
       selectedOutboundID = outbound?.id ?? null;
       if (outbound) picks.push(`去程：${summarizeTransport(outbound)}`);
     }
-    if (!selectedReturnID || !transportItems.find((t) => t.id === selectedReturnID)) {
-      const retur = pickBestTransport(transportItems.filter((t) => t.direction === "return"));
+    if (!draft.skipTransport && !selectedReturnID) {
+      const retur = pickPreferredTransport(finalTransportItems.filter(t => t.direction === "return"), draft.longDistanceMode);
       selectedReturnID = retur?.id ?? null;
       if (retur) picks.push(`返程：${summarizeTransport(retur)}`);
     }
-    dispatch({
-      type: "patch",
-      patch: {
-        selectedAccommodationID,
-        selectedOutboundID,
-        selectedReturnID,
-        backendReachable: backendSucceeded,
-        notice: picks.length > 0 ? `已帮你预选：${picks.join("；")}。都可以在对应页更换。` : null
-      }
-    });
+    const backendSucceeded = [accommodationResult, transportResult, ticketResult].some(result => result.attempted && result.succeeded);
+    const patch = {
+      accommodations: catalogItems, accommodationIssues: accommodationResult.issues,
+      transports: finalTransportItems, transportIssues: transportResult.issues,
+      tickets: finalTickets, ticketIssues: ticketResult.issues,
+      selectedAccommodationID, selectedOutboundID, selectedReturnID,
+      backendReachable: backendSucceeded || current.backendReachable,
+      notice: picks.length > 0 ? `已帮你预选：${picks.join("；")}。都可以在对应页更换。` : null
+    };
+    Object.assign(stateRef.current, patch);
+    dispatch({ type: "patch", patch });
   }, []);
-
-function pickBestTransport<T extends { mode: string; quotes: { amountCNY?: number | null; kind?: string }[]; durationMinutes?: number }>(list: T[]): T | null {
-  if (list.length === 0) return null;
-  const priced = list
-    .filter((t) => t.mode === "train" && t.quotes.some((q) => q.amountCNY != null))
-    .sort((a, b) => (a.durationMinutes ?? 9999) - (b.durationMinutes ?? 9999))[0];
-  return priced ?? list[0];
-}
 
 function summarizeTransport<T extends { title: string; quotes: { amountCNY?: number | null; providerTitle: string }[] }>(option: T): string {
   const quote = option.quotes.find((q) => q.amountCNY != null);
@@ -953,54 +932,57 @@ function summarizeTransport<T extends { title: string; quotes: { amountCNY?: num
     [generatePlan, resolveDestination]
   );
 
-  const saveTrip = useCallback(() => {
-    const draft = stateRef.current.draft;
-    if (!draft.destination) return;
-    const trips = stateRef.current.savedTrips;
-    const trip: SavedTrip = {
-      id: `${Date.now()}`,
-      title: `${draft.destination} · ${draft.dayCount}天${draft.travelers}人`,
-      savedAt: new Date().toISOString(),
-      draft: { ...draft }
-    };
-    const next = [trip, ...trips].slice(0, 20);
-    localStorage.setItem(TRIP_KEY, JSON.stringify(next));
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-    dispatch({ type: "patch", patch: { savedTrips: next, notice: null } });
+  const reportStorageFailure = useCallback((error: unknown) => {
+    const detail = error instanceof Error && error.message.includes("原记录") ? error.message : "本机存储未能写入，可能空间不足或被隐私设置限制。当前页面的安排仍在，请先保留页面或打印导出。";
+    dispatch({ type: "patch", patch: { storageIssue: detail } });
   }, []);
 
-  const loadTrip = useCallback((id: string) => {
-    const trip = stateRef.current.savedTrips.find((t) => t.id === id);
-    if (!trip) return;
+  const saveTrip = useCallback((): boolean => {
+    const current = stateRef.current;
+    if (!current.draft.destination) return false;
+    const trip = snapshotTrip(current, current.currentTripID);
+    const next = [trip, ...current.savedTrips.filter(t => t.id !== trip.id)];
+    try {
+      writeTripStorage(localStorage, next);
+      stateRef.current.savedTrips = next;
+      dispatch({ type: "patch", patch: { savedTrips: next, storageIssue: null, notice: "完整方案已存入本机旅册。清理浏览器数据会移除本机记录。" } });
+      return true;
+    } catch (error) { reportStorageFailure(error); return false; }
+  }, [reportStorageFailure]);
+
+  const restoreTrip = useCallback((trip: SavedTrip) => {
+    const snapshot = restoredSnapshot(trip);
     const patch: Partial<AppState> = {
-      draft: trip.draft,
-      phase: "compose",
-      places: [],
-      plan: null,
-      accommodations: [],
-      accommodationIssues: [],
-      transports: [],
-      transportIssues: [],
-      tickets: {},
-      ticketIssues: [],
-      weather: null,
-      focus: null,
-      selectedDay: 0,
-      selectedAccommodationID: null,
-      selectedOutboundID: null,
-      selectedReturnID: null,
-      notice: "已载入行程条件，重新生成后会取得对应城市的地点与报价。"
+      ...snapshot, currentTripID: trip.id, draft: trip.draft, phase: snapshot.plan ? "ready" : "compose",
+      accommodationIssues: [], transportIssues: [], ticketIssues: [], weather: null,
+      focus: { kind: "destination", coordinate: trip.draft.destinationCoord }, failureDetail: null,
+      recoveryTrip: null, chatBusy: false,
+      notice: snapshot.plan ? "已恢复原方案与选择，未重新排行程。保存的价格是历史记录，购买前请刷新复核。" : "已恢复行程条件，可以接着规划。"
     };
     Object.assign(stateRef.current, patch);
     dispatch({ type: "patch", patch });
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(trip.draft));
   }, []);
 
-  const deleteTrip = useCallback((id: string) => {
-    const next = stateRef.current.savedTrips.filter((t) => t.id !== id);
-    localStorage.setItem(TRIP_KEY, JSON.stringify(next));
-    dispatch({ type: "patch", patch: { savedTrips: next } });
-  }, []);
+  const loadTrip = useCallback((id: string) => {
+    const trip = stateRef.current.savedTrips.find(t => t.id === id && !t.deletedAt);
+    if (trip) restoreTrip(trip);
+  }, [restoreTrip]);
+
+  const restoreLastSession = useCallback(() => {
+    const trip = stateRef.current.recoveryTrip;
+    if (trip) restoreTrip(trip);
+  }, [restoreTrip]);
+
+  const changeDeletedState = useCallback((id: string, deleted: boolean) => {
+    const next = stateRef.current.savedTrips.map(t => t.id === id ? { ...t, deletedAt: deleted ? new Date().toISOString() : undefined } : t);
+    try {
+      writeTripStorage(localStorage, next);
+      stateRef.current.savedTrips = next;
+      dispatch({ type: "patch", patch: { savedTrips: next, storageIssue: null } });
+    } catch (error) { reportStorageFailure(error); }
+  }, [reportStorageFailure]);
+  const deleteTrip = useCallback((id: string) => changeDeletedState(id, true), [changeDeletedState]);
+  const restoreDeletedTrip = useCallback((id: string) => changeDeletedState(id, false), [changeDeletedState]);
 
   const shareURL = useCallback((): string => {
     const draft = stateRef.current.draft;
@@ -1017,29 +999,48 @@ function summarizeTransport<T extends { title: string; quotes: { amountCNY?: num
   }, []);
 
   useEffect(() => {
-    const saved = loadTrips();
-    dispatch({ type: "patch", patch: { savedTrips: saved } });
-    // Share link restore.
+    const saved = readTripStorage(localStorage);
+    const recovery = readTripStorage(localStorage, AUTOSAVE_KEY);
+    const patch = { savedTrips: saved.trips, recoveryTrip: recovery.trips[0] ?? null, storageIssue: saved.issue ?? recovery.issue };
+    Object.assign(stateRef.current, patch);
+    dispatch({ type: "patch", patch });
     const match = location.hash.match(/#t=(.+)/);
     if (match) {
       try {
-        const parsed = JSON.parse(decodeURIComponent(escape(atob(match[1])))) as { draft: TripDraft };
-        if (parsed.draft?.destination) {
-          dispatch({ type: "patch", patch: { draft: { ...emptyDraft(), ...parsed.draft }, phase: "compose" } });
+        const parsed = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(match[1]))))) as { draft: unknown };
+        if (validDraft(parsed.draft)) {
+          const shared = { draft: { ...emptyDraft(), ...parsed.draft }, phase: "compose" as const };
+          Object.assign(stateRef.current, shared);
+          dispatch({ type: "patch", patch: shared });
         }
-      } catch {
-        /* ignore malformed share payloads */
-      }
+      } catch { dispatch({ type: "patch", patch: { storageIssue: "这个分享链接未能读取，本机行程没有改变。" } }); }
     }
-    void refreshChannels();
-    // Draft persistence on change (debounced).
-  }, [refreshChannels]);
+  }, []);
+
+  const persistCurrentSession = useCallback(() => {
+    const current = stateRef.current;
+    if (current.phase === "welcome" || !current.draft.destination) return;
+    try {
+      writeTripStorage(localStorage, [snapshotTrip(current, current.currentTripID)], AUTOSAVE_KEY);
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(current.draft));
+    } catch (error) { reportStorageFailure(error); }
+  }, [reportStorageFailure]);
 
   useEffect(() => {
-    if (state.draft.destination) {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify(state.draft));
-    }
-  }, [state.draft]);
+    const timer = window.setTimeout(persistCurrentSession, 500);
+    return () => window.clearTimeout(timer);
+  }, [state.draft, state.plan, state.places, state.accommodations, state.transports, state.tickets,
+    state.selectedDay, state.selectedAccommodationID, state.selectedOutboundID, state.selectedReturnID, persistCurrentSession]);
+
+  useEffect(() => {
+    const onVisibility = () => { if (document.visibilityState === "hidden") persistCurrentSession(); };
+    window.addEventListener("pagehide", persistCurrentSession);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", persistCurrentSession);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [persistCurrentSession]);
 
   // Auto refresh channels when backend URL changes.
   useEffect(() => {
@@ -1070,6 +1071,8 @@ function summarizeTransport<T extends { title: string; quotes: { amountCNY?: num
       saveTrip,
       loadTrip,
       deleteTrip,
+      restoreDeletedTrip,
+      restoreLastSession,
       shareURL,
       resetAll
     }),
@@ -1095,6 +1098,8 @@ function summarizeTransport<T extends { title: string; quotes: { amountCNY?: num
       saveTrip,
       loadTrip,
       deleteTrip,
+      restoreDeletedTrip,
+      restoreLastSession,
       shareURL,
       resetAll
     ]

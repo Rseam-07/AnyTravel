@@ -1,6 +1,8 @@
 # AnyTravel 通往 1.0 的完整方案（目标、盘点、规划器改造、工作流与里程碑）
 
 > 状态：2026-09-03 更新，作为三平台（iOS / Android / Web）同步推进到 1.0 的作战方案。
+
+> 2026-09-05 起，用户任务、信任和发布条件以 [1.0 一次旅行可用性清单](V1_USER_JOURNEY_CHECKLIST.md) 为验收主表；本文保留架构背景与长期里程碑。清单明确修正了“用户会配置即算可用”和“无签名 IPA 即算大众发布”的旧口径。
 > 原则：每一条缺口的结论都标注依据（代码/文档/实测）。"完成"只认设备上的真实任务闭环，不认静态入口或演示数据。
 >
 > 配套文档：[FEATURE_ROADMAP](FEATURE_ROADMAP.md)（现状对照）、[ITINERARY_PLANNING_MODEL](ITINERARY_PLANNING_MODEL.md)（建模）、[CROSS_PLATFORM_ARCHITECTURE](CROSS_PLATFORM_ARCHITECTURE.md)（三端架构）、[CIRCLE_TRIP_REFERENCE_AUDIT](CIRCLE_TRIP_REFERENCE_AUDIT.md)（参考审计）、[DATA_CHANNELS](DATA_CHANNELS.md)（渠道）、[HANDOFF](HANDOFF.md)（接管基线）。
@@ -123,7 +125,7 @@ Android 0.8 已具备：欢迎、偏好、单城市规划、141 个国内目的�
 12. 性能与无障碍：VoiceOver/TalkBack 全流程、大字体、弱网重试、冷启动 <2.5s、面板拖拽减少动态效果降级。
 
 ### 3.4 发布
-13. iOS 无签名 IPA + tag + GitHub Release；Android 生产签名 + Play/侧载双通道说明；Web 部署到可访问域名（GitHub Pages 或自托管）。
+13. iOS 使用可供普通用户安装和升级的正规签名分发；Android 使用稳定生产签名并提供 Play/侧载说明；Web 与公共服务部署到真实 HTTPS 域名。tag、GitHub Release 或无签名安装包只能算构建产物，不能单独证明 1.0 已可交付。
 14. 渠道健康卡（后端 `/health` 扩展为三端可见的"我的价格源状态"页面）：每个渠道 configured/disabled/login/verified/limited，用户可一键引导修复（打开登录页/填凭据）。
 
 ---

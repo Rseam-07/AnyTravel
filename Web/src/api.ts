@@ -4,8 +4,9 @@
 // fallback only; Nominatim / Open-Meteo / OSRM are open services.
 
 import type { ChannelStatus, Coord, Interest, ProviderIssue, WeatherDay } from "./types";
+import { isLegacyLocalService, resolveServiceURL } from "./service-config";
 
-export const DEFAULT_BACKEND_URL = "http://127.0.0.1:8787/";
+export const DEFAULT_BACKEND_URL = resolveServiceURL("", __ANYTRAVEL_SERVICE_URL__, globalThis.location?.origin ?? "");
 export const DEEPSEEK_BASE_URL = "https://api.deepseek.com";
 
 const settingsKey = "anytravel-web:settings";
@@ -22,6 +23,7 @@ export function loadSettings(): WebSettings {
     const raw = localStorage.getItem(settingsKey);
     if (raw) {
       const persisted = JSON.parse(raw) as Partial<WebSettings>;
+      if (isLegacyLocalService(persisted.backendURL)) delete persisted.backendURL;
       const legacyKey = typeof persisted.deepseekKey === "string" ? persisted.deepseekKey : "";
       if (legacyKey && !sessionStorage.getItem(assistantSessionKey)) {
         sessionStorage.setItem(assistantSessionKey, legacyKey);
@@ -33,13 +35,16 @@ export function loadSettings(): WebSettings {
       return {
         ...defaultSettings(),
         ...persisted,
+        backendURL: resolveServiceURL(persisted.backendURL ?? "", DEFAULT_BACKEND_URL, globalThis.location?.origin ?? ""),
         deepseekKey: sessionStorage.getItem(assistantSessionKey) ?? ""
       };
     }
   } catch {
     /* ignore */
   }
-  return { ...defaultSettings(), deepseekKey: sessionStorage.getItem(assistantSessionKey) ?? "" };
+  let key = "";
+  try { key = sessionStorage.getItem(assistantSessionKey) ?? ""; } catch { /* Storage may be disabled. */ }
+  return { ...defaultSettings(), deepseekKey: key };
 }
 
 export function defaultSettings(): WebSettings {
@@ -51,15 +56,46 @@ export function defaultSettings(): WebSettings {
 }
 
 export function saveSettings(settings: WebSettings) {
-  if (settings.deepseekKey.trim()) {
-    sessionStorage.setItem(assistantSessionKey, settings.deepseekKey.trim());
-  } else {
-    sessionStorage.removeItem(assistantSessionKey);
+  saveSettingsToStorage(settings, localStorage, sessionStorage);
+}
+
+type SettingsStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+/**
+ * Persist both the long-lived preferences and the tab-scoped assistant key as
+ * one user action. A browser can reject either storage write independently;
+ * in that case we restore the previous pair instead of leaving the UI and
+ * persisted settings out of sync.
+ */
+export function saveSettingsToStorage(
+  settings: WebSettings,
+  local: SettingsStorage,
+  session: SettingsStorage
+) {
+  const previousLocal = local.getItem(settingsKey);
+  const previousSession = session.getItem(assistantSessionKey);
+  try {
+    local.setItem(settingsKey, JSON.stringify({
+      backendURL: settings.backendURL,
+      deepseekModel: settings.deepseekModel
+    }));
+    if (settings.deepseekKey.trim()) {
+      session.setItem(assistantSessionKey, settings.deepseekKey.trim());
+    } else {
+      session.removeItem(assistantSessionKey);
+    }
+  } catch (error) {
+    try {
+      if (previousLocal === null) local.removeItem(settingsKey);
+      else local.setItem(settingsKey, previousLocal);
+      if (previousSession === null) session.removeItem(assistantSessionKey);
+      else session.setItem(assistantSessionKey, previousSession);
+    } catch {
+      // The original error remains the useful signal. Some privacy modes also
+      // reject rollback writes, so callers must keep their in-memory state.
+    }
+    throw error;
   }
-  localStorage.setItem(settingsKey, JSON.stringify({
-    backendURL: settings.backendURL,
-    deepseekModel: settings.deepseekModel
-  }));
 }
 
 // ---------- companion backend ----------
@@ -69,11 +105,11 @@ async function backendFetch<T>(baseURL: string, path: string, body?: unknown): P
   const response = await fetch(url, {
     method: body === undefined ? "GET" : "POST",
     headers: body === undefined ? undefined : { "content-type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body)
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(path === "health" ? 8_000 : 45_000)
   });
   if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`节点返回 ${response.status}：${text.slice(0, 200)}`);
+    throw new Error(response.status === 429 ? "查询较多，请稍后再试；已经生成的行程不会丢失。" : "在线服务暂时没有回应，请稍后重试。已保存的行程仍可查看。");
   }
   return (await response.json()) as T;
 }
@@ -221,7 +257,8 @@ export async function fetchTickets(
 
 export async function fetchHealth(baseURL: string): Promise<Record<string, string>> {
   try {
-    return await backendFetch<Record<string, string>>(baseURL, "health");
+    const health = await backendFetch<Record<string, string>>(baseURL, "health");
+    return health.service === "anytravel-companion" && health.status === "ok" ? health : {};
   } catch {
     return {};
   }
@@ -248,22 +285,27 @@ export async function fetchPlacesAround(
 }
 
 export function channelStatusFromHealth(health: Record<string, string>): ChannelStatus[] {
+  if (health.service !== "anytravel-companion" || health.status !== "ok") return [];
   const known: [string, string, string][] = [
     ["rollinggo", "rollinggo", "RollingGo 酒店"],
+    ["fliggyFlights", "fliggy", "飞猪航班"],
+    ["railway12306", "12306", "铁路 12306"],
+    ["accorOfficial", "accor-official", "雅高酒店官网"],
+    ["hiltonOfficial", "hilton-official", "希尔顿酒店官网"],
     ["ctripSession", "ctrip", "携程酒店（登录会话）"],
     ["ctripFlights", "ctrip-flight", "携程航班（登录会话）"],
     ["tongchengSession", "tongcheng", "同程/艺龙（登录会话）"],
     ["elongOpenAPI", "elong-open-api", "艺龙开放平台"],
     ["oneBoundCtrip", "onebound-ctrip", "万邦携程目录"],
     ["amap", "amap", "高德地点/路线"],
-    ["assistant", "assistant", "伴随智能向导"],
+    ["assistant", "assistant", "智能向导"],
     ["qunarTickets", "qunar", "去哪儿门票"]
   ];
   return known.map(([key, name, label]) => {
     const value = health[key];
     if (value === "configured") return { name, status: "configured" as const, detail: label };
     if (value === "public") return { name, status: "configured" as const, detail: label + "（公开源）" };
-    return { name, status: "disabled" as const, detail: label + "（未配置）" };
+    return { name, status: "disabled" as const, detail: label };
   });
 }
 

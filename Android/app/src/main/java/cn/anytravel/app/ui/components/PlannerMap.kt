@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+
 package cn.anytravel.app.ui.components
 
 import android.content.ComponentCallbacks2
@@ -15,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -67,12 +70,13 @@ fun PlannerMap(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val darkMode = isSystemInDarkTheme()
     val routeDuration = AnyTravelMotion.routeDuration()
     val holder = remember { MapHolder() }
-    val mapView = remember {
-        val deviceDensity = context.resources.displayMetrics.density
+    val deviceDensity = resources.displayMetrics.density
+    val mapView = remember(deviceDensity) {
         // Android 12 flagships with very dense/4K panels can otherwise allocate
         // a disproportionately expensive map texture under the Compose sheet.
         // Capping only the map pixel ratio keeps text crisp while reducing GL

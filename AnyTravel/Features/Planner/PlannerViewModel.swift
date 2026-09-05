@@ -2173,7 +2173,7 @@ final class PlannerViewModel {
                     ("道旅 RollingGo", rollingTask),
                     ("雅高集团官网", accorTask),
                     ("希尔顿官网", hiltonTask),
-                    ("多渠道报价节点", backendCatalogTask)
+                    ("多渠道在线服务", backendCatalogTask)
                 ]
                 for (sourceName, task) in orderedCatalogTasks {
                     guard let task else { continue }
@@ -2741,13 +2741,13 @@ final class PlannerViewModel {
             return TransportQuoteOutcome(source: source, result: nil, issue: nil)
         } catch {
             let provider = switch source {
-            case .backend: "报价节点"
+            case .backend: "在线交通服务"
             case .railway: "12306"
             case .fliggy: "fliggy"
             case .qunar: "qunar"
             }
             let detail = source == .backend
-                ? "多渠道节点暂未抵达，已改由应用内实时来源继续：\(Self.pricingFailureText(error))"
+                ? "多渠道结果暂未抵达，已改由应用内实时来源继续：\(Self.pricingFailureText(error))"
                 : Self.pricingFailureText(error)
             return TransportQuoteOutcome(
                 source: source,

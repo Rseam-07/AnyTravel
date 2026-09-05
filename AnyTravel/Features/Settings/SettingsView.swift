@@ -56,8 +56,8 @@ struct SettingsView: View {
                     .accessibilityIdentifier("assistant-provider-picker")
 
                     if model.assistantSettings.mode == .managed {
-                        LabeledContent("默认模型", value: "GLM-5.3-Flash")
-                        Text("模型钥匙只留在 AnyTravel 伴随服务的环境变量里；App 只送出当前行程和这一次指令。")
+                        LabeledContent("使用方式", value: "沿用应用预设")
+                        Text("无需填写接口或密钥。只发送这次的问题与当前旅行条件；在线向导暂时不可用时，仍可继续使用本机基础规划。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     } else {
@@ -127,7 +127,7 @@ struct SettingsView: View {
                         }
                     } label: {
                         HStack {
-                            Label("听一听智能向导的回声", systemImage: "sparkles")
+                            Label("检查智能服务", systemImage: "sparkles")
                             Spacer()
                             if checkingAssistant { ProgressView() }
                         }
@@ -144,7 +144,7 @@ struct SettingsView: View {
                 } header: {
                     Text("旅途里的智能向导")
                 } footer: {
-                    Text("自定义服务需兼容 OpenAI 的 chat/completions 接口。任何模型给出的地图动作都会先经过本地白名单校验。")
+                    Text("自定义服务是可选项。向导的修改会经过本机检查；选择酒店或班次不代表已经预订。")
                 }
 
                 Section {
@@ -170,6 +170,7 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    DisclosureGroup("自建服务（高级选项）") {
                     TextField("例如：http://192.168.1.10:8787/", text: $pricingServiceURL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -180,12 +181,12 @@ struct SettingsView: View {
                         Task {
                             let healthy = await PricingBackendClient().healthCheck(urlText: pricingServiceURL)
                             serviceHealthy = healthy
-                            serviceCheckResult = healthy ? "报价节点已经接上旅程" : "还没接上，请检查地址和服务状态"
+                            serviceCheckResult = healthy ? "已连接 AnyTravel；是否有房、有票以本次查询为准" : "在线服务暂未连接，内置规划仍可用，请稍后重试"
                             checkingService = false
                         }
                     } label: {
                         HStack {
-                            Label("试着接通开源报价节点", systemImage: "network")
+                            Label("检查自建服务", systemImage: "network")
                             Spacer()
                             if checkingService { ProgressView() }
                         }
@@ -195,10 +196,12 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundStyle(serviceHealthy == true ? AnyTravelPalette.route : AnyTravelPalette.warm)
                     }
+                    Button("恢复应用预设") { pricingServiceURL = ""; serviceCheckResult = "已恢复应用预设" }
+                    }
                 } header: {
-                    Text("自己的报价驿站")
+                    Text("高级设置")
                 } footer: {
-                    Text("连接仓库内的伴随服务后，RollingGo、携程网页采集与后续渠道会从同一处归来；密钥只留在服务端。")
+                    Text("普通使用无需修改。留空将沿用此版本的默认服务。")
                 }
 
                 Section {

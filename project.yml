@@ -23,7 +23,7 @@ targets:
     platform: iOS
     configFiles:
       Debug: Config/AnyTravel.xcconfig
-      Release: Config/AnyTravel.xcconfig
+      Release: Config/AnyTravelRelease.xcconfig
     sources:
       - path: AnyTravel
         excludes:
@@ -31,6 +31,8 @@ targets:
       - path: AnyTravel/Resources
         excludes:
           - Info.plist
+        buildPhase: resources
+      - path: Config/ServiceDefaults.json
         buildPhase: resources
     info:
       path: AnyTravel/Resources/Info.plist

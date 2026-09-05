@@ -1,6 +1,8 @@
 package cn.anytravel.app.data
 
+import android.annotation.SuppressLint
 import android.content.Context
+import cn.anytravel.app.BuildConfig
 import androidx.core.content.edit
 import cn.anytravel.app.model.CompletePlan
 import cn.anytravel.app.model.TripDraft
@@ -52,13 +54,13 @@ class AppRepository(context: Context) {
         val compact = decoded.map(::compactForStorage)
         // Earlier previews persisted every decoded route coordinate. Migrating
         // once keeps startup and backup sizes bounded even for twelve trips.
-        if (compact != decoded) writePlans(compact)
+        if (compact != decoded) runCatching { writePlans(compact) }
         return compact
     }
 
     fun savePlan(plan: CompletePlan): List<CompletePlan> {
         val storedPlan = compactForStorage(plan)
-        val updated = (listOf(storedPlan) + loadPlans().filterNot { it.id == plan.id }).take(12)
+        val updated = mergeSavedPlan(storedPlan, loadPlans())
         writePlans(updated)
         return updated
     }
@@ -70,6 +72,7 @@ class AppRepository(context: Context) {
     }
 
     fun backendURL(): String = preferences.getString(KEY_BACKEND_URL, "").orEmpty()
+        .trim().ifBlank { BuildConfig.SERVICE_BASE_URL }
 
     fun saveBackendURL(value: String) {
         preferences.edit { putString(KEY_BACKEND_URL, value.trim()) }
@@ -105,8 +108,12 @@ class AppRepository(context: Context) {
         return assistantConfiguration()
     }
 
+    @SuppressLint("UseKtx") // KTX edit() discards commit()'s Boolean; saving a trip must report failure.
     private fun writePlans(plans: List<CompletePlan>) {
-        preferences.edit { putString(KEY_PLANS, json.encodeToString(ListSerializer(CompletePlan.serializer()), plans)) }
+        val encoded = json.encodeToString(ListSerializer(CompletePlan.serializer()), plans)
+        check(preferences.edit().putString(KEY_PLANS, encoded).commit()) {
+            "本机旅册写入失败"
+        }
     }
 
     private fun compactForStorage(plan: CompletePlan): CompletePlan {

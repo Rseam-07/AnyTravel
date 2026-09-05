@@ -7,6 +7,21 @@ final class PricingBackendClientTests: XCTestCase {
         super.tearDown()
     }
 
+    func testServiceURLRequiresHTTPSOutsideLocalDevelopment() {
+        XCTAssertEqual(PricingBackendClient.normalizedURL("https://travel.example/api")?.absoluteString, "https://travel.example/api/")
+        XCTAssertEqual(PricingBackendClient.normalizedURL("http://localhost:8787")?.absoluteString, "http://localhost:8787/")
+        XCTAssertEqual(PricingBackendClient.normalizedURL("http://127.0.0.1:8787")?.absoluteString, "http://127.0.0.1:8787/")
+        XCTAssertNil(PricingBackendClient.normalizedURL("http://travel.example"))
+        XCTAssertNil(PricingBackendClient.normalizedURL("ftp://travel.example"))
+    }
+
+    func testServiceURLRejectsEmbeddedCredentialsAndRequestModifiers() {
+        XCTAssertNil(PricingBackendClient.normalizedURL("https://user:secret@travel.example"))
+        XCTAssertNil(PricingBackendClient.normalizedURL("https://travel.example?key=value"))
+        XCTAssertNil(PricingBackendClient.normalizedURL("https://travel.example/#fragment"))
+        XCTAssertNil(PricingBackendClient.normalizedURL("not a url"))
+    }
+
     @MainActor
     func testLiveAccommodationResponseIsMergedAndKeepsDiagnosticsVisible() async throws {
         let hotelID = UUID()
@@ -52,7 +67,7 @@ final class PricingBackendClientTests: XCTestCase {
         XCTAssertEqual(result.value.first?.quotes.first?.amountCNY, 488)
         XCTAssertEqual(result.value.first?.quotes.first?.provider, .rollingGo)
         XCTAssertEqual(result.issues.first?.status, "disabled")
-        XCTAssertEqual(result.issues.first?.message, "携程尚未在报价节点启用")
+        XCTAssertEqual(result.issues.first?.message, "携程暂未启用")
         XCTAssertFalse(result.isCached)
     }
 

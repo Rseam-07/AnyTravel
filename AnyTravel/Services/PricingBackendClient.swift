@@ -16,9 +16,9 @@ struct PricingProviderIssue: Hashable, Sendable {
     var message: String {
         let name = providerDisplayName
         switch status {
-        case "disabled": return "\(name)尚未在报价节点启用"
-        case "login_required": return "\(name)需要在报价节点重新登录"
-        case "verification_required": return "\(name)需要在报价节点完成一次人工验证"
+        case "disabled": return "\(name)暂未启用"
+        case "login_required": return "\(name)需要重新登录"
+        case "verification_required": return "\(name)需要完成一次人工验证"
         case "dependency_missing": return "\(name)的采集组件尚未安装"
         case "browser_unavailable": return "\(name)的浏览器采集环境暂时不可用"
         case "city_id_missing": return "\(name)暂时无法识别这座城市"
@@ -63,19 +63,19 @@ enum PricingBackendError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .serviceNotConfigured:
-            "还没有连接报价节点。"
+            "默认在线服务暂未连接，已有行程仍可查看。"
         case .missingDates:
             "先添上出发与返程日期，才能查询当天价格。"
         case .invalidResponse:
-            "报价节点返回了无法识别的数据。"
+            "在线服务返回了无法识别的数据。"
         case let .httpFailure(statusCode, message):
             if let message, !message.isEmpty {
-                "报价节点暂时拒绝了请求（\(statusCode)：\(message)）。"
+                "在线服务暂时拒绝了请求（\(statusCode)：\(message)）。"
             } else {
-                "报价节点暂时拒绝了请求（\(statusCode)）。"
+                "在线服务暂时拒绝了请求（\(statusCode)）。"
             }
         case let .network(message):
-            "暂时没有接上报价节点：\(message)"
+            "暂时没有接上在线服务：\(message)"
         }
     }
 }
@@ -416,25 +416,31 @@ struct PricingBackendClient {
     }
 
     func healthCheck(urlText: String) async -> Bool {
-        guard let baseURL = Self.normalizedURL(urlText),
+        let text = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let baseURL = text.isEmpty ? configuredBaseURL() : Self.normalizedURL(text),
               let healthURL = URL(string: "health", relativeTo: baseURL)?.absoluteURL else {
             return false
         }
         do {
             var request = URLRequest(url: healthURL)
             request.timeoutInterval = 6
-            let (_, response) = try await session.data(for: request)
+            let (data, response) = try await session.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else { return false }
+            let health = try? JSONDecoder().decode(ServiceHealth.self, from: data)
             return (200..<300).contains(httpResponse.statusCode)
+                && health?.service == "anytravel-companion" && health?.status == "ok"
         } catch {
             return false
         }
     }
 
     private func configuredBaseURL() -> URL? {
-        let value = defaults.string(forKey: Self.serviceURLDefaultsKey) ?? ""
+        let override = (defaults.string(forKey: Self.serviceURLDefaultsKey) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = override.isEmpty ? EmbeddedServiceConfiguration.serviceURL : override
         return Self.normalizedURL(value)
     }
+
+    private struct ServiceHealth: Decodable { var service: String; var status: String }
 
     private static func httpError(response: URLResponse, data: Data) -> PricingBackendError {
         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
@@ -442,10 +448,26 @@ struct PricingBackendClient {
         return .httpFailure(statusCode: statusCode, message: message)
     }
 
-    private static func normalizedURL(_ value: String) -> URL? {
+    nonisolated static func normalizedURL(_ value: String) -> URL? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, var components = URLComponents(string: trimmed) else { return nil }
-        if components.path.isEmpty { components.path = "/" }
+        guard !trimmed.isEmpty,
+              var components = URLComponents(string: trimmed),
+              let scheme = components.scheme?.lowercased(),
+              let rawHost = components.host?.lowercased(),
+              !rawHost.isEmpty else { return nil }
+        let host = rawHost.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        let isLocal = ["localhost", "127.0.0.1", "::1"].contains(host)
+        guard scheme == "https" || (scheme == "http" && isLocal) else { return nil }
+        guard components.user == nil,
+              components.password == nil,
+              components.query == nil,
+              components.fragment == nil else { return nil }
+        components.scheme = scheme
+        if components.percentEncodedPath.isEmpty {
+            components.path = "/"
+        } else if !components.percentEncodedPath.hasSuffix("/") {
+            components.percentEncodedPath += "/"
+        }
         return components.url
     }
 

@@ -1015,8 +1015,15 @@ class PlannerViewModel(
 
     fun saveCurrentPlan() {
         val plan = _state.value.plan ?: return
-        val saved = repository.savePlan(plan)
-        _state.update { it.copy(savedPlans = saved, noticeMessage = "这段旅程已经折进你的远方") }
+        runCatching { repository.savePlan(plan) }
+            .onSuccess { saved ->
+                _state.update { it.copy(savedPlans = saved, noticeMessage = "完整方案已经折进你的远方") }
+            }
+            .onFailure {
+                _state.update {
+                    it.copy(noticeMessage = "本机旅册没有写入成功。当前方案仍在，请先不要清理应用数据并稍后重试。")
+                }
+            }
     }
 
     fun loadPlan(plan: CompletePlan) {
@@ -1054,7 +1061,7 @@ class PlannerViewModel(
 
     fun saveBackendURL(value: String) {
         repository.saveBackendURL(value)
-        _state.update { it.copy(backendURL = value.trim(), backendHealthy = null, noticeMessage = "报价节点地址已保存在本机") }
+        _state.update { it.copy(backendURL = repository.backendURL(), backendHealthy = null, noticeMessage = "服务偏好已保存在本机") }
     }
 
     fun testBackend(value: String) {

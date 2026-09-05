@@ -62,8 +62,7 @@ final class AssistantSettingsStore {
     var isConfigured: Bool {
         switch mode {
         case .managed:
-            let companionConfigured = !(defaults.string(forKey: PricingBackendClient.serviceURLDefaultsKey) ?? "")
-                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            let companionConfigured = !managedServiceURLText().isEmpty
             return companionConfigured || !managedAPIKey().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .custom:
             return !customBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -73,7 +72,9 @@ final class AssistantSettingsStore {
     }
 
     func managedServiceURLText() -> String {
-        defaults.string(forKey: PricingBackendClient.serviceURLDefaultsKey) ?? ""
+        let override = (defaults.string(forKey: PricingBackendClient.serviceURLDefaultsKey) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return override.isEmpty ? EmbeddedServiceConfiguration.serviceURL : override
     }
 
     func customAPIKey() throws -> String? {

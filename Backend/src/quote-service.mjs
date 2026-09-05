@@ -1,5 +1,7 @@
 import { CtripAdapter } from "./adapters/ctrip.mjs";
 import { CtripFlightAdapter } from "./adapters/ctrip-flight.mjs";
+import { FliggyFlightAdapter } from "./adapters/fliggy-flight.mjs";
+import { BoundedCache } from "./lib/bounded-cache.mjs";
 import { AccorOfficialAdapter } from "./adapters/accor-official.mjs";
 import { ElongHotelAdapter } from "./adapters/elong.mjs";
 import { HiltonOfficialAdapter } from "./adapters/hilton-official.mjs";
@@ -13,7 +15,7 @@ import {
 } from "./lib/accommodation-merge.mjs";
 import { mergeTransportOptions } from "./lib/transport-merge.mjs";
 
-const cache = new Map();
+const cache = new BoundedCache();
 const rollingGoAdapter = new RollingGoAdapter();
 const accorOfficialAdapter = new AccorOfficialAdapter();
 const ctripAdapter = new CtripAdapter();
@@ -31,7 +33,7 @@ const catalogAdapters = [
   new OneBoundCtripAdapter(),
   new ElongHotelAdapter()
 ];
-const transportAdapters = [new Railway12306Adapter(), new CtripFlightAdapter()];
+const transportAdapters = [new Railway12306Adapter(), new FliggyFlightAdapter(), new CtripFlightAdapter()];
 
 export async function searchAccommodationCatalog(request) {
   validateCatalogRequest(request);
