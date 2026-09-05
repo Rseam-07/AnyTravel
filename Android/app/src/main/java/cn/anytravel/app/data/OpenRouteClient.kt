@@ -22,9 +22,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
-import java.net.HttpURLConnection
 import java.net.URI
-import java.net.URL
 import kotlin.math.roundToInt
 
 /**
@@ -76,7 +74,7 @@ class OpenRouteClient(
         )
     }
 
-    private suspend fun fetch(request: RouteRequest, costing: String): RouteSegment = withContext(Dispatchers.IO) {
+    private suspend fun fetch(request: RouteRequest, costing: String): RouteSegment {
         val body = buildJsonObject {
             put("locations", buildJsonArray {
                 add(buildJsonObject {
@@ -95,23 +93,15 @@ class OpenRouteClient(
         val uri = URI(endpoint).let { base ->
             URI(base.scheme, base.authority, base.path, "json=$body", null)
         }
-        val connection = (uri.toURL().openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            connectTimeout = 8_000
-            readTimeout = 18_000
-            setRequestProperty("Accept", "application/json")
-            setRequestProperty("Accept-Language", "zh-CN,zh;q=0.9")
-            setRequestProperty("User-Agent", "AnyTravel-Android/0.8.1 (+https://github.com/Rseam-07/AnyTravel)")
-        }
-        try {
-            val status = connection.responseCode
-            val stream = if (status in 200..299) connection.inputStream else connection.errorStream
-            val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (status !in 200..299) throw PricingException("路线服务返回 HTTP $status")
-            parse(text, request)
-        } finally {
-            connection.disconnect()
-        }
+        val response = NetworkClient.request(
+            url = uri.toURL(),
+            headers = mapOf("Accept-Language" to "zh-CN,zh;q=0.9"),
+            connectTimeoutMillis = 8_000,
+            readTimeoutMillis = 18_000,
+            maxResponseBytes = 2 * 1024 * 1024
+        )
+        if (response.status !in 200..299) throw PricingException("路线服务返回 HTTP ${response.status}")
+        return withContext(Dispatchers.Default) { parse(response.body, request) }
     }
 
     private fun parse(payload: String, request: RouteRequest): RouteSegment {

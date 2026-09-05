@@ -1,6 +1,6 @@
 # AnyTravel 接力交接
 
-> 更新于 2026-09-05，记录 0.8.1 发布候选的真实工程状态。目标见 [PLAN_TO_1_0](PLAN_TO_1_0.md)，功能清单见 [FEATURE_ROADMAP](FEATURE_ROADMAP.md)，价格来源见 [DATA_CHANNELS](DATA_CHANNELS.md)，资料许可见 [THIRD_PARTY_DATA](THIRD_PARTY_DATA.md)。
+> 更新于 2026-09-05，记录 0.8.2 的真实工程状态。目标见 [PLAN_TO_1_0](PLAN_TO_1_0.md)，功能清单见 [FEATURE_ROADMAP](FEATURE_ROADMAP.md)，价格来源见 [DATA_CHANNELS](DATA_CHANNELS.md)，资料许可见 [THIRD_PARTY_DATA](THIRD_PARTY_DATA.md)。
 
 ## 仓库与版本
 
@@ -8,12 +8,12 @@
 - 远端：`https://github.com/Rseam-07/AnyTravel.git`
 - 分支：`main`
 - iOS Bundle Identifier：`com.anytravel.app`
-- iOS：`MARKETING_VERSION = 0.8.1`，`CURRENT_PROJECT_VERSION = 16`
-- Android：`versionName = 0.8.1`，`versionCode = 16`
+- iOS：`MARKETING_VERSION = 0.8.2`，`CURRENT_PROJECT_VERSION = 17`
+- Android：`versionName = 0.8.2`，`versionCode = 17`
 - iOS 工程以 `project.yml` 为源；修改后运行 `xcodegen generate --spec project.yml`。
 - 发布密钥只从被 Git 忽略的 `Config/Secrets.xcconfig` 或运行环境注入，不得提交明文。
 
-## 0.8.1 已经落地
+## 0.8.2 已经落地
 
 1. **国内旅行知识库**
    - `Web/src/knowledge/domestic-guide-knowledge.json` 是生成后的主快照，并复制到 iOS 与 Android 资源。
@@ -37,11 +37,19 @@
    - Android 12 采用 MapLibre OpenGL、TextureView、像素倍率上限、较低预取与增量地图更新，避免面板拖动和大批报价刷新同时触发地图重建。
    - Web 已完成地图优先四页流程、三档移动面板、资料选点、路线/天气/价格、自然语言调整、旅册、分享恢复、打印和可安装 PWA 外壳。
 
+5. **可靠性与重复代码整顿**
+   - Android 报价、路线与智能向导共用统一网络边界，集中处理版本标识、超时、取消、响应大小和连接释放。
+   - iOS 与 Android 各自只保留一套住宿名称归一、品牌官网映射和同一物业判断；同楼不同品牌、远距离同名分店与多渠道报价保留均有回归测试。
+   - iOS 和伴随服务的请求版本标识从构建元数据读取，不再散落硬编码版本号。
+   - iOS 面板使用单一手动档位和可自动复位的手势位移；把手与内容层独立，键盘不会改变手选档位，提交后自动适配。界面测试同时检查实际高度、可点击性与返回主要内容的闭环。
+   - 具体酒店品牌与所属集团分别处理，同集团不同品牌不会因接近坐标而误并；空名称也不能作为同一物业证据。
+   - 当前 Android lint 的 Kotlin 分析器并行运行 Debug/Release 分析时出现过内部指针失效，串行 `--no-parallel --max-workers=1` 全量通过；没有关闭任何 lint 检查。
+
 ## 本轮可复核结果
 
-- iOS 常规单元套件：执行 81 项，其中 3 项实时网络测试按设计跳过；其余 78 项通过，0 失败。
-- iOS 价格首屏联网 XCUITest：2/2、0 跳过、0 失败；截图实际出现酒店、飞猪航班和铁路 12306 数字价格。
-- Android 常规单元套件：16 项中 14 项通过、2 项联网用例按设计跳过；lint、Debug 与 Release 通用 APK 构建通过；单独启用的三类价格联网聚合测试通过。
+- iOS 常规单元套件：执行 86 项，其中 3 项实时网络测试按设计跳过；其余 83 项通过，0 失败。常规界面套件 18 项中 16 项通过、2 项联网用例按设计跳过。
+- iOS 独立联网套件：3 项价格源测试和 2 项价格首屏 XCUITest 全部通过，0 跳过、0 失败；截图中出现 RollingGo 酒店每晚价、飞猪航班起价和铁路 12306 班次/席别价，价格卡片可点击。设备 Release 构建通过。
+- Android 常规单元套件：27 项中 25 项通过、2 项联网用例按设计跳过；另行开启 1 项真实聚合测试，酒店、航班与铁路数字结果通过，0 跳过。lint 与 Release 通用 APK 构建通过。
 - Backend：53/53；Web：7/7，生产构建与知识库一致性校验通过。
 
 ## 当前边界

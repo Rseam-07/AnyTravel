@@ -1,4 +1,5 @@
 import { isoNow, normalizeHotelName, parseCNY } from "../lib/normalize.mjs";
+import { networkUserAgent } from "../network-identity.mjs";
 
 const DEFAULT_ENDPOINT = "https://console-lls.hilton.com.cn/cgi/api/app/hotel/zh-CN/search";
 const MAX_RESULTS = 30;
@@ -82,7 +83,7 @@ export class HiltonOfficialAdapter {
       headers: {
         accept: "application/json",
         "accept-language": "zh-CN,zh;q=0.9",
-        "user-agent": "AnyTravel/0.8.1 (+https://github.com/Rseam-07/AnyTravel)"
+        "user-agent": networkUserAgent
       },
       signal: AbortSignal.timeout(12_000)
     });

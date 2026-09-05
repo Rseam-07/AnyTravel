@@ -3,6 +3,8 @@
 // performs the request with an identifying UA and enforces a small delay
 // between searches.
 
+import { networkUserAgent } from "./network-identity.mjs";
+
 const ENDPOINT = "https://nominatim.openstreetmap.org/search";
 let lastRequestAt = 0;
 
@@ -21,7 +23,7 @@ export async function geocodeCity(body) {
   url.searchParams.set("accept-language", "zh-CN");
   try {
     const response = await fetch(url, {
-      headers: { "user-agent": "AnyTravel-Companion/0.1 (travel planning)" },
+      headers: { "user-agent": networkUserAgent },
       signal: AbortSignal.timeout(12_000)
     });
     lastRequestAt = Date.now();

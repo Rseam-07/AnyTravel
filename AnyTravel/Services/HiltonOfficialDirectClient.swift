@@ -57,7 +57,7 @@ struct HiltonOfficialDirectClient {
         request.timeoutInterval = 12
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("zh-CN,zh;q=0.9", forHTTPHeaderField: "Accept-Language")
-        request.setValue("AnyTravel/0.8.1 (+https://github.com/Rseam-07/AnyTravel)", forHTTPHeaderField: "User-Agent")
+        request.setValue(NetworkIdentity.userAgent, forHTTPHeaderField: "User-Agent")
 
         let data: Data
         let response: URLResponse

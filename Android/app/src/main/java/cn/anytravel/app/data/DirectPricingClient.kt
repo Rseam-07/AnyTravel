@@ -13,11 +13,9 @@ import cn.anytravel.app.model.QuoteUnit
 import cn.anytravel.app.model.TransportDirection
 import cn.anytravel.app.model.TransportOption
 import cn.anytravel.app.model.distanceText
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -35,7 +33,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.add
-import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URLEncoder
 import java.net.URL
@@ -81,7 +78,7 @@ class DirectPricingClient {
         val hotelResult = DirectHotels(
             // RollingGo remains first so its live inventory wins the primary
             // card position; official sites add comparable quotes and fallback.
-            options = deduplicateHotels(rollingGoResult.options + accorResult.options + officialResult.options),
+            options = AccommodationMerger.merge(rollingGoResult.options + accorResult.options + officialResult.options),
             issues = rollingGoResult.issues + accorResult.issues + officialResult.issues
         )
         val railResult = railway.await()
@@ -383,7 +380,7 @@ class DirectPricingClient {
                     tags = (sellingPoints + tags).distinct().take(12),
                     sources = listOf("希尔顿官网")
                 )
-            }.distinctBy { normalizedHotelName(it.name) }.take(30)
+            }.let(AccommodationMerger::merge).take(30)
             DirectHotels(options, if (options.isEmpty()) listOf("希尔顿官网暂未返回匹配酒店") else emptyList())
         }.getOrElse { DirectHotels(issues = listOf("希尔顿官网暂时没有回应：${shortError(it)}")) }
     }
@@ -439,7 +436,7 @@ class DirectPricingClient {
             val capturedAt = Instant.now().toString()
             val options = objects.mapNotNull { hotel ->
                 hotelOption(hotel, nights, capturedAt, stops.map { it.coordinate }, accessPoints)
-            }.distinctBy { normalizedHotelName(it.name) }
+            }.let(AccommodationMerger::merge)
                 .sortedBy { it.quotes.mapNotNull(PriceQuote::amountCNY).minOrNull() ?: Int.MAX_VALUE }
                 .take(40)
             DirectHotels(
@@ -492,7 +489,7 @@ class DirectPricingClient {
         val bookingURL = hotel.first("bookingUrl", "bookingURL", "url")?.stringValue()?.validURL()
         return AccommodationOption(
             id = hotel.first("hotelId", "hotelID", "id", "hotel_id")?.stringValue()?.takeIf { it.isNotBlank() }
-                ?.let { "rollinggo-$it" } ?: "rollinggo-${normalizedHotelName(name)}",
+                ?.let { "rollinggo-$it" } ?: "rollinggo-${AccommodationMerger.normalizedName(name)}",
             name = name,
             address = hotel.first("address", "hotelAddress", "addressCn")?.stringValue().orEmpty(),
             coordinate = coordinate,
@@ -522,7 +519,7 @@ class DirectPricingClient {
             starRating = hotel.first("starRating", "star", "starLevel")?.numberValue(),
             guestRating = hotel.first("rating", "guestRating", "score", "reviewScore")?.numberValue(),
             imageURL = hotel.first("imageUrl", "imageURL", "coverImage", "cover")?.stringValue()?.validURL(),
-            officialWebsiteURL = officialWebsite(name, hotel.first("brand", "brandName", "hotelBrand")?.stringValue()),
+            officialWebsiteURL = AccommodationMerger.officialWebsite(name, hotel.first("brand", "brandName", "hotelBrand")?.stringValue()),
             amenities = hotel.first("hotelAmenities", "amenities", "facilities", "facilityList", "services").stringArray().take(12),
             tags = hotel.first("tags", "labels", "themes").stringArray().take(10),
             sources = listOf("RollingGo")
@@ -723,7 +720,7 @@ class DirectPricingClient {
                     "Accept" to "application/json,text/plain,*/*",
                     "Accept-Language" to "zh-CN,zh;q=0.9",
                     "Referer" to "https://h5.m.taobao.com/trip/flight/search/index.html",
-                    "User-Agent" to "AnyTravel-Android/0.5"
+                    "User-Agent" to NetworkClient.userAgent
                 ) + if (cookies.isEmpty()) emptyMap() else mapOf("Cookie" to cookies.entries.joinToString("; ") { "${it.key}=${it.value}" })
             )
             response.headers.entries.filter { it.key.equals("Set-Cookie", true) }.flatMap { it.value }.forEach { raw ->
@@ -811,34 +808,21 @@ class DirectPricingClient {
         body: String? = null,
         headers: Map<String, String> = emptyMap(),
         readTimeout: Int = 18_000
-    ): HTTPResult = withContext(Dispatchers.IO) {
-        val connection = (url.openConnection() as HttpURLConnection).apply {
-            if (this is HttpsURLConnection && url.host.endsWith("12306.cn")) {
-                railwaySocketFactory?.let { sslSocketFactory = it }
+    ): NetworkResponse {
+        val response = NetworkClient.request(
+            url = url,
+            method = method,
+            body = body?.toByteArray(StandardCharsets.UTF_8),
+            headers = headers,
+            readTimeoutMillis = readTimeout,
+            configure = { connection ->
+                if (connection is HttpsURLConnection && url.host.endsWith("12306.cn")) {
+                    railwaySocketFactory?.let { connection.sslSocketFactory = it }
+                }
             }
-            requestMethod = method
-            instanceFollowRedirects = true
-            connectTimeout = 10_000
-            this.readTimeout = readTimeout
-            setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/140 Mobile Safari/537.36 AnyTravel/0.5")
-            headers.forEach { (key, value) -> setRequestProperty(key, value) }
-            if (body != null) {
-                doOutput = true
-                outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
-            }
-        }
-        try {
-            val status = connection.responseCode
-            val stream = if (status in 200..299) connection.inputStream else connection.errorStream
-            val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (status !in 200..299) throw PricingException("HTTP $status")
-            val responseHeaders = connection.headerFields.entries.mapNotNull { (key, values) ->
-                key?.let { it to values }
-            }.toMap()
-            HTTPResult(status, text, responseHeaders)
-        } finally {
-            connection.disconnect()
-        }
+        )
+        if (response.status !in 200..299) throw PricingException("HTTP ${response.status}")
+        return response
     }
 
     private fun parseStations(source: String): List<Station> = source.split('@').mapNotNull { raw ->
@@ -948,37 +932,6 @@ class DirectPricingClient {
         )
     }
 
-    private fun deduplicateHotels(options: List<AccommodationOption>): List<AccommodationOption> {
-        val result = mutableListOf<AccommodationOption>()
-        options.forEach { option ->
-            val normalized = normalizedHotelName(option.name)
-            val family = hotelBrandFamily(option)
-            val existingIndex = result.indexOfFirst { current ->
-                val distance = current.coordinate.distanceTo(option.coordinate)
-                (normalizedHotelName(current.name) == normalized && distance <= 250) || distance <= 35 ||
-                    (distance <= 120 && family != null && family == hotelBrandFamily(current))
-            }
-            if (existingIndex < 0) {
-                result += option
-                return@forEach
-            }
-            val current = result[existingIndex]
-            result[existingIndex] = current.copy(
-                quotes = (current.quotes + option.quotes)
-                    .distinctBy {
-                        "${it.provider}|${it.unit}|${it.amountCNY}|${it.kind}|${it.roomName}|${it.bedType}|${it.mealPlan}|${it.cancellationPolicy}"
-                    }
-                    .sortedBy { it.amountCNY ?: Int.MAX_VALUE },
-                officialWebsiteURL = current.officialWebsiteURL ?: option.officialWebsiteURL,
-                imageURL = current.imageURL ?: option.imageURL,
-                amenities = (current.amenities + option.amenities).distinct(),
-                tags = (current.tags + option.tags).distinct(),
-                sources = (current.sources + option.sources).distinct()
-            )
-        }
-        return result
-    }
-
     private fun railwayHeaders() = mapOf(
         "Accept" to "application/json,text/plain,*/*",
         "Accept-Language" to "zh-CN,zh;q=0.9",
@@ -988,33 +941,6 @@ class DirectPricingClient {
 
     private fun lastSsePayload(value: String): String = value.lineSequence()
         .filter { it.startsWith("data:") }.lastOrNull()?.removePrefix("data:")?.trim() ?: value.trim()
-
-    private fun normalizedHotelName(value: String) = value.lowercase().replace(Regex("[\\s·,，()（）-]+"), "")
-        .replace("酒店", "").replace("宾馆", "").replace("民宿", "")
-
-    private fun hotelBrandFamily(option: AccommodationOption): String? {
-        val value = "${option.name} ${option.brand.orEmpty()}".lowercase()
-        return when {
-            listOf("雅高", "铂尔曼", "pullman", "诺富特", "novotel", "美居", "mercure", "宜必思", "ibis", "索菲特", "sofitel", "费尔蒙", "fairmont").any(value::contains) -> "accor"
-            listOf("希尔顿", "康莱德", "华尔道夫", "欢朋", "hilton", "conrad", "waldorf").any(value::contains) -> "hilton"
-            listOf("万豪", "喜来登", "威斯汀", "丽思卡尔顿", "艾美", "marriott", "sheraton", "westin", "ritz").any(value::contains) -> "marriott"
-            listOf("洲际", "皇冠假日", "智选假日", "英迪格", "voco", "ihg", "intercontinental").any(value::contains) -> "ihg"
-            else -> null
-        }
-    }
-
-    private fun officialWebsite(name: String, brand: String?): String? {
-        val value = "$name ${brand.orEmpty()}".lowercase()
-        return when {
-            listOf("希尔顿", "康莱德", "华尔道夫", "欢朋", "hilton", "conrad").any(value::contains) -> "https://www.hilton.com.cn/zh-CN/"
-            listOf("万豪", "喜来登", "威斯汀", "丽思卡尔顿", "艾美", "marriott", "sheraton").any(value::contains) -> "https://www.marriott.com.cn/"
-            listOf("洲际", "皇冠假日", "智选假日", "英迪格", "voco", "ihg").any(value::contains) -> "https://www.ihg.com.cn/"
-            listOf("全季", "汉庭", "桔子", "星程", "海友", "华住").any(value::contains) -> "https://www.huazhu.com/"
-            listOf("亚朵", "atour").any(value::contains) -> "https://www.atour.cn/"
-            listOf("锦江", "维也纳", "麗枫", "喆啡").any(value::contains) -> "https://www.jinjianghotels.com/"
-            else -> null
-        }
-    }
 
     private fun hiltonBrandName(code: String?): String = when (code?.uppercase()) {
         "WA" -> "华尔道夫"
@@ -1049,7 +975,6 @@ class DirectPricingClient {
     private fun md5(value: String) = MessageDigest.getInstance("MD5").digest(value.toByteArray()).joinToString("") { "%02x".format(it) }
     private fun shortError(error: Throwable) = (error.message ?: error::class.simpleName ?: "未知错误").take(180)
 
-    private data class HTTPResult(val status: Int, val body: String, val headers: Map<String, List<String>>)
     private data class DirectHotels(val options: List<AccommodationOption> = emptyList(), val issues: List<String> = emptyList())
     private data class DirectTransport(val options: List<TransportOption> = emptyList(), val issues: List<String> = emptyList())
     private data class Station(val name: String, val code: String, val city: String)

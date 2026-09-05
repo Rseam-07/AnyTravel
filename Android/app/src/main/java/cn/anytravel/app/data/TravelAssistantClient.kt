@@ -3,13 +3,11 @@ package cn.anytravel.app.data
 import cn.anytravel.app.BuildConfig
 import cn.anytravel.app.model.CompletePlan
 import cn.anytravel.app.model.TripDraft
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
 import java.time.LocalDate
@@ -193,33 +191,31 @@ class TravelAssistantClient {
         return result.copy(model = model)
     }
 
-    private suspend fun post(url: URL, body: String, apiKey: String? = null): String = withContext(Dispatchers.IO) {
-        val connection = (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = 10_000
-            readTimeout = 45_000
-            doOutput = true
-            setRequestProperty("Accept", "application/json")
-            setRequestProperty("Content-Type", "application/json; charset=utf-8")
-            setRequestProperty("User-Agent", "AnyTravel-Android/0.8.1 (+https://github.com/Rseam-07/AnyTravel)")
-            if (!apiKey.isNullOrBlank()) setRequestProperty("Authorization", "Bearer $apiKey")
-        }
+    private suspend fun post(url: URL, body: String, apiKey: String? = null): String {
         try {
-            connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-            val status = connection.responseCode
-            val stream = if (status in 200..299) connection.inputStream else connection.errorStream
-            val response = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (status !in 200..299) {
-                val detail = runCatching { json.decodeFromString<AssistantBackendError>(response) }.getOrNull()
-                throw AssistantException(detail?.message ?: detail?.error ?: "智能服务返回 HTTP $status")
+            val headers = buildMap {
+                put("Content-Type", "application/json; charset=utf-8")
+                if (!apiKey.isNullOrBlank()) put("Authorization", "Bearer $apiKey")
             }
-            response
+            val response = NetworkClient.request(
+                url = url,
+                method = "POST",
+                body = body.toByteArray(Charsets.UTF_8),
+                headers = headers,
+                readTimeoutMillis = 45_000,
+                maxResponseBytes = 2 * 1024 * 1024
+            )
+            if (response.status !in 200..299) {
+                val detail = runCatching { json.decodeFromString<AssistantBackendError>(response.body) }.getOrNull()
+                throw AssistantException(detail?.message ?: detail?.error ?: "智能服务返回 HTTP ${response.status}")
+            }
+            return response.body
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: AssistantException) {
             throw error
         } catch (error: Exception) {
             throw AssistantException("智能向导暂时走散了：${error.message ?: "网络没有回应"}")
-        } finally {
-            connection.disconnect()
         }
     }
 

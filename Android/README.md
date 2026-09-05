@@ -2,7 +2,7 @@
 
 Android 客户端使用 Kotlin、Jetpack Compose 与 MapLibre Native。最低系统为 Android 12（API 31），地图样式来自 OpenFreeMap；地图归属信息由 MapLibre 保留。
 
-## 当前可用流程（0.8.1）
+## 当前可用流程（0.8.2）
 
 - 四页欢迎与初始偏好；默认松弛节奏。
 - 地图背景上的开放式自然语言输入，以及目的地、天数、预算、兴趣、住宿和交通选择。
@@ -41,9 +41,10 @@ cd Android
 
 调试 APK 默认允许连接局域网 HTTP 报价节点；Release 构建默认只允许 HTTPS。模拟器连接电脑上的节点时可填写 `http://10.0.2.2:8787/`。
 
-## 0.8.1 验证范围
+## 0.8.2 验证范围
 
-- 规划、路线、行程编辑与导出单元测试、Android lint、Debug 和 Release 通用 APK 构建通过。
+- 27 项常规单元测试中 25 项通过、2 项联网用例按设计跳过；Android lint 和 Release 通用 APK 构建通过。
+- 报价、路线与智能向导的 HTTP 请求共用可取消的连接边界、统一超时与响应大小上限；住宿合并共用一套名称、坐标和品牌判断，覆盖同楼不同品牌与远距离同名分店回归。
 - 实时聚合测试按实际入住日期取得带数值的酒店价格，并按往返日期取得铁路 12306 班次/席别价和飞猪航班起价；酒店链路以 RollingGo 为优先来源，雅高官网在 RollingGo 之外提供选日品牌直价。
 - Compose 端到端测试覆盖首次欢迎、景点勾选、方案生成以及日程/住宿/交通/费用切换；当前构建机没有连接 Android 设备，也没有安装 emulator/system image，本轮未执行 `connectedDebugAndroidTest`。
 - 已加入 `scripts/capture-xperia-crash.sh`，可在 Xperia 1 II 上清理旧日志、启动应用并保存崩溃上下文。当前没有接入该型号实体设备，因此不能把索尼 Android 12 的闪退称为已复现或已验收；生产签名、真机弱网、大字体、TalkBack、横屏和平板仍待后续验收。

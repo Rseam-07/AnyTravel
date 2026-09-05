@@ -481,6 +481,7 @@ final class AnyTravelUITests: XCTestCase {
         XCTAssertFalse(app.buttons["住宿"].exists)
         handle = app.descendants(matching: .any)["planner-panel-drag-handle"]
         XCTAssertEqual(handle.value as? String, "仅显示输入框")
+        XCTAssertGreaterThan(handle.frame.minY, app.frame.height - 190, "Compact content must not retain a tall blank panel")
         let compactScreenshot = XCTAttachment(screenshot: app.screenshot())
         compactScreenshot.name = "地图面板-仅输入框"
         compactScreenshot.lifetime = .keepAlways
@@ -490,6 +491,7 @@ final class AnyTravelUITests: XCTestCase {
         XCTAssertTrue(compactAdjustment.isHittable)
         compactAdjustment.tap()
         compactAdjustment.typeText("5600元")
+        XCTAssertEqual(handle.value as? String, "仅显示输入框", "The keyboard must not change the selected panel height")
         let applyAdjustment = app.buttons["应用路线修改"]
         XCTAssertTrue(applyAdjustment.isHittable)
         applyAdjustment.tap()

@@ -76,7 +76,7 @@ struct LogisticsSearchService {
             for item in batch {
                 let name = item.name
                 let coordinate = item.coordinate
-                let key = "\(name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current))|\(Int(coordinate.latitude * 10_000))|\(Int(coordinate.longitude * 10_000))"
+                let key = "\(AccommodationIdentity.normalizedName(name))|\(Int(coordinate.latitude * 10_000))|\(Int(coordinate.longitude * 10_000))"
                 guard seen.insert(key).inserted else { continue }
 
                 let fromDestination = Self.distance(from: destination.coordinate, to: coordinate)
@@ -146,8 +146,14 @@ struct LogisticsSearchService {
             guard let entryCoordinate = entry.coordinate,
                   Self.distance(from: destination.coordinate, to: entryCoordinate) <= 60_000 else { continue }
             if let index = options.firstIndex(where: {
-                Self.normalizedAccommodationName($0.name) == Self.normalizedAccommodationName(entry.name)
-                    || Self.distance(from: $0.coordinate, to: entryCoordinate) < 120
+                AccommodationIdentity.isSameProperty(
+                    name: $0.name,
+                    coordinate: $0.coordinate,
+                    brand: $0.brand,
+                    and: entry.name,
+                    coordinate: entryCoordinate,
+                    brand: entry.brand
+                )
             }) {
                 options[index].brand = entry.brand ?? options[index].brand
                 options[index].starRating = entry.starRating ?? options[index].starRating
@@ -156,7 +162,7 @@ struct LogisticsSearchService {
                 options[index].amenities = entry.amenities.isEmpty ? options[index].amenities : entry.amenities
                 options[index].tags = entry.tags.isEmpty ? options[index].tags : entry.tags
                 if options[index].officialWebsiteURL == nil {
-                    options[index].officialWebsiteURL = Self.officialWebsite(for: entry.name, brand: entry.brand)
+                    options[index].officialWebsiteURL = AccommodationIdentity.officialWebsite(name: entry.name, brand: entry.brand)
                     if let officialURL = options[index].officialWebsiteURL,
                        !options[index].quotes.contains(where: { $0.provider == .propertyOfficial }) {
                         options[index].quotes.append(
@@ -193,7 +199,7 @@ struct LogisticsSearchService {
             if let starRating = entry.starRating, starRating > 0 {
                 reasons.append("约 \(starRating.formatted(.number.precision(.fractionLength(0...1)))) 星级")
             }
-            let officialURL = Self.officialWebsite(for: entry.name, brand: entry.brand)
+            let officialURL = AccommodationIdentity.officialWebsite(name: entry.name, brand: entry.brand)
             var quotes = Self.channelPlaceholders(officialURL: officialURL, hasDates: draft.logistics.hasDates)
             quotes = Self.mergingQuotes(quotes, with: entry.quotes)
             options.append(
@@ -243,11 +249,11 @@ struct LogisticsSearchService {
             request.region = destination.region
             request.resultTypes = .pointOfInterest
             guard let response = try? await MKLocalSearch(request: request).start() else { continue }
-            let requestedName = Self.normalizedAccommodationName(entry.name)
+            let requestedName = AccommodationIdentity.normalizedName(entry.name)
             let match = response.mapItems
                 .filter { item in
                     guard let name = item.name else { return false }
-                    let candidate = Self.normalizedAccommodationName(name)
+                    let candidate = AccommodationIdentity.normalizedName(name)
                     return candidate == requestedName
                         || candidate.contains(requestedName)
                         || requestedName.contains(candidate)
@@ -334,38 +340,6 @@ struct LogisticsSearchService {
                 officialWebsiteURL: item.url
             )
         }
-    }
-
-    private static func normalizedAccommodationName(_ value: String) -> String {
-        value
-            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-            .replacingOccurrences(of: "酒店", with: "")
-            .replacingOccurrences(of: "宾馆", with: "")
-            .replacingOccurrences(of: " ", with: "")
-            .lowercased()
-    }
-
-    private static func officialWebsite(for name: String, brand: String?) -> URL? {
-        let value = "\(brand ?? "") \(name)".lowercased()
-        let knownSites: [([String], String)] = [
-            (["亚朵", "atour"], "https://www.yaduo.com/"),
-            (["汉庭", "全季", "桔子", "华住", "h world"], "https://www.hworld.com/"),
-            (["锦江", "维也纳", "麗枫", "希岸"], "https://www.jinjianghotels.com/"),
-            (["万豪", "喜来登", "丽思卡尔顿", "marriott"], "https://www.marriott.com.cn/"),
-            (["希尔顿", "hampton", "hilton"], "https://www.hilton.com.cn/"),
-            (["洲际", "皇冠假日", "假日酒店", "ihg"], "https://www.ihg.com/"),
-            (["雅高", "诺富特", "宜必思", "accor"], "https://all.accor.com/"),
-            (["凯悦", "hyatt"], "https://www.hyatt.com/"),
-            (["香格里拉", "shangri-la"], "https://www.shangri-la.com/cn/"),
-            (["首旅", "如家", "homeinn"], "https://www.bthhotels.com/"),
-            (["格林", "green tree"], "https://www.998.com/")
-        ]
-        guard let match = knownSites.first(where: { entry in
-            entry.0.contains(where: value.contains)
-        }) else {
-            return nil
-        }
-        return URL(string: match.1)
     }
 
     func discoverAccessPoints(

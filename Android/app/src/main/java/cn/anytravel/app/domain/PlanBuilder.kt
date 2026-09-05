@@ -1,5 +1,6 @@
 package cn.anytravel.app.domain
 
+import cn.anytravel.app.data.AccommodationMerger
 import cn.anytravel.app.model.AccessPoint
 import cn.anytravel.app.model.AccommodationOption
 import cn.anytravel.app.model.CompletePlan
@@ -449,6 +450,7 @@ class PlanBuilder {
             val hubDistance = railHub?.coordinate?.distanceTo(seed.coordinate)?.roundToInt() ?: 0
             @Suppress("DEPRECATION")
             val encoded = URLEncoder.encode(seed.name, "UTF-8")
+            val officialURL = AccommodationMerger.officialWebsite(seed.name, null)
             AccommodationOption(
                 name = seed.name,
                 address = seed.address,
@@ -459,7 +461,7 @@ class PlanBuilder {
                     add(PriceQuote("携程", unit = QuoteUnit.PER_NIGHT, kind = QuoteKind.CHECK_ON_PROVIDER, bookingURL = "https://hotels.ctrip.com/hotels/list?city=14&searchWord=$encoded", note = "选择日期与房型后核价"))
                     add(PriceQuote("去哪儿", unit = QuoteUnit.PER_NIGHT, kind = QuoteKind.CHECK_ON_PROVIDER, bookingURL = "https://hotel.qunar.com/", note = "选择日期与房型后核价"))
                     add(PriceQuote("RollingGo", unit = QuoteUnit.PER_NIGHT, kind = QuoteKind.CHECK_ON_PROVIDER, note = "正在读取所选日期报价"))
-                    officialWebsite(seed.name)?.let { url ->
+                    officialURL?.let { url ->
                         add(PriceQuote("住宿官网", unit = QuoteUnit.PER_NIGHT, kind = QuoteKind.CHECK_ON_PROVIDER, bookingURL = url, note = "前往品牌官网复核所选日期"))
                     }
                 },
@@ -468,7 +470,7 @@ class PlanBuilder {
                     railHub?.let { "${it.name}到酒店${hubDistance.distanceText()}" } ?: "等待枢纽距离"
                 ),
                 isRecommended = false,
-                officialWebsiteURL = officialWebsite(seed.name)
+                officialWebsiteURL = officialURL
             )
         }.sortedBy { it.averageAttractionDistanceMeters * 0.7 + it.hubDistanceMeters * 0.3 }
             .mapIndexed { index, option -> option.copy(isRecommended = index == 0) }
@@ -670,44 +672,9 @@ class PlanBuilder {
         existing: List<AccommodationOption>,
         incoming: List<AccommodationOption>
     ): List<AccommodationOption> {
-        val result = existing.toMutableList()
-        for (option in incoming) {
-            val normalized = normalizedHotelName(option.name)
-            val index = result.indexOfFirst { current ->
-                val currentName = normalizedHotelName(current.name)
-                currentName == normalized ||
-                    (currentName.length >= 4 && normalized.length >= 4 &&
-                        (currentName.contains(normalized) || normalized.contains(currentName))) ||
-                    (current.coordinate.distanceTo(option.coordinate) <= 100 &&
-                        currentName.take(4) == normalized.take(4))
-            }
-            if (index < 0) {
-                result += option
-            } else {
-                val current = result[index]
-                result[index] = current.copy(
-                    address = option.address.ifBlank { current.address },
-                    coordinate = option.coordinate,
-                    averageAttractionDistanceMeters = minOf(
-                        current.averageAttractionDistanceMeters,
-                        option.averageAttractionDistanceMeters
-                    ),
-                    hubDistanceMeters = minOf(current.hubDistanceMeters, option.hubDistanceMeters),
-                    quotes = mergeQuotes(current.quotes, option.quotes),
-                    recommendationReasons = (current.recommendationReasons + option.recommendationReasons).distinct().take(4),
-                    brand = option.brand ?: current.brand,
-                    starRating = option.starRating ?: current.starRating,
-                    guestRating = option.guestRating ?: current.guestRating,
-                    imageURL = option.imageURL ?: current.imageURL,
-                    officialWebsiteURL = option.officialWebsiteURL ?: current.officialWebsiteURL,
-                    amenities = (current.amenities + option.amenities).distinct().take(12),
-                    tags = (current.tags + option.tags).distinct().take(10),
-                    sources = (current.sources + option.sources).distinct()
-                )
-            }
-        }
-        val hasRealHotel = result.any { it.name != "住宿位置待选择" && it.quotes.any { quote -> quote.isCurrentPrice() } }
-        return if (hasRealHotel) result.filterNot { it.name == "住宿位置待选择" } else result
+        val merged = AccommodationMerger.merge(existing + incoming)
+        val hasRealHotel = merged.any { it.name != "住宿位置待选择" && it.quotes.any { quote -> quote.isCurrentPrice() } }
+        return if (hasRealHotel) merged.filterNot { it.name == "住宿位置待选择" } else merged
     }
 
     private fun planningNotes(
@@ -737,28 +704,6 @@ class PlanBuilder {
         .replace("景区", "")
         .replace("公园", "")
         .replace(Regex("[\\s()（）·—_-]"), "")
-
-    private fun normalizedHotelName(value: String): String = value.lowercase()
-        .replace("国际大酒店", "")
-        .replace("精品酒店", "")
-        .replace("度假酒店", "")
-        .replace("酒店", "")
-        .replace("宾馆", "")
-        .replace("民宿", "")
-        .replace(Regex("[\\s()（）·—_-]"), "")
-
-    private fun officialWebsite(name: String): String? {
-        val value = name.lowercase()
-        return when {
-            listOf("希尔顿", "康莱德", "华尔道夫", "欢朋", "hilton", "conrad").any(value::contains) -> "https://www.hilton.com.cn/zh-CN/"
-            listOf("万豪", "喜来登", "威斯汀", "丽思卡尔顿", "艾美", "marriott", "sheraton").any(value::contains) -> "https://www.marriott.com.cn/"
-            listOf("洲际", "皇冠假日", "智选假日", "英迪格", "voco", "ihg").any(value::contains) -> "https://www.ihg.com.cn/"
-            listOf("全季", "汉庭", "桔子", "星程", "海友", "华住").any(value::contains) -> "https://www.huazhu.com/"
-            listOf("亚朵", "atour").any(value::contains) -> "https://www.atour.cn/"
-            listOf("锦江", "维也纳", "麗枫", "喆啡").any(value::contains) -> "https://www.jinjianghotels.com/"
-            else -> null
-        }
-    }
 
     private fun timeRange(start: Int, end: Int): String = "${clock(start)}–${clock(end)}"
 

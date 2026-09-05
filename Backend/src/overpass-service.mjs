@@ -1,4 +1,5 @@
 import { isoNow } from "./lib/normalize.mjs";
+import { networkUserAgent } from "./network-identity.mjs";
 
 const DEFAULT_ENDPOINT = "https://overpass-api.de/api/interpreter";
 const MAX_RADIUS_M = 60_000;
@@ -65,7 +66,7 @@ export async function searchPlacesAround(body) {
         const url = new URL(endpoint);
         url.searchParams.set("data", query);
         const response = await fetch(url, {
-          headers: { "user-agent": "AnyTravel-Companion/0.1 (travel planning)" },
+          headers: { "user-agent": networkUserAgent },
           signal: AbortSignal.timeout(9_000)
         });
         if (!response.ok) {

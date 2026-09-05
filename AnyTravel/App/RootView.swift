@@ -212,10 +212,8 @@ struct RootView: View {
 private struct PlannerPanelHost: View {
     @Bindable var model: PlannerViewModel
     @Binding var detent: PlannerPanelDetent
-    @State private var dragOriginHeight: CGFloat?
-    @State private var liveHeight: CGFloat?
-    @State private var restingHeight: CGFloat?
-    @GestureState private var isDragging = false
+    @State private var manualDetent: PlannerPanelDetent?
+    @GestureState private var dragTranslation: CGFloat?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -225,37 +223,42 @@ private struct PlannerPanelHost: View {
                 safeAreaTop: geometry.safeAreaInsets.top
             )
             let automaticHeight = preferredHeight(metrics: metrics)
-            let panelHeight = clamped(liveHeight ?? restingHeight ?? automaticHeight, metrics: metrics)
-            let displayDetent = metrics.closestDetent(to: panelHeight)
+            let settledHeight = manualDetent.map { metrics.height(for: $0) } ?? automaticHeight
+            let panelHeight = clamped(settledHeight - (dragTranslation ?? 0), metrics: metrics)
+            let displayDetent = manualDetent ?? metrics.closestDetent(to: automaticHeight)
 
-            PlannerPanel(model: model, panelDetent: displayDetent)
+            // Keep the gesture surface outside the changing panel content. The
+            // transient translation resets even when the system cancels a drag.
+            ZStack(alignment: .top) {
+                PlannerPanel(model: model, panelDetent: displayDetent)
+                panelHandle(metrics: metrics, displayDetent: displayDetent, settledHeight: settledHeight)
+            }
                 .frame(maxWidth: 560)
                 .frame(height: panelHeight, alignment: .top)
                 .clipped()
-                .overlay(alignment: .top) {
-                    panelHandle(metrics: metrics, displayDetent: displayDetent)
-                }
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .animation(
-                    liveHeight == nil ? AnyTravelMotion.settle(reduceMotion: reduceMotion) : nil,
+                    dragTranslation == nil ? AnyTravelMotion.settle(reduceMotion: reduceMotion) : nil,
                     value: panelHeight
                 )
                 .onAppear {
-                    guard restingHeight == nil else { return }
-                    restingHeight = automaticHeight
-                    detent = metrics.closestDetent(to: automaticHeight)
+                    detent = displayDetent
                 }
+                .onChange(of: displayDetent) { _, nextDetent in detent = nextDetent }
                 .onChange(of: autoFitToken) { _, _ in
-                    applyAutomaticHeight(metrics: metrics)
+                    withAnimation(AnyTravelMotion.settle(reduceMotion: reduceMotion)) {
+                        manualDetent = nil
+                    }
                 }
         }
     }
 
     private func panelHandle(
         metrics: PlannerPanelMetrics,
-        displayDetent: PlannerPanelDetent
+        displayDetent: PlannerPanelDetent,
+        settledHeight: CGFloat
     ) -> some View {
         Capsule()
             .fill(.secondary.opacity(0.30))
@@ -263,9 +266,9 @@ private struct PlannerPanelHost: View {
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .top)
             .padding(.top, 10)
             .contentShape(Rectangle())
-            .gesture(panelDragGesture(metrics: metrics))
+            .gesture(panelDragGesture(metrics: metrics, settledHeight: settledHeight))
             .onTapGesture {
-                movePanel(up: displayDetent != .expanded, metrics: metrics)
+                movePanel(up: displayDetent != .expanded)
             }
             .accessibilityElement()
             .accessibilityLabel("调整地图面板高度")
@@ -275,52 +278,38 @@ private struct PlannerPanelHost: View {
             .accessibilityIdentifier("planner-panel-drag-handle")
             .accessibilityAdjustableAction { direction in
                 switch direction {
-                case .increment: movePanel(up: true, metrics: metrics)
-                case .decrement: movePanel(up: false, metrics: metrics)
+                case .increment: movePanel(up: true)
+                case .decrement: movePanel(up: false)
                 @unknown default: break
                 }
             }
     }
 
-    private func panelDragGesture(metrics: PlannerPanelMetrics) -> some Gesture {
+    private func panelDragGesture(metrics: PlannerPanelMetrics, settledHeight: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 2, coordinateSpace: .global)
-            .updating($isDragging) { _, isDragging, _ in
-                isDragging = true
-            }
-            .onChanged { value in
-                let origin = dragOriginHeight ?? restingHeight ?? preferredHeight(metrics: metrics)
-                if dragOriginHeight == nil { dragOriginHeight = origin }
-                let proposedHeight = clamped(origin - value.translation.height, metrics: metrics)
-                liveHeight = proposedHeight
-                detent = metrics.closestDetent(to: proposedHeight)
+            .updating($dragTranslation) { value, translation, transaction in
+                transaction.animation = nil
+                translation = value.translation.height
             }
             .onEnded { value in
-                let origin = dragOriginHeight ?? restingHeight ?? preferredHeight(metrics: metrics)
                 let predictedHeight = clamped(
-                    origin - value.predictedEndTranslation.height,
+                    settledHeight - value.predictedEndTranslation.height,
                     metrics: metrics
                 )
-                withAnimation(AnyTravelMotion.settle(reduceMotion: reduceMotion)) {
-                    restingHeight = predictedHeight
-                    liveHeight = nil
-                    dragOriginHeight = nil
-                    detent = metrics.closestDetent(to: predictedHeight)
-                }
+                settle(at: metrics.closestDetent(to: predictedHeight))
             }
     }
 
-    private func movePanel(up: Bool, metrics: PlannerPanelMetrics) {
+    private func movePanel(up: Bool) {
         let currentIndex = PlannerPanelDetent.allCases.firstIndex(of: detent) ?? 1
         let nextIndex = min(max(currentIndex + (up ? 1 : -1), 0), PlannerPanelDetent.allCases.count - 1)
-        settle(at: PlannerPanelDetent.allCases[nextIndex], metrics: metrics)
+        settle(at: PlannerPanelDetent.allCases[nextIndex])
     }
 
-    private func settle(at nextDetent: PlannerPanelDetent, metrics: PlannerPanelMetrics) {
+    private func settle(at nextDetent: PlannerPanelDetent) {
         withAnimation(AnyTravelMotion.settle(reduceMotion: reduceMotion)) {
+            manualDetent = nextDetent
             detent = nextDetent
-            restingHeight = metrics.height(for: nextDetent)
-            liveHeight = nil
-            dragOriginHeight = nil
         }
     }
 
@@ -374,16 +363,6 @@ private struct PlannerPanelHost: View {
                 : model.returnTransportOptions.count,
             metrics: metrics
         )
-    }
-
-    private func applyAutomaticHeight(metrics: PlannerPanelMetrics) {
-        let nextHeight = preferredHeight(metrics: metrics)
-        withAnimation(AnyTravelMotion.settle(reduceMotion: reduceMotion)) {
-            restingHeight = nextHeight
-            liveHeight = nil
-            dragOriginHeight = nil
-            detent = metrics.closestDetent(to: nextHeight)
-        }
     }
 
     private func clamped(_ height: CGFloat, metrics: PlannerPanelMetrics) -> CGFloat {

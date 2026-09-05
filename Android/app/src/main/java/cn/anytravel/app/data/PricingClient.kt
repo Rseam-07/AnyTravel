@@ -11,15 +11,12 @@ import cn.anytravel.app.model.QuoteUnit
 import cn.anytravel.app.model.TransportOption
 import cn.anytravel.app.model.TripDraft
 import cn.anytravel.app.model.distanceText
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
 import java.time.Instant
@@ -114,7 +111,9 @@ class PricingClient {
         )
         return response.quotes.mapNotNull { quote ->
             val option = accommodations.firstOrNull { it.id == quote.hotelID }
-                ?: accommodations.firstOrNull { normalizedName(it.name) == normalizedName(quote.hotelName) }
+                ?: accommodations.firstOrNull {
+                    AccommodationMerger.normalizedName(it.name) == AccommodationMerger.normalizedName(quote.hotelName)
+                }
                 ?: return@mapNotNull null
             option.id to PriceQuote(
                 provider = providerTitle(quote.provider),
@@ -214,7 +213,7 @@ class PricingClient {
                 tags = hotel.tags.take(10),
                 sources = sources.map(::sourceTitle)
             )
-        }.distinctBy { normalizedName(it.name) }
+        }.let(AccommodationMerger::merge)
     }
 
     private suspend fun fetchTransportOptions(
@@ -275,28 +274,17 @@ class PricingClient {
         }
     }
 
-    private suspend fun request(url: URL, method: String, body: String?): String = withContext(Dispatchers.IO) {
-        val connection = (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = method
-            connectTimeout = 8_000
-            readTimeout = 35_000
-            setRequestProperty("Accept", "application/json")
-            setRequestProperty("User-Agent", "AnyTravel-Android/0.4 (+https://github.com/Rseam-07/AnyTravel)")
-            if (body != null) {
-                doOutput = true
-                setRequestProperty("Content-Type", "application/json; charset=utf-8")
-                outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-            }
-        }
-        try {
-            val status = connection.responseCode
-            val stream = if (status in 200..299) connection.inputStream else connection.errorStream
-            val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (status !in 200..299) throw PricingException("节点返回 HTTP $status")
-            text
-        } finally {
-            connection.disconnect()
-        }
+    private suspend fun request(url: URL, method: String, body: String?): String {
+        val response = NetworkClient.request(
+            url = url,
+            method = method,
+            body = body?.toByteArray(Charsets.UTF_8),
+            headers = if (body == null) emptyMap() else mapOf("Content-Type" to "application/json; charset=utf-8"),
+            connectTimeoutMillis = 8_000,
+            readTimeoutMillis = 35_000
+        )
+        if (response.status !in 200..299) throw PricingException("节点返回 HTTP ${response.status}")
+        return response.body
     }
 
     private fun normalizeBaseURL(value: String): URL {
@@ -309,11 +297,6 @@ class PricingClient {
         }
         return URL(trimmed.trimEnd('/') + "/")
     }
-
-    private fun normalizedName(value: String) = value.lowercase()
-        .replace("酒店", "")
-        .replace("宾馆", "")
-        .replace(" ", "")
 
     private fun providerTitle(value: String) = when (value.lowercase()) {
         "rollinggo" -> "RollingGo"

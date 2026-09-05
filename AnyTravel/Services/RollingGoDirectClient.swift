@@ -281,15 +281,20 @@ struct RollingGoDirectClient {
     private static func deduplicated(_ entries: [AccommodationCatalogEntry]) -> [AccommodationCatalogEntry] {
         var output: [AccommodationCatalogEntry] = []
         for entry in entries {
-            let key = entry.name
-                .folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: .current)
-                .unicodeScalars
-                .filter { CharacterSet.alphanumerics.contains($0) }
-                .map(String.init)
-                .joined()
-            if let index = output.firstIndex(where: {
-                $0.name.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: .current)
-                    .unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }.map(String.init).joined() == key
+            if let index = output.firstIndex(where: { current in
+                guard let currentCoordinate = current.coordinate,
+                      let entryCoordinate = entry.coordinate else {
+                    return AccommodationIdentity.normalizedName(current.name)
+                        == AccommodationIdentity.normalizedName(entry.name)
+                }
+                return AccommodationIdentity.isSameProperty(
+                    name: current.name,
+                    coordinate: currentCoordinate,
+                    brand: current.brand,
+                    and: entry.name,
+                    coordinate: entryCoordinate,
+                    brand: entry.brand
+                )
             }) {
                 if (entry.amountCNY ?? .max) < (output[index].amountCNY ?? .max) { output[index] = entry }
             } else {

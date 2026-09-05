@@ -420,7 +420,7 @@ enum FliggyMTOPFlightPage {
             }
             var request = URLRequest(url: url)
             request.timeoutInterval = 25
-            request.setValue("AnyTravel/0.7 iOS URLSession", forHTTPHeaderField: "User-Agent")
+            request.setValue(NetworkIdentity.userAgent, forHTTPHeaderField: "User-Agent")
             request.setValue("zh-CN,zh;q=0.9", forHTTPHeaderField: "Accept-Language")
             request.setValue("https://h5.m.taobao.com/trip/flight/search/index.html", forHTTPHeaderField: "Referer")
             request.setValue("application/json,text/plain,*/*", forHTTPHeaderField: "Accept")

@@ -456,9 +456,7 @@ struct PricingBackendClient {
         accommodations.map { option in
             let matching = backendQuotes.filter { quote in
                 if let hotelID = quote.hotelID, hotelID == option.id { return true }
-                return Self.normalizedName(quote.hotelName) == Self.normalizedName(option.name)
-                    || Self.normalizedName(quote.hotelName).contains(Self.normalizedName(option.name))
-                    || Self.normalizedName(option.name).contains(Self.normalizedName(quote.hotelName))
+                return AccommodationIdentity.namesLikelyMatch(quote.hotelName, option.name)
             }
             guard !matching.isEmpty else { return option }
 
