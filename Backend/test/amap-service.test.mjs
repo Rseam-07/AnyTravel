@@ -40,10 +40,56 @@ test("reports an iOS-only key as a platform mismatch", async () => {
   await assert.rejects(
     searchAMapPlaces(
       { keywords: "园林", city: "苏州" },
-      { fetchImpl, env: { AMAP_API_KEY: "test", AMAP_BASE_URL: "https://restapi.amap.com" } }
+      { fetchImpl, allowFallback: false, env: { AMAP_API_KEY: "test", AMAP_BASE_URL: "https://restapi.amap.com" } }
     ),
     (error) => error instanceof AMapError && error.code === "amap_key_platform_mismatch" && error.status === 422
   );
+});
+
+test("falls back to an explicitly labelled WGS84 open-map result", async () => {
+  const fetchImpl = async () => new Response(JSON.stringify({
+    status: "0",
+    info: "USERKEY_PLAT_NOMATCH",
+    infocode: "10009"
+  }), { status: 200, headers: { "content-type": "application/json" } });
+  const result = await searchAMapPlaces(
+    { keywords: "拙政园", city: "苏州", limit: 5 },
+    {
+      fetchImpl,
+      env: { AMAP_API_KEY: "ios-only", AMAP_BASE_URL: "https://restapi.amap.com" },
+      osmSearch: async ({ query, limit }) => {
+        assert.equal(query, "苏州 拙政园");
+        assert.equal(limit, 5);
+        return { places: [{ name: "拙政园", display_name: "江苏省苏州市姑苏区东北街178号", latitude: 31.3247, longitude: 120.6230 }] };
+      },
+      now: () => new Date("2026-09-06T00:00:00Z")
+    }
+  );
+  assert.equal(result.source, "OpenStreetMap · Nominatim");
+  assert.equal(result.sourceCRS, "WGS84");
+  assert.equal(result.outputCRS, "WGS84");
+  assert.equal(result.degradedFrom, "amap_key_platform_mismatch");
+  assert.equal(result.places[0].name, "拙政园");
+  assert.deepEqual(result.places[0].coordinate, { latitude: 31.3247, longitude: 120.623 });
+});
+
+test("falls back when AMap accepts the request but finds no place", async () => {
+  const result = await searchAMapPlaces(
+    { keywords: "拙政园", city: "苏州" },
+    {
+      fetchImpl: async () => new Response(JSON.stringify({ status: "1", pois: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      }),
+      env: { AMAP_API_KEY: "test", AMAP_BASE_URL: "https://restapi.amap.com" },
+      osmSearch: async () => ({ places: [
+        { name: "拙政园", display_name: "江苏省苏州市姑苏区东北街178号", latitude: 31.3247, longitude: 120.6230 }
+      ] })
+    }
+  );
+
+  assert.equal(result.degradedFrom, "amap_no_results");
+  assert.equal(result.places[0].name, "拙政园");
 });
 
 test("returns provenance and converted places for a valid response", async () => {

@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
-import { Compass, LocateFixed, Moon, Sun } from "lucide-react";
+import { Compass, LocateFixed, Moon, Sun, ScanLine } from "lucide-react";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useApp } from "../store";
 import type { Coord } from "../types";
 import { meterText } from "../types";
+import { DAY_COLORS, roadRoute, routeKey, sketchLeg, type RoadRoute } from "../route-geometry";
+import { distanceMeters } from "../planner";
 
 const LIGHT_STYLE = "https://tiles.openfreemap.org/styles/liberty";
 const DARK_STYLE = "https://tiles.openfreemap.org/styles/dark";
@@ -14,7 +16,7 @@ const ROUTE_LINE = "anytravel-current-route-line";
 
 export type MapSection = "plan" | "stay" | "transport";
 
-const DAY_COLORS = ["#126E66", "#E87424", "#6157B8", "#B34B68", "#2777A8", "#7B6C35"];
+const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 interface MarkerSpec {
   kind: "destination" | "place" | "accommodation" | "station";
@@ -90,9 +92,25 @@ export default function MapView({
   const styleRef = useRef<string | null>(null);
   const [northUp, setNorthUp] = useState(true);
   const [mapReady, setMapReady] = useState(false);
+  const [road, setRoad] = useState<{ key: string; data: RoadRoute | null }>();
+  const [fitRequest, setFitRequest] = useState(0);
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [mapError, setMapError] = useState("");
 
   const selectedDay = state.plan?.days[state.selectedDay];
   const selectedPlace = state.focus?.kind === "place" ? state.focus.id : null;
+  const points = useMemo(() => selectedDay?.stops.map(s => s.place.coordinate) ?? [], [selectedDay]);
+  const key = routeKey(points, state.draft.transportMode);
+  const currentRoad = road?.key === key ? road.data : null;
+  useEffect(() => {
+    if (activeSection !== "plan" || points.length < 2 || state.draft.transportMode === "transit") { setRouteLoading(false); return; }
+    const controller = new AbortController();
+    setRouteLoading(true);
+    void roadRoute(points, state.draft.transportMode, controller.signal).then(data => {
+      if (!controller.signal.aborted) { setRoad({ key, data }); setRouteLoading(false); }
+    });
+    return () => controller.abort();
+  }, [activeSection, key]);
 
   const markers = useMemo<MarkerSpec[]>(() => {
     if (activeSection === "stay") {
@@ -179,9 +197,11 @@ export default function MapView({
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
+    setMapReady(false);
     const style = dark ? DARK_STYLE : LIGHT_STYLE;
     styleRef.current = style;
-    const map = new maplibregl.Map({
+    let map: maplibregl.Map;
+    try { map = new maplibregl.Map({
       container: containerRef.current,
       style,
       center: state.draft.destinationCoord
@@ -191,11 +211,16 @@ export default function MapView({
       attributionControl: { compact: true },
       pitchWithRotate: false
     });
+    } catch { setMapError("地图暂时无法启动，仍可在行程卡片中查看安排。"); return; }
     map.on("load", () => setMapReady(true));
+    const resize = new ResizeObserver(() => map.resize());
+    resize.observe(containerRef.current);
     map.on("rotate", () => setNorthUp(Math.abs(map.getBearing()) < 0.5));
-    map.on("error", () => undefined);
+    map.on("error", () => setMapError("部分地图未加载，请检查网络。"));
+    map.on("idle", () => { if (map.areTilesLoaded()) setMapError(""); });
     mapRef.current = map;
     return () => {
+      resize.disconnect();
       map.remove();
       mapRef.current = null;
     };
@@ -216,50 +241,36 @@ export default function MapView({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady) return;
-    const route = activeSection === "plan" ? selectedDay?.route ?? [] : [];
+    if (!map || !mapReady || !map.isStyleLoaded()) return;
     const color = DAY_COLORS[state.selectedDay % DAY_COLORS.length];
     const feature: GeoJSON.FeatureCollection = {
       type: "FeatureCollection",
-      features: route.length ? [{
-        type: "Feature",
-        properties: { color },
-        geometry: {
-          type: "LineString",
-          coordinates: [
-            ...route.map((segment) => [segment.from.lng, segment.from.lat] as [number, number]),
-            [route.at(-1)?.to.lng ?? 0, route.at(-1)?.to.lat ?? 0]
-          ]
-        }
-      }] : []
+      features: activeSection === "plan" ? points.slice(1).map((to, index) => ({
+        type: "Feature" as const,
+        properties: { color, road: Boolean(currentRoad), title: `${index + 1} → ${index + 2}` },
+        geometry: { type: "LineString" as const, coordinates: currentRoad?.legs[index]?.geometry ?? sketchLeg(points[index], to) }
+      })) : []
     };
-
     const source = map.getSource(ROUTE_SOURCE) as maplibregl.GeoJSONSource | undefined;
-    if (source) {
-      source.setData(feature);
-      return;
-    }
-
+    if (source) { source.setData(feature); return; }
     map.addSource(ROUTE_SOURCE, { type: "geojson", data: feature });
-    map.addLayer({
-      id: ROUTE_HALO,
-      type: "line",
-      source: ROUTE_SOURCE,
+    map.addLayer({ id: ROUTE_HALO, type: "line", source: ROUTE_SOURCE,
       layout: { "line-cap": "round", "line-join": "round" },
-      paint: { "line-color": "rgba(255,255,255,0.94)", "line-width": 10, "line-opacity": 0.96 }
-    });
-    map.addLayer({
-      id: ROUTE_LINE,
-      type: "line",
-      source: ROUTE_SOURCE,
+      paint: { "line-color": "#ffffff", "line-width": 9, "line-opacity": 0.85 } });
+    map.addLayer({ id: ROUTE_LINE, type: "line", source: ROUTE_SOURCE, filter: ["==", ["get", "road"], true],
       layout: { "line-cap": "round", "line-join": "round" },
-      paint: { "line-color": ["get", "color"], "line-width": 5.5, "line-opacity": 0.98 }
-    });
-  }, [activeSection, mapReady, selectedDay, state.selectedDay]);
+      paint: { "line-color": ["get", "color"], "line-width": 5, "line-opacity": 0.95 } });
+    map.addLayer({ id: `${ROUTE_LINE}-sketch`, type: "line", source: ROUTE_SOURCE, filter: ["==", ["get", "road"], false],
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": ["get", "color"], "line-width": 4, "line-dasharray": [2, 2] } });
+    map.addLayer({ id: `${ROUTE_LINE}-arrows`, type: "symbol", source: ROUTE_SOURCE,
+      layout: { "symbol-placement": "line", "symbol-spacing": 100, "text-field": ">", "text-size": 15, "text-keep-upright": false },
+      paint: { "text-color": ["get", "color"], "text-halo-color": "#fff", "text-halo-width": 2 } });
+  }, [activeSection, mapReady, selectedDay, state.selectedDay, currentRoad]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady) return;
+    if (!map || !mapReady || !map.isStyleLoaded()) return;
     for (const marker of markersRef.current) marker.remove();
     markersRef.current = [];
     const seen = new Set<string>();
@@ -281,12 +292,12 @@ export default function MapView({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady) return;
+    if (!map || !mapReady || !map.isStyleLoaded()) return;
     const coordinates = markers.map((marker) => marker.coordinate);
     if (coordinates.length === 0 && state.draft.destinationCoord) coordinates.push(state.draft.destinationCoord);
     if (coordinates.length === 0) return;
     if (coordinates.length === 1) {
-      map.easeTo({ center: [coordinates[0].lng, coordinates[0].lat], zoom: 11.4, duration: 760 });
+      map.easeTo({ center: [coordinates[0].lng, coordinates[0].lat], zoom: 11.4, duration: reducedMotion() ? 0 : 760 });
       return;
     }
     const bounds = coordinates.reduce(
@@ -299,7 +310,7 @@ export default function MapView({
         ? { top: 180, right: 60, bottom: Math.min(window.innerHeight * 0.47, 390), left: 60 }
         : { top: 130, right: 100, bottom: 90, left: 490 },
       maxZoom: 13.2,
-      duration: 820
+      duration: reducedMotion() ? 0 : 820
     });
   }, [
     activeSection,
@@ -308,7 +319,8 @@ export default function MapView({
     state.plan?.generatedAt,
     state.selectedDay,
     state.accommodations.length,
-    state.transports.length
+    state.transports.length,
+    fitRequest
     // Marker selection is intentionally excluded so tapping a stop can zoom to it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   ]);
@@ -320,7 +332,7 @@ export default function MapView({
     map.easeTo({
       center: [focus.coordinate.lng, focus.coordinate.lat],
       zoom: Math.max(map.getZoom(), 12.4),
-      duration: 720
+      duration: reducedMotion() ? 0 : 720
     });
   }, [state.focus]);
 
@@ -329,29 +341,27 @@ export default function MapView({
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const coordinate = { lat: position.coords.latitude, lng: position.coords.longitude };
-        mapRef.current?.easeTo({ center: [coordinate.lng, coordinate.lat], zoom: 13, duration: 800 });
+        mapRef.current?.easeTo({ center: [coordinate.lng, coordinate.lat], zoom: 13, duration: reducedMotion() ? 0 : 800 });
         setFocus({ kind: "place", coordinate });
       },
-      () => undefined,
+      () => setMapError("未能获取位置，请允许浏览器定位后重试。"),
       { enableHighAccuracy: true, timeout: 8000 }
     );
   };
 
   const rotateNorth = () => {
-    mapRef.current?.easeTo({ bearing: 0, pitch: 0, duration: 620 });
+    mapRef.current?.easeTo({ bearing: 0, pitch: 0, duration: reducedMotion() ? 0 : 620 });
     setNorthUp(true);
   };
 
-  const selectedRouteMeters = (selectedDay?.route ?? []).reduce((sum, segment) => {
-    const dLat = (segment.to.lat - segment.from.lat) * 111000;
-    const dLng = (segment.to.lng - segment.from.lng) * 111000 * Math.cos((segment.from.lat * Math.PI) / 180);
-    return sum + Math.hypot(dLat, dLng);
-  }, 0);
+  const selectedRouteMeters = currentRoad?.distanceMeters ?? points.slice(1).reduce((sum, to, i) => sum + distanceMeters(points[i], to), 0);
+  const geometryLabel = routeLoading ? "正在查询道路…" : currentRoad ? (state.draft.transportMode === "walking" ? "步行道路" : "驾车道路") : "顺序示意 · 直线距离";
 
   return (
     <>
       <div ref={containerRef} className="map-root" aria-label="行程地图" />
       <div className="map-controls">
+        <button className="map-control" title="查看全程" aria-label="查看当天全程" onClick={() => setFitRequest(n => n + 1)}><ScanLine size={19}/></button>
         <button className="map-control" title="定位到当前位置" aria-label="定位到当前位置" onClick={locate}>
           <LocateFixed size={19} aria-hidden="true" />
         </button>
@@ -367,10 +377,12 @@ export default function MapView({
           <Compass size={19} aria-hidden="true" />
         </button>
       </div>
+      {mapError && <div className="map-error" role="status">{mapError}</div>}
       {activeSection === "plan" && selectedRouteMeters > 0 && (
         <div className="route-distance-pill">
           <i style={{ background: DAY_COLORS[state.selectedDay % DAY_COLORS.length] }} />
-          第 {state.selectedDay + 1} 天 · {meterText(selectedRouteMeters)}
+          第 {state.selectedDay + 1} 天 · {geometryLabel} · {meterText(selectedRouteMeters)}
+          <a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noopener noreferrer">OSM / OSRM</a>
         </div>
       )}
     </>

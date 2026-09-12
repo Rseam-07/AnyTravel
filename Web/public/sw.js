@@ -1,5 +1,5 @@
-const CACHE_NAME = "anytravel-shell-v0.8.3";
-const APP_SHELL = ["./", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png"];
+const CACHE_NAME = "anytravel-shell-v0.8.4-routes-3";
+const APP_SHELL = ["./", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png", ...["ledger.html", "ledger.js", "ledger.css", "brand.css", "bridge.js", "runtime-storage.js"].map(f => `./vendor/travel-plan-page/${f}`)];
 
 self.addEventListener("install", (event) => {
   event.waitUntil((async () => {
@@ -7,18 +7,16 @@ self.addEventListener("install", (event) => {
     await cache.addAll(APP_SHELL.slice(1));
     const indexResponse = await fetch("./");
     await cache.put("./", indexResponse.clone());
-    const html = await indexResponse.text();
-    const assetPaths = [...html.matchAll(/(?:src|href)="([^"#]+)"/g)]
-      .map((match) => match[1])
-      .filter((path) => path.startsWith("./assets/"));
-    await cache.addAll([...new Set(assetPaths)]);
+    // Include lazy map and handbook chunks before the first offline visit.
+    const assets = await (await fetch("./offline-assets.json", { cache: "no-store" })).json();
+    await cache.addAll(assets.filter(path => /^\.\/assets\/[\w.-]+\.(js|css)$/.test(path)));
   })());
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+    caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith("anytravel-shell-") && key !== CACHE_NAME).map((key) => caches.delete(key))))
   );
   self.clients.claim();
 });
@@ -50,7 +48,8 @@ self.addEventListener("fetch", (event) => {
           if (response.ok) void caches.open(CACHE_NAME).then((cache) => cache.put(request, response.clone()));
           return response;
         });
-        return cached || update;
+        if (cached) { event.waitUntil(update.catch(() => {})); return cached; }
+        return update;
       })
     );
   }

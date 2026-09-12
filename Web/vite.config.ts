@@ -6,7 +6,16 @@ const defaults = JSON.parse(readFileSync(new URL("../Config/ServiceDefaults.json
 
 export default defineConfig({
   base: "./",
-  plugins: [react()],
+  // Only explicitly public variables can enter browser bundles.
+  envPrefix: "ANYTRAVEL_PUBLIC_",
+  plugins: [react(), {
+    name: "anytravel-offline-assets",
+    generateBundle(_options, bundle) {
+      this.emitFile({ type: "asset", fileName: "offline-assets.json", source: JSON.stringify(
+        Object.keys(bundle).filter(file => /^assets\/.*\.(?:js|css)$/.test(file)).map(file => `./${file}`)
+      ) });
+    }
+  }],
   define: {
     __ANYTRAVEL_SERVICE_URL__: JSON.stringify(process.env.ANYTRAVEL_SERVICE_URL || defaults.serviceBaseURL || "")
   },

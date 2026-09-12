@@ -10,7 +10,8 @@ const browserOriginFallback = browserServiceFallback(
   globalThis.location?.origin ?? "",
   globalThis.location?.hostname ?? ""
 );
-export const DEFAULT_BACKEND_URL = resolveServiceURL("", __ANYTRAVEL_SERVICE_URL__, browserOriginFallback);
+const localDevelopment = ["localhost", "127.0.0.1", "[::1]"].includes(globalThis.location?.hostname ?? "");
+export const DEFAULT_BACKEND_URL = resolveServiceURL("", localDevelopment ? browserOriginFallback : __ANYTRAVEL_SERVICE_URL__, browserOriginFallback);
 export const DEEPSEEK_BASE_URL = "https://api.deepseek.com";
 
 const settingsKey = "anytravel-web:settings";
@@ -310,6 +311,7 @@ export function channelStatusFromHealth(health: Record<string, string>): Channel
     const value = health[key];
     if (value === "configured") return { name, status: "configured" as const, detail: label };
     if (value === "public") return { name, status: "configured" as const, detail: label + "（公开源）" };
+    if (value === "local") return { name, status: "configured" as const, detail: label + "（本地理解）" };
     return { name, status: "disabled" as const, detail: label };
   });
 }
@@ -502,30 +504,4 @@ export function weatherMeta(day: WeatherDay) {
   return WMO[day.code] ?? { symbol: "🌡️", label: "天气变化", indoor: false };
 }
 
-// ---------- OSRM route geometry (driving/walking, open server) ----------
-
-export interface RouteResult {
-  distanceMeters: number;
-  durationMinutes: number;
-  geometry: [number, number][]; // [lng, lat]
-}
-
-export async function osrmRoute(waypoints: Coord[], mode: "driving" | "walking"): Promise<RouteResult | null> {
-  if (waypoints.length < 2) return null;
-  const path = waypoints.map((p) => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`).join(";");
-  const url = `https://router.project-osrm.org/route/v1/${mode}/${path}?overview=full&geometries=geojson`;
-  try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(4000) });
-    if (!response.ok) return null;
-    const payload = await response.json();
-    const route = payload.routes?.[0];
-    if (!route) return null;
-    return {
-      distanceMeters: route.distance,
-      durationMinutes: Math.round(route.duration / 60),
-      geometry: route.geometry?.coordinates ?? []
-    };
-  } catch {
-    return null;
-  }
-}
+// Road geometry lives in route-geometry.ts. Walking and driving use distinct graphs.

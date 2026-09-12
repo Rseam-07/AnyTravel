@@ -1,10 +1,14 @@
+import { geocodeCity } from "./geocode-service.mjs";
+
 export async function searchAMapPlaces(request, options = {}) {
   const env = options.env || process.env;
   const fetchImpl = options.fetchImpl || globalThis.fetch;
   const now = options.now || (() => new Date());
-  const apiKey = String(env.AMAP_API_KEY || "").trim();
-  if (!apiKey) throw new AMapError("amap_not_configured", 503, "高德 Web 服务尚未配置");
   const clean = validateRequest(request);
+  const apiKey = String(env.AMAP_API_KEY || "").trim();
+  if (!apiKey) {
+    return searchOpenMapFallback(clean, { ...options, now }, "amap_not_configured");
+  }
   const baseURL = normalizeBaseURL(env.AMAP_BASE_URL || "https://restapi.amap.com");
   const endpoint = new URL("v5/place/text", baseURL);
   endpoint.searchParams.set("keywords", clean.keywords);
@@ -21,33 +25,85 @@ export async function searchAMapPlaces(request, options = {}) {
   try {
     response = await fetchImpl(endpoint, { signal: AbortSignal.timeout(15_000) });
   } catch {
-    throw new AMapError("amap_network_error", 502, "高德地点服务暂时没有回应");
+    return searchOpenMapFallback(clean, { ...options, now }, "amap_network_error");
   }
-  if (!response.ok) throw new AMapError("amap_upstream_error", 502, `高德地点服务返回 ${response.status}`);
+  if (!response.ok) {
+    return searchOpenMapFallback(clean, { ...options, now }, `amap_http_${response.status}`);
+  }
 
   let payload;
   try { payload = await response.json(); }
-  catch { throw new AMapError("amap_invalid_response", 502, "高德地点服务返回了无法读取的内容"); }
+  catch { return searchOpenMapFallback(clean, { ...options, now }, "amap_invalid_response"); }
   if (payload.status !== "1") {
     const code = String(payload.infocode || "unknown");
     const platformMismatch = code === "10009";
-    throw new AMapError(
+    const rejection = new AMapError(
       platformMismatch ? "amap_key_platform_mismatch" : "amap_upstream_rejected",
       platformMismatch ? 422 : 502,
       platformMismatch ? "当前 Key 不是高德 Web 服务 Key" : `高德服务拒绝请求（${code}）`
     );
+    if (options.allowFallback === false) throw rejection;
+    return searchOpenMapFallback(clean, { ...options, now }, rejection.code);
   }
 
   const places = (Array.isArray(payload.pois) ? payload.pois : [])
     .map(normalizePOI)
     .filter(Boolean)
     .slice(0, clean.limit);
+  if (places.length === 0 && options.allowFallback !== false) {
+    return searchOpenMapFallback(clean, { ...options, now }, "amap_no_results");
+  }
   return {
     places,
     source: "AMap Web Service",
     sourceCRS: "GCJ-02",
     outputCRS: "WGS84 approximate inverse",
     capturedAt: now().toISOString()
+  };
+}
+
+async function searchOpenMapFallback(clean, options, degradedFrom) {
+  const osmSearch = options.osmSearch || geocodeCity;
+  try {
+    const payload = await osmSearch({
+      query: [clean.city, clean.keywords].filter(Boolean).join(" "),
+      limit: clean.limit
+    });
+    const places = (Array.isArray(payload?.places) ? payload.places : [])
+      .map((place) => normalizeOpenMapPlace(place))
+      .filter(Boolean)
+      .slice(0, clean.limit);
+    return {
+      places,
+      source: "OpenStreetMap · Nominatim",
+      sourceCRS: "WGS84",
+      outputCRS: "WGS84",
+      degradedFrom,
+      capturedAt: options.now().toISOString()
+    };
+  } catch {
+    throw new AMapError("places_fallback_failed", 502, "高德与开放地图地点服务暂时都没有回应");
+  }
+}
+
+function normalizeOpenMapPlace(place) {
+  const latitude = Number(place?.latitude);
+  const longitude = Number(place?.longitude);
+  const name = String(place?.name || "").trim();
+  if (!name || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  const address = String(place?.display_name || place?.address || "").trim();
+  return {
+    id: `osm-${latitude.toFixed(5)}-${longitude.toFixed(5)}`,
+    name,
+    address: address || "地址以开放地图详情为准",
+    type: String(place?.type || place?.class || "").trim(),
+    coordinate: { latitude, longitude },
+    sourceCoordinate: { latitude, longitude },
+    sourceCoordinateSystem: "WGS84",
+    openingHoursToday: null,
+    openingHoursWeek: null,
+    rating: null,
+    averageCostCNY: null
   };
 }
 

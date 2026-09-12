@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "1.0.0",
+  "trip": { "id": "trip-handbook-acceptance", "title": "巴黎与苏黎世 · 手册验收样例", "language": "zh-CN", "timeZone": "Europe/Paris", "baseCurrency": "CNY", "primaryDestinationCountries": ["FR", "CH"] },
+  "entities": {
+    "places": {
+      "place-paris": { "name": "埃菲尔铁塔", "countryCode": "FR", "geo": { "lat": 48.8584, "lng": 2.2945 }, "address": "Champ de Mars, Paris" },
+      "place-louvre": { "name": "卢浮宫", "countryCode": "FR", "geo": { "lat": 48.8606, "lng": 2.3376 }, "address": "Rue de Rivoli, Paris" },
+      "place-zurich": { "name": "苏黎世湖", "countryCode": "CH", "geo": { "lat": 47.362, "lng": 8.548 }, "address": "Zürich" },
+      "place-cdg": { "name": "巴黎戴高乐机场", "countryCode": "FR", "geo": { "lat": 49.0097, "lng": 2.5479 } },
+      "place-pvg": { "name": "上海浦东机场", "countryCode": "CN", "geo": { "lat": 31.1443, "lng": 121.8083 } }
+    },
+    "stays": { "stay-paris": { "name": "验收住宿（测试资料）", "placeId": "place-paris", "checkIn": { "localDate": "2027-07-01" }, "checkOut": { "localDate": "2027-07-02" } } },
+    "flights": {
+      "flight-demo": { "carrierId": "carrier-demo", "flightNumber": "DEMO01", "departure": { "placeId": "place-pvg", "localDate": "2027-07-01", "localTime": "00:30", "timeZone": "Asia/Shanghai" }, "arrival": { "placeId": "place-cdg", "localDate": "2027-07-01", "localTime": "08:00", "timeZone": "Europe/Paris" }, "notes": ["仅用于软件验收，不是真实航班"] }
+    },
+    "flightGroups": { "journey-outbound": { "title": "去往夏日（测试）", "flightIds": ["flight-demo"] } },
+    "carriers": { "carrier-demo": { "name": "验收航段" } },
+    "tickets": { "ticket-louvre": { "name": "卢浮宫预约（测试）", "initialStatus": "booked", "placeIds": ["place-louvre"], "guidance": ["示例预约时间 14:00", "无真实订单"], "booking": { "officialUrl": "https://www.louvre.fr/", "document": { "path": "assets/tickets/demo.pdf" } } } },
+    "transport": { "transport-paris-zurich": { "mode": "rail", "fromPlaceId": "place-louvre", "toPlaceId": "place-zurich", "durationMinutes": 250, "notes": ["班次与时刻请另行查询"] } },
+    "rentals": { "rental-demo": { "provider": "验收租车（测试）", "vehicle": { "model": "旅行车", "unlimitedKilometers": true }, "pickup": { "placeId": "place-zurich", "localDate": "2027-07-02", "localTime": "10:00", "timeZone": "Europe/Zurich" }, "dropoff": { "placeId": "place-zurich", "localDate": "2027-07-03", "localTime": "10:00", "timeZone": "Europe/Zurich" }, "requirements": ["拍照记录车况", "确认油量"], "insurance": ["核对合同免赔额"], "notes": ["本数据只供验收，不是驾驶建议"], "price": { "currency": "CHF", "amountMinor": 12000 } } },
+    "restaurants": {}
+  },
+  "days": [
+    { "id": "day-paris", "sequence": 1, "date": "2027-07-01", "title": "沿着塞纳河慢慢走", "items": [{ "id": "item-tower", "title": "埃菲尔铁塔", "time": "10:00", "placeId": "place-paris", "note": "这一站留足散步时间" }, { "id": "item-louvre", "title": "卢浮宫", "time": "14:00", "placeId": "place-louvre", "ticketIds": ["ticket-louvre"] }], "notes": ["验收用行程，开放时间与预约另行核对"] },
+    { "id": "day-zurich", "sequence": 2, "date": "2027-07-02", "title": "把脚步交给湖边", "items": [{ "id": "item-rail", "title": "乘火车前往苏黎世", "time": "09:00", "transportId": "transport-paris-zurich" }, { "id": "item-lake", "title": "苏黎世湖", "time": "16:00", "placeId": "place-zurich" }], "notes": [] }
+  ],
+  "preTrip": { "items": { "todo-docs": { "title": "检查护照与签证有效期" }, "todo-pdf": { "title": "把预约凭证存到票券夹" } } },
+  "issues": {}
+}

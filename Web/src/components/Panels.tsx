@@ -562,12 +562,13 @@ export function TransportPanel({ onGoConditions }: { onGoConditions?: () => void
       {state.transports.length > 0 && (
         <div className="transport-source-note">
           <TrainFront size={15} aria-hidden="true" />
-          铁路 12306 公开查询 · 去程 {outbound.length} 列 · 返程 {retur.length} 列
+          交通查询 · 去程 {outbound.length} 班 · 返程 {retur.length} 班 · 来源见各班次
         </div>
       )}
       {actualIssues.map((issue, i) => (
         <div key={i} className="issue-note">
           {issue.providerTitle}：{issue.detail ?? issue.status}
+          {issue.provider === "fliggy" && <a className="link-btn" href="https://h5.m.taobao.com/trip/traffic-search/search/index.html?defaultBiz=flight" target="_blank" rel="noreferrer">到飞猪查询</a>}
         </div>
       ))}
       {(outbound.length > 0 || retur.length > 0) && (

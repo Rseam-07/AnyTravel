@@ -29,12 +29,15 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: Web/package-lock.json
 
       - name: Install Web dependencies
         run: npm ci --prefix Web
+
+      - name: Verify Web
+        run: npm test --prefix Web && npm run check:knowledge --prefix Web
 
       - name: Build Web
         env:

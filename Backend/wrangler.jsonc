@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "anytravel-api",
+  "main": "cloudflare/worker.mjs",
+  "compatibility_date": "2026-09-11",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "ai": { "binding": "AI" },
+  "alias": { "playwright": "./cloudflare/no-browser.mjs" },
+  "vars": {
+    "CORS_ALLOW_ORIGINS": "https://rseam-07.github.io",
+    "CTRIP_SCRAPER_ENABLED": "false",
+    "CTRIP_FLIGHT_SCRAPER_ENABLED": "false",
+    "TONGCHENG_SCRAPER_ENABLED": "false"
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "HANDBOOKS", "class_name": "HandbookRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["HandbookRoom"] }],
+  "ratelimits": [{ "name": "API_RATE_LIMITER", "namespace_id": "1001", "simple": { "limit": 30, "period": 60 } }],
+  "observability": { "enabled": false }
+}

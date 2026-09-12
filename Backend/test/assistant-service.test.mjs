@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   AssistantError,
+  interpretAssistantLocally,
   interpretAssistantRequest,
   normalizeAssistantPayload,
   validateAssistantRequest
@@ -20,6 +21,26 @@ const context = {
     { name: "苏州博物馆", dayIndex: 0, interest: "culture" }
   ]
 };
+
+test("city parsing stops before the activity and does not infer a beach from Shanghai", () => {
+  const result = interpretAssistantLocally(validateAssistantRequest({ input: "从上海去苏州玩三天，两个人，轻松一点", context }));
+  assert.ok(result.actions.some(a => a.type === "set_destination" && a.value === "苏州"));
+  assert.ok(result.actions.some(a => a.type === "set_origin" && a.value === "上海"));
+  assert.ok(!result.actions.some(a => a.type === "add_interest" && a.value === "nature"));
+  const next = interpretAssistantLocally(validateAssistantRequest({ input: "想去杭州玩两天", context }));
+  assert.ok(next.actions.some(a => a.type === "set_destination" && a.value === "杭州"));
+});
+
+test("Workers AI uses the same action allowlist and falls back on exhausted quota", async () => {
+  const AI = { run: async () => ({ choices: [{ message: { content: JSON.stringify({ reply: "去苏州慢慢走。", actions: [{ type: "set_destination", value: "苏州" }, { type: "open_url", value: "https://example.com" }] }) } }] }) };
+  const result = await interpretAssistantRequest({ input: "想去苏州", context }, { env: { AI } });
+  assert.equal(result.mode, "managed");
+  assert.deepEqual(result.actions, [{ type: "set_destination", value: "苏州" }]);
+  const fallback = await interpretAssistantRequest({ input: "轻松一点", context }, { env: { AI: { run: async () => { throw new Error("quota"); } } } });
+  assert.equal(fallback.mode, "local-fallback");
+  assert.equal(fallback.degradedFrom, "workers_ai_unavailable");
+  assert.deepEqual(fallback.actions, [{ type: "set_pace", value: "relaxed" }]);
+});
 
 test("rejects an empty assistant instruction", () => {
   assert.throws(
@@ -133,11 +154,62 @@ test("calls the OpenAI-compatible endpoint without exposing the key in the body"
   assert.equal(result.capturedAt, "2026-08-31T12:00:00.000Z");
 });
 
-test("requires a server-side managed key", async () => {
-  await assert.rejects(
-    interpretAssistantRequest({ input: "轻松一点", context }, { env: {} }),
-    (error) => error instanceof AssistantError && error.code === "assistant_not_configured"
+test("keeps explicit map controls available without a managed key", async () => {
+  const result = await interpretAssistantRequest(
+    { input: "轻松一点，公交优先", context },
+    { env: {}, now: () => new Date("2026-09-06T00:00:00Z") }
   );
+
+  assert.equal(result.mode, "local-fallback");
+  assert.equal(result.model, "local-intent-v1");
+  assert.equal(result.degradedFrom, "managed_model_not_configured");
+  assert.deepEqual(result.actions, [
+    { type: "set_pace", value: "relaxed" },
+    { type: "set_travel_mode", value: "transit" }
+  ]);
+});
+
+test("extracts a complete Chinese trip request with deterministic dates", () => {
+  const clean = validateAssistantRequest({
+    input: "我和父母9月12日从宁波去苏州，住两晚，节奏轻松，预算每人3000元，想看园林和吃苏帮菜，帮我规划行程",
+    context
+  });
+  const result = interpretAssistantLocally(clean, {
+    now: () => new Date("2026-09-06T00:00:00Z")
+  });
+
+  assert.deepEqual(result.actions, [
+    { type: "set_origin", value: "宁波" },
+    { type: "set_destination", value: "苏州" },
+    { type: "set_day_count", value: "3" },
+    { type: "set_start_date", value: "2026-09-12" },
+    { type: "set_end_date", value: "2026-09-14" },
+    { type: "set_adults", value: "3" },
+    { type: "set_travelers", value: "3" },
+    { type: "set_budget", value: "3000" },
+    { type: "set_pace", value: "relaxed" },
+    { type: "add_interest", value: "gardens" },
+    { type: "add_interest", value: "food" },
+    { type: "generate_plan", value: "true" }
+  ]);
+});
+
+test("falls back when the managed model rejects the request", async () => {
+  const result = await interpretAssistantRequest(
+    { input: "轻松一点", context },
+    {
+      env: {
+        ZAI_API_KEY: "secret-for-test",
+        ZAI_BASE_URL: "https://open.bigmodel.cn/api/paas/v4"
+      },
+      fetchImpl: async () => new Response("insufficient balance", { status: 402 }),
+      now: () => new Date("2026-09-06T00:00:00Z")
+    }
+  );
+
+  assert.equal(result.mode, "local-fallback");
+  assert.equal(result.degradedFrom, "upstream_http_402");
+  assert.deepEqual(result.actions, [{ type: "set_pace", value: "relaxed" }]);
 });
 
 test("prefers a server-side DeepSeek configuration when both providers exist", async () => {

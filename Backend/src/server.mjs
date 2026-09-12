@@ -13,9 +13,11 @@ import {
   searchTransportOptions
 } from "./quote-service.mjs";
 import { QunarTicketError, searchQunarTicketQuotes } from "./qunar-ticket-service.mjs";
+import { createHandbookStore, HandbookError } from "./handbook-service.mjs";
 
 export function createApp({ env = process.env, webRoot = fileURLToPath(new URL("../../Web/dist", import.meta.url)) } = {}) {
 const rateBuckets = new Map();
+const handbookStore = env.HANDBOOK_SYNC_DIR ? createHandbookStore(env.HANDBOOK_SYNC_DIR) : null;
 const server = http.createServer(async (request, response) => {
   setSecurityHeaders(request, response, env);
   if (request.method === "OPTIONS") {
@@ -33,8 +35,10 @@ const server = http.createServer(async (request, response) => {
         rollinggo: env.ROLLINGGO_API_KEY ? "configured" : "disabled",
         railway12306: "public",
         fliggyFlights: "public",
-        assistant: env.DEEPSEEK_API_KEY || env.ZAI_API_KEY ? "configured" : "disabled",
-        amap: env.AMAP_API_KEY ? "configured" : "disabled",
+        assistant: env.DEEPSEEK_API_KEY || env.ZAI_API_KEY ? "configured" : "local",
+        assistantFallback: "local-intent-v1",
+        amap: env.AMAP_API_KEY ? "configured" : "public",
+        amapFallback: "OpenStreetMap",
         oneBoundCtrip: env.ONEBOUND_API_KEY && env.ONEBOUND_API_SECRET ? "configured" : "disabled",
         ctripSession: env.CTRIP_SCRAPER_ENABLED === "true" ? "configured" : "disabled",
         ctripFlights: (env.CTRIP_FLIGHT_SCRAPER_ENABLED ?? env.CTRIP_SCRAPER_ENABLED) === "true"
@@ -47,9 +51,18 @@ const server = http.createServer(async (request, response) => {
         accorOfficial: "public",
         hiltonOfficial: "public",
         qunarTickets: "public",
+        handbookSync: handbookStore ? "enabled" : "disabled",
         time: new Date().toISOString()
       });
       return;
+    }
+    if (request.url === "/v1/handbooks" || /^\/v1\/handbooks\/[\w-]+$/.test(request.url || "")) {
+      if (!handbookStore) throw new HandbookError(503, "handbook_sync_disabled");
+      const id = request.url.split("/")[3], token = String(request.headers.authorization || "").replace(/^Bearer /, "");
+      if (!id && request.method === "POST") { const body = await readJSON(request, 34 * 1024 * 1024); sendJSON(response, 201, await handbookStore.create(body.book)); return; }
+      if (id && request.method === "GET") { sendJSON(response, 200, await handbookStore.get(id, token)); return; }
+      if (id && request.method === "POST") { const body = await readJSON(request, 34 * 1024 * 1024); sendJSON(response, 200, await handbookStore.update(id, token, body.book, body.revision)); return; }
+      sendJSON(response, 405, { error: "method_not_allowed" }); return;
     }
     if (request.method === "POST" && request.url === "/v1/assistant/interpret") {
       const body = await readJSON(request);
@@ -58,7 +71,7 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === "POST" && request.url === "/v1/places/search") {
       const body = await readJSON(request);
-      sendJSON(response, 200, await searchAMapPlaces(body));
+      sendJSON(response, 200, await searchAMapPlaces(body, { env }));
       return;
     }
     if (request.method === "POST" && request.url === "/v1/places/poi") {
@@ -94,7 +107,7 @@ const server = http.createServer(async (request, response) => {
     if (await serveWeb(request, response, webRoot)) return;
     sendJSON(response, 404, { error: "not_found" });
   } catch (error) {
-    const status = error instanceof RequestError || error instanceof QunarTicketError
+    const status = error instanceof HandbookError ? error.status : error instanceof RequestError || error instanceof QunarTicketError
       ? 400
       : error instanceof AssistantError
         ? error.status
@@ -134,7 +147,7 @@ function setSecurityHeaders(request, response, env) {
     response.setHeader("access-control-allow-origin", request.headers.origin);
     response.setHeader("vary", "Origin");
   }
-  response.setHeader("access-control-allow-headers", "content-type");
+  response.setHeader("access-control-allow-headers", "content-type, authorization");
   response.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
 }
 
@@ -160,12 +173,12 @@ function enforceRateLimit(request, rateBuckets, env) {
   }
 }
 
-async function readJSON(request) {
+async function readJSON(request, limit = 256_000) {
   const chunks = [];
   let size = 0;
   for await (const chunk of request) {
     size += chunk.length;
-    if (size > 256_000) throw new RequestError("body_too_large");
+    if (size > limit) throw new RequestError("body_too_large");
     chunks.push(chunk);
   }
   try { return JSON.parse(Buffer.concat(chunks).toString("utf8")); }

@@ -2,7 +2,7 @@
 
 > 旅行是一场诗意的迁徙。AnyTravel 让每一次选择，都在地图上长成旅程。
 
-AnyTravel 是一款地图优先的开源 iOS 与 Android 旅行规划应用。用户不必先填完一张长表格：可以先选车次，也可以先挑住处；可以从预算出发，也可以只说“我想去XX”。路线、住宿、抵达枢纽和每天的安排都会在背景地图上随选择更新。
+AnyTravel 是一款地图优先的开源 Web、iOS 与 Android 旅行规划应用。用户不必先填完一张长表格：可以先选车次，也可以先挑住处；可以从预算出发，也可以只说“我想去XX”。路线、住宿、抵达枢纽和每天的安排都会在背景地图上随选择更新。
 
 <p align="center">
   <img src="Documentation/Brand/Exports/folded-horizon.png" width="128" alt="AnyTravel 折叠远方图标">
@@ -24,7 +24,7 @@ AnyTravel 是一款地图优先的开源 iOS 与 Android 旅行规划应用。�
 
 下载：[iOS 0.8.3 无签名 IPA](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.8.3) · [Android 0.8.3 通用 Release 预览 APK](https://github.com/Rseam-07/AnyTravel/releases/tag/v0.8.3)
 
-[Web 在线版](https://rseam-07.github.io/AnyTravel/)：React + TypeScript + MapLibre GL，桌面为 Apple Maps 式大屏横排（左面板 + 全屏地图 + 底部轨道），移动端为三档底部面板；本地开发位于 [Web/](Web/README.md)。已跑通：目的地/条件输入、141 个国内目的地离线攻略、OSM 景点与营业时间、空间聚类方案、OSRM 耗时、天气、住宿比价、12306 去返程、去哪儿门票、自然语言白名单动作、费用对比、旅册、分享链接与可安装 PWA 外壳。推送 `main` 后，GitHub Actions 会自动更新线上版本；实时住行报价仍需配置公共 HTTPS 后端。
+[Web 在线版](https://rseam-07.github.io/AnyTravel/)：React + TypeScript + MapLibre GL，桌面为 Apple Maps 式大屏横排（左面板 + 全屏地图 + 底部轨道），移动端为三档底部面板；本地开发位于 [Web/](Web/README.md)。已跑通：目的地/条件输入、141 个国内目的地离线攻略、OSM 景点与营业时间、空间聚类方案、OSRM 耗时、天气、住宿比价、12306 去返程、去哪儿门票、自然语言白名单动作、费用对比、旅册、分享链接与可安装 PWA 外壳。推送 `main` 后，GitHub Actions 会自动更新线上版本；新版 Web 已接入 Cloudflare 后端与 Qwen 智能向导，无需访问者配置密钥；随行手册提供票券、账本、清单及多设备同步。机票等第三方查询受来源限制，具体可用状态见 [Web 发布记录](Documentation/WEB_RELEASE_2026-09-12.md)。
 
 1.0 当前以 [一次旅行可用性清单](Documentation/V1_USER_JOURNEY_CHECKLIST.md) 逐项验收。目标是三端全新安装后直接规划、编辑、保存并查询住行，不要求用户理解 API、Key 或本机节点；公网服务、正规签名和真机矩阵未通过前不会把预览包称为 1.0。
 

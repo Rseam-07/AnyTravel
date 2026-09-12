@@ -1,6 +1,7 @@
 import { Component, lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   BedDouble,
+  BookOpen,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -33,6 +34,7 @@ const READY_TABS = [
 // bundle lets the title, recovery action and planning controls become usable
 // while the actual map engine is being parsed on slower phones.
 const MapView = lazy(() => import("./components/MapView"));
+const HandbookPanel = lazy(() => import("./handbook/HandbookPanel"));
 
 export default function App() {
   return (
@@ -72,6 +74,7 @@ function Shell() {
   const [editingConditions, setEditingConditions] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [handbookOpen, setHandbookOpen] = useState(() => location.hash.startsWith("#handbook="));
   const [collapsed, setCollapsed] = useState(false);
   const [mapDark, setMapDark] = useState(() => localStorage.getItem("anytravel-web:mapstyle") === "dark");
   const hasPlan = Boolean(state.plan);
@@ -83,6 +86,7 @@ function Shell() {
       setEditingConditions(false);
     }
   }, [state.plan?.generatedAt, state.phase]);
+  useEffect(() => { const onHistory = () => setHandbookOpen(location.hash.startsWith("#handbook=")); window.addEventListener("popstate", onHistory); return () => window.removeEventListener("popstate", onHistory); }, []);
 
   return (
     <div className={`app${mapDark ? " dark" : ""}`}>
@@ -93,6 +97,7 @@ function Shell() {
         onReset={app.resetAll}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenLibrary={() => setLibraryOpen(true)}
+        onOpenHandbook={() => { history.pushState(null, "", "#handbook=overview"); setHandbookOpen(true); }}
       />
 
       {state.phase === "planning" && <div className="route-status">正在筛地点、排顺序、铺路线…</div>}
@@ -138,6 +143,7 @@ function Shell() {
       {state.chatOpen && <ChatPanel />}
       {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
       {libraryOpen && <LibraryPanel onClose={() => setLibraryOpen(false)} />}
+      {handbookOpen && <Suspense fallback={<div className="route-status" role="status">正在翻开随行手册…</div>}><HandbookPanel dark={mapDark} onClose={() => setHandbookOpen(false)} /></Suspense>}
 
       <div className="print-plan"><PrintView /></div>
     </div>
@@ -147,11 +153,13 @@ function Shell() {
 function TopChrome({
   onReset,
   onOpenSettings,
-  onOpenLibrary
+  onOpenLibrary,
+  onOpenHandbook
 }: {
   onReset: () => void;
   onOpenSettings: () => void;
   onOpenLibrary: () => void;
+  onOpenHandbook: () => void;
 }) {
   const { state } = useApp();
   const title = state.draft.destination || "AnyTravel";
@@ -188,6 +196,7 @@ function TopChrome({
         <button className="glass-circle" onClick={onOpenLibrary} aria-label="已保存行程" title="旅册">
           <Luggage size={20} aria-hidden="true" />
         </button>
+        <button className="glass-circle" onClick={onOpenHandbook} aria-label="随行手册" title="随行手册：票券、待办与同行账本"><BookOpen size={20} aria-hidden="true" /></button>
       </div>
       <div className="progress-dots" aria-label={`规划进度，第 ${progress + 1} 步，共 4 步`}>
         {[0, 1, 2, 3].map((index) => <i key={index} className={index === progress ? "active" : ""} />)}

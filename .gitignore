@@ -35,3 +35,9 @@ Android/.kotlin/
 Android/diagnostics/
 .gradle-user-home/
 *.iml
+
+# Local runtime credentials and Cloudflare state
+**/.env.*
+!**/.env.example
+**/.dev.vars*
+**/.wrangler/

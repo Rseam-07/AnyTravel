@@ -1,6 +1,6 @@
 # AnyTravel 地图数据来源
 
-更新日期：2026-08-31
+更新日期：2026-09-06
 
 ## Apple Maps / MapKit
 
@@ -10,10 +10,11 @@
 
 ## 高德 Web 服务
 
-- 官方端点：`https://restapi.amap.com/v3/place/text`，由伴随服务的 `POST /v1/places/search` 代理。
+- 官方端点：`https://restapi.amap.com/v5/place/text`，由伴随服务的 `POST /v1/places/search` 代理。
 - 凭据：只读 `Backend/.env` 中的 `AMAP_API_KEY`。必须使用高德控制台的“Web 服务”Key；iOS SDK Key 不兼容 REST 请求。
 - 坐标：高德返回 GCJ-02。伴随服务保留原始坐标与坐标系字段，并输出三次迭代近似反算的 WGS84 坐标；数据对象会同时标注 `sourceCRS` 和 `outputCRS`。
-- 质量门槛：在正式合并到 iOS 主地图前，至少用三个已知地标与 MapKit 搜索结果交叉核对。当前提供的 Key 于 2026-08-31 返回 `USERKEY_PLAT_NOMATCH (10009)`，因此本版不会把高德结果冒充为已接通数据。
+- 回退：Web 服务 Key 类型不匹配、请求失败或零结果时，伴随服务改用 OpenStreetMap/Nominatim，并把来源和输入/输出坐标系都明确标成 WGS84。iOS 只接受 `GCJ-02 → WGS84` 或 `WGS84 → WGS84` 两种可核验组合。
+- 质量门槛：在正式合并到主地图前，至少用三个已知地标与平台原生地图搜索结果交叉核对。当前提供的 Key 于 2026-09-06 返回 `USERKEY_PLAT_NOMATCH (10009)`；节点因此返回有来源标注的 OSM 候选，不把它们冒充成高德结果。
 
 ## 可追溯性约定
 

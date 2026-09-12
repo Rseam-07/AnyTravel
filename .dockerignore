@@ -16,3 +16,7 @@ Web/.env.local
 *.ipa
 *.apk
 *.aab
+
+**/.env.*
+**/.dev.vars*
+**/.wrangler

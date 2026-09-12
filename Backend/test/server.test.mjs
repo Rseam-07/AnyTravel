@@ -19,7 +19,10 @@ test("public app serves Web and truthful health together, never repository secre
     const health = await (await fetch(base + "/health")).json();
     assert.equal(health.service, "anytravel-companion");
     assert.equal(health.rollinggo, "configured");
-    assert.equal(health.assistant, "disabled");
+    assert.equal(health.assistant, "local");
+    assert.equal(health.assistantFallback, "local-intent-v1");
+    assert.equal(health.amap, "public");
+    assert.equal(health.amapFallback, "OpenStreetMap");
     assert.equal(health.fliggyFlights, "public");
     assert(!JSON.stringify(health).includes("test-only-private-value"));
     const page = await fetch(base + "/");

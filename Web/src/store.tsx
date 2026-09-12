@@ -1,3 +1,4 @@
+import { pickNearbyAccommodation } from "./accommodation-selection";
 import {
   createContext,
   useCallback,
@@ -21,7 +22,6 @@ import {
   fetchTransport,
   loadSettings,
   nominatimSearch,
-  osrmRoute,
   providerDisplayName,
   saveSettings,
   weatherForecast,
@@ -567,30 +567,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (onlyQuoteOrScheduleChanges) {
         plan = rebaseExistingPlan(previousPlan, draft, before.planLocks);
       } else {
-        // Build a usable result immediately, then replace matching estimates
-        // with real road durations when the public router responds in time.
-        const estimatedPlan = planItinerary(places, draft);
-        const pairs = estimatedPlan.days.flatMap((day) => day.route).slice(0, 18);
-        const realRoutes: { from: Coord; to: Coord; minutes: number }[] = [];
-        const mode = draft.transportMode === "walking" ? "walking" : "driving";
-        let cursor2 = 0;
-        const worker = async () => {
-          for (;;) {
-            const index = cursor2++;
-            if (index >= pairs.length) return;
-            const pair = pairs[index];
-            try {
-              const route = await osrmRoute([pair.from, pair.to], mode);
-              if (route) realRoutes.push({ from: pair.from, to: pair.to, minutes: route.durationMinutes });
-            } catch {
-              /* keep estimate for this segment */
-            }
-          }
-        };
-        await Promise.all(Array.from({ length: 6 }, () => worker()));
-        const generated = realRoutes.length > 0
-          ? planItinerary(places, draft, realRoutes)
-          : estimatedPlan;
+        // Routing is loaded for the visible day by the map, without blocking planning.
+        const generated = planItinerary(places, draft);
         plan = applyLockedVisits(generated, previousPlan, before.planLocks, draft);
       }
       if (recordUndo && previousPlan) {
@@ -756,13 +734,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let selectedReturnID = fixedReturnID;
     const picks: string[] = [];
     if (!draft.skipAccommodation && !selectedAccommodationID) {
-      const priced = catalogItems
-        .flatMap((a) => a.quotes
-          .filter((q) => q.amountCNY != null && q.kind !== "demo")
-          .map((q) => ({ id: a.id, amount: q.amountCNY ?? 0, title: a.name, provider: q.providerTitle })))
-        .sort((a, b) => a.amount - b.amount)[0];
-      selectedAccommodationID = priced?.id ?? null;
-      if (priced) picks.push(`住宿：${priced.title} ¥${priced.amount}/晚（${priced.provider}）`);
+      const near = pickNearbyAccommodation(catalogItems, plan?.days.flatMap(d => d.stops.map(s => s.place.coordinate)) ?? (draft.destinationCoord ? [draft.destinationCoord] : []));
+      selectedAccommodationID = near?.item.id ?? null;
+      if (near) picks.push(`住宿：${near.item.name} ¥${near.quote.amountCNY}/晚（${near.quote.providerTitle}，靠近行程）`);
     }
     if (!draft.skipTransport && !selectedOutboundID) {
       const outbound = pickPreferredTransport(finalTransportItems.filter(t => t.direction === "outbound"), draft.longDistanceMode);
