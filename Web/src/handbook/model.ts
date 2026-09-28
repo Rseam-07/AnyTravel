@@ -1,6 +1,6 @@
 import type { AppState } from "../store";
 import type { Coord } from "../types";
-import { bestQuote } from "../planner";
+import { preferredQuote, quoteContext } from "../quotes";
 
 export const MODULES = ["overview", "flights", "route", "itinerary", "tickets", "driving", "todo", "ledger"] as const;
 export type Module = typeof MODULES[number];
@@ -49,8 +49,8 @@ export function fromPlanner(state: AppState, previous?: Handbook): Handbook {
     return [[s.place.id, { id: `ticket-${s.place.id}`, title: s.place.name, placeId: s.place.id, dayId: `day-${i + 1}`, purchased: false, note: `${q.amountCNY == null ? "价格待确认" : `查询起价 ¥${q.amountCNY}`} · ${q.note}`, url: safeURL(q.bookingURL) }] as const];
   }))).values()];
   const transport = state.transports.filter(t => [state.selectedOutboundID, state.selectedReturnID].includes(t.id));
-  book.flights = transport.map(t => ({ id: t.id, title: `${t.direction === "outbound" ? "去程" : "返程"} · ${t.title}`, number: t.title, from: t.originName, to: t.destinationName, departure: localDateTime(t.departureTime), arrival: localDateTime(t.arrivalTime), departureOffset: "+08:00", arrivalOffset: "+08:00", note: [state.bookingConfirmations.some(b => b.itemID === t.id) ? "已确认预订" : "已选方案，预订待确认", ...(t.recommendationReasons || [])].join(" · "), url: safeURL(bestQuote(t.quotes)?.bookingURL) }));
-  book.stays = state.accommodations.filter(s => s.id === state.selectedAccommodationID).map(s => ({ id: s.id, title: s.name, address: s.address || "", note: [state.draft.startDate, dateAfter(state.draft.startDate, Math.max(1, state.draft.dayCount - 1)), state.bookingConfirmations.some(b => b.itemID === s.id) ? "已确认预订" : "已选住处，预订待确认"].filter(Boolean).join(" · "), url: safeURL(s.officialWebsiteURL || bestQuote(s.quotes)?.bookingURL) }));
+  book.flights = transport.map(t => ({ id: t.id, title: `${t.direction === "outbound" ? "去程" : "返程"} · ${t.title}`, number: t.title, from: t.originName, to: t.destinationName, departure: localDateTime(t.departureTime), arrival: localDateTime(t.arrivalTime), departureOffset: "+08:00", arrivalOffset: "+08:00", note: [state.bookingConfirmations.some(b => b.itemID === t.id) ? "已确认预订" : "已选方案，预订待确认", ...(t.recommendationReasons || [])].join(" · "), url: safeURL(preferredQuote(t.quotes, quoteContext(state.draft, "transport"))?.bookingURL) }));
+  book.stays = state.accommodations.filter(s => s.id === state.selectedAccommodationID).map(s => ({ id: s.id, title: s.name, address: s.address || "", note: [state.draft.startDate, dateAfter(state.draft.startDate, Math.max(1, state.draft.dayCount - 1)), state.bookingConfirmations.some(b => b.itemID === s.id) ? "已确认预订" : "已选住处，预订待确认"].filter(Boolean).join(" · "), url: safeURL(s.officialWebsiteURL || preferredQuote(s.quotes, quoteContext(state.draft, "accommodation"))?.bookingURL) }));
   book.notes = state.plan?.notes ?? [];
   if (previous) {
     book.modules = previous.modules; book.timeZone = previous.timeZone; book.ledger = previous.ledger; book.todos = previous.todos;

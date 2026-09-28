@@ -16,7 +16,7 @@ describe("channelStatusFromHealth", () => {
     });
     expect(channels.find(channel => channel.name === "amap")).toMatchObject({
       status: "configured",
-      detail: "高德地点/路线（公开源）"
+      detail: "地点与路线（含 OpenStreetMap 备用）（公开源）"
     });
   });
 });

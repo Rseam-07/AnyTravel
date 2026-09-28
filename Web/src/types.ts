@@ -45,9 +45,13 @@ export interface TravelPlace {
   rating?: number;
   ticket?: TicketQuote | null;
   planningPriority?: "primary" | "supplemental";
+  /** Planning estimates, never live opening or reservation guarantees. */
+  suggestedVisitMinutes?: number;
+  bestTime?: "清晨" | "上午" | "下午" | "傍晚" | "晚上" | "白天" | "全天";
 }
 
 export interface TicketQuote {
+  priceType?: "admission" | "relatedProduct";
   isStale?: boolean;
   provider: string;
   amountCNY?: number | null;
@@ -162,6 +166,7 @@ export interface PlanStop {
   departureText?: string;
   visitMinutes: number;
   moveMinutes?: number;
+  moveSource?: "estimate" | "routed";
   moveFrom?: Coord;
   isPrimary: boolean;
   opening?: string;
@@ -181,6 +186,27 @@ export interface PlanDay {
   assessment: string;
   badges: string[];
   route: { from: Coord; to: Coord }[];
+  startMinute?: number;
+  endMinute?: number;
+  mealMinutes?: number;
+  bufferMinutes?: number;
+  freeMinutes?: number;
+  breaks?: PlanBreak[];
+  warnings?: string[];
+}
+
+export interface PlanBreak {
+  kind: "meal" | "buffer" | "wait";
+  startMinute: number;
+  endMinute: number;
+  label: string;
+  beforeStopID?: string;
+}
+
+export interface PlanAlternative {
+  place: TravelPlace;
+  reason: string;
+  required: boolean;
 }
 
 export interface Plan {
@@ -189,6 +215,7 @@ export interface Plan {
   totalCostCNY?: number;
   notes: string[];
   engine: "web-heuristic" | "backend";
+  alternatives?: PlanAlternative[];
 }
 
 export interface TripDraft {
@@ -207,6 +234,11 @@ export interface TripDraft {
   longDistanceMode?: LongDistanceMode;
   skipAccommodation: boolean;
   skipTransport: boolean;
+  /** Local sightseeing windows, after arrival / before leaving for the station. */
+  firstDayStart?: string;
+  lastDayEnd?: string;
+  mustVisitIDs?: string[];
+  excludedPlaceIDs?: string[];
 }
 
 export type MobilityNeed = "none" | "stroller" | "wheelchair";
@@ -275,7 +307,7 @@ export const INTEREST_MINUTES: Record<Interest, number> = {
 
 export function formatCNY(amount?: number | null): string {
   if (amount == null || Number.isNaN(amount)) return "待查";
-  return `¥${Math.round(amount).toLocaleString("zh-CN")}`;
+  return `¥${amount.toLocaleString("zh-CN", { maximumFractionDigits: 2 })}`;
 }
 
 export function clockText(minute?: number): string {

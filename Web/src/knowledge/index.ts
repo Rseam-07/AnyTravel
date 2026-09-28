@@ -71,11 +71,13 @@ export function knowledgePlaces(destination: string, preferred: Interest[] = [])
   return ranked.map(({ place, interest }) => ({
     id: `knowledge-${normalizeDestination(city.city)}-${place.name}`,
     name: place.name,
-    address: place.tags?.slice(0, 3).join(" · "),
+    // Tags describe research provenance/preferences, not a street address.
     coordinate: place.coord,
     interest,
     source: "AnyTravel 目的地资料（非实时）",
     opening: place.openingHoursWeek,
+    suggestedVisitMinutes: place.stayMinutes,
+    bestTime: place.best,
     planningPriority: place.tier === "必去" ? "primary" : "supplemental",
     ticket: place.ticket
       ? {
@@ -87,61 +89,37 @@ export function knowledgePlaces(destination: string, preferred: Interest[] = [])
   }));
 }
 
-/**
- * Knowledge-aware heat: a place that appears in the guide knowledge base with a
- * "必去" tier is a heavyweight sight; "推荐" is a solid filler; "顺路" is a
- * nice-to-have. Falls back to the OSM/category heuristics otherwise.
- */
-export function knowledgeHeat(place: { name: string }, baseScore: number): number {
-  const name = place.name;
-  let bonus = 0;
-  for (const city of knowledgeCities) {
-    for (const famous of city.places) {
-      if (name === famous.name || (famous.name.length >= 5 && name.includes(famous.name))) {
-        bonus += tierBonus(famous.tier);
-        if (famous.best) {
-          // No selection change here; the caller may use best for slot hints.
-        }
-        return baseScore + bonus;
-      }
-    }
-  }
-  return baseScore;
+/** Match facts geographically: same-name attractions in different cities are unrelated. */
+function matchedPlace(place: { name: string; coordinate?: { lat: number; lng: number } }): FamousPlace | undefined {
+  return knowledgeCities.flatMap(city => city.places).find(famous => {
+    const matches = place.name === famous.name || (famous.name.length >= 2 && Boolean(place.coordinate && famous.coord) && place.name.includes(famous.name));
+    if (!matches) return false;
+    if (!place.coordinate || !famous.coord) return place.name === famous.name;
+    return Math.abs(place.coordinate.lat - famous.coord.lat) < 0.08 && Math.abs(place.coordinate.lng - famous.coord.lng) < 0.08;
+  });
 }
 
-function tierBonus(tier: string): number {
-  switch (tier) {
-    case "必去":
-      return 120;
-    case "推荐":
-      return 45;
-    case "顺路":
-      return 8;
-    default:
-      return 0;
-  }
+export function knowledgeHeat(place: { name: string; coordinate?: { lat: number; lng: number } }, baseScore: number): number {
+  const tier = matchedPlace(place)?.tier;
+  return baseScore + (tier === "必去" ? 10 : tier === "推荐" ? 5 : 0);
 }
 
-export function famousBestTime(place: { name: string }): FamousPlace["best"] | null {
-  for (const city of knowledgeCities) {
-    for (const famous of city.places) {
-      if (nameMatches(famous, place.name)) return famous.best ?? null;
-    }
-  }
-  return null;
+export function famousBestTime(place: TravelPlace): FamousPlace["best"] | null {
+  return place.bestTime ?? matchedPlace(place)?.best ?? null;
 }
 
-export function famousStayMinutes(place: { name: string }, fallback: number): number {
-  for (const city of knowledgeCities) {
-    for (const famous of city.places) {
-      if (nameMatches(famous, place.name) && famous.stayMinutes) return famous.stayMinutes;
-    }
-  }
-  return fallback;
+export function famousStayMinutes(place: TravelPlace, fallback: number): number {
+  return place.suggestedVisitMinutes ?? matchedPlace(place)?.stayMinutes ?? fallback;
 }
 
-function nameMatches(famous: FamousPlace, name: string): boolean {
-  return name === famous.name || (famous.name.length >= 5 && name.includes(famous.name));
+export function enrichPlace(place: TravelPlace): TravelPlace {
+  const facts = matchedPlace(place);
+  return facts ? {
+    ...place,
+    opening: place.opening ?? facts.openingHoursWeek,
+    suggestedVisitMinutes: place.suggestedVisitMinutes ?? facts.stayMinutes,
+    bestTime: place.bestTime ?? facts.best
+  } : place;
 }
 
 function normalizeDestination(value: string): string {

@@ -210,7 +210,7 @@ export interface BackendTransportResponse {
 }
 
 export interface BackendTicketResponse {
-  quotes: { attractionID: string; name: string; amountCNY?: number | null; capturedAt?: string; bookingURL?: string; note?: string }[];
+  quotes: { attractionID: string; name: string; provider?: string; kind?: string; priceType?: "admission" | "relatedProduct"; amountCNY?: number | null; capturedAt?: string; bookingURL?: string; note?: string }[];
   diagnostics: { provider: string; status: string; detail?: string }[];
   capturedAt: string;
 }
@@ -220,6 +220,12 @@ export function providerDisplayName(provider: string): string {
     case "rollinggo": return "道旅 RollingGo";
     case "ctrip": return "携程";
     case "ctrip-flight": return "携程航班";
+    case "ctrip-public-flight": return "携程公开搜索";
+    case "official-policy": return "景区官方票价";
+    case "accor-official": return "雅高官网";
+    case "hilton-official": return "希尔顿官网";
+    case "fliggy": return "飞猪";
+    case "official": return "酒店官网";
     case "onebound-ctrip": return "万邦携程目录";
     case "elong-open-api": return "艺龙开放平台";
     case "qunar": return "去哪儿";
@@ -295,6 +301,7 @@ export function channelStatusFromHealth(health: Record<string, string>): Channel
   const known: [string, string, string][] = [
     ["rollinggo", "rollinggo", "RollingGo 酒店"],
     ["fliggyFlights", "fliggy", "飞猪航班"],
+    ["ctripPublicFlights", "ctrip-public-flight", "携程公开航班搜索"],
     ["railway12306", "12306", "铁路 12306"],
     ["accorOfficial", "accor-official", "雅高酒店官网"],
     ["hiltonOfficial", "hilton-official", "希尔顿酒店官网"],
@@ -303,7 +310,7 @@ export function channelStatusFromHealth(health: Record<string, string>): Channel
     ["tongchengSession", "tongcheng", "同程/艺龙（登录会话）"],
     ["elongOpenAPI", "elong-open-api", "艺龙开放平台"],
     ["oneBoundCtrip", "onebound-ctrip", "万邦携程目录"],
-    ["amap", "amap", "高德地点/路线"],
+    ["amap", "amap", "地点与路线（含 OpenStreetMap 备用）"],
     ["assistant", "assistant", "智能向导"],
     ["qunarTickets", "qunar", "去哪儿门票"]
   ];

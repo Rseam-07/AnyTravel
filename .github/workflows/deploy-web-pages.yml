@@ -6,6 +6,7 @@ on:
     paths:
       - "Web/**"
       - "Config/ServiceDefaults.json"
+      - "Backend/src/lib/flight-city-codes.json"
       - ".github/workflows/deploy-web-pages.yml"
   workflow_dispatch:
 

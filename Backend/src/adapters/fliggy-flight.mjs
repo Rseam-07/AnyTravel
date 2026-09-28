@@ -15,13 +15,15 @@ export function flightCityCode(city) {
 
 export class FliggyFlightAdapter {
   name = "fliggy";
-  constructor({ search = searchFlightPage, now = () => new Date() } = {}) {
+  constructor({ search = searchFlightPage, now = () => new Date(), enabled = search !== searchFlightPage || process.env.FLIGGY_PUBLIC_ENABLED === "true" } = {}) {
     this.searchPage = search;
     this.now = now;
+    this.enabled = enabled;
   }
 
   async search(request) {
     if (!request.modes?.includes("flight")) return { options: [], diagnostics: [] };
+    if (!this.enabled) return { options: [], diagnostics: [{ provider: this.name, status: "disabled", detail: "飞猪自动查询停用，使用携程公开搜索页" }] };
     const from = flightCityCode(request.origin), to = flightCityCode(request.destination);
     if (!from || !to || from === to) return {
       options: [], diagnostics: [{ provider: this.name, status: "city_id_missing", detail: "当前城市组合暂无可查询的独立航线" }]
@@ -167,7 +169,8 @@ export async function searchFlightPage({ from, to, date }, { fetchImpl = fetch, 
       cookie: [...cookies].map(([key, value]) => `${key}=${value}`).join("; ")
     } });
     if (!response.ok) throw new Error("flight_source_unavailable");
-    for (const line of response.headers.getSetCookie()) {
+    const setCookies = response.headers.getSetCookie?.() || [response.headers.get("set-cookie")].filter(Boolean);
+    for (const line of setCookies) {
       const pair = line.split(";", 1)[0], equals = pair.indexOf("=");
       if (equals > 0 && ["_m_h5_tk", "_m_h5_tk_enc"].includes(pair.slice(0, equals))) cookies.set(pair.slice(0, equals), pair.slice(equals + 1));
     }

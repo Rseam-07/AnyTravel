@@ -1,5 +1,6 @@
 import { isoNow } from "./lib/normalize.mjs";
 import { networkUserAgent } from "./network-identity.mjs";
+import knowledge from "../../Web/src/knowledge/cities.json" with { type: "json" };
 
 const DEFAULT_ENDPOINT = "https://overpass-api.de/api/interpreter";
 const MAX_RADIUS_M = 60_000;
@@ -35,6 +36,7 @@ export class OverpassError extends Error {
     super(code);
     this.code = code;
     this.message = message;
+    this.status = code === "invalid_request" ? 400 : 503;
   }
 }
 
@@ -43,7 +45,7 @@ export async function searchPlacesAround(body) {
   const longitude = Number(body?.longitude);
   const radius = Math.min(Math.max(Number(body?.radius || 15_000), 1_000), MAX_RADIUS_M);
   const limit = Math.min(Math.max(Number(body?.limit || 120), 20), MAX_RESULTS);
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
     throw new OverpassError("invalid_request", "需要 latitude 与 longitude");
   }
   const center = `${latitude.toFixed(5)},${longitude.toFixed(5)}`;
@@ -51,6 +53,8 @@ export async function searchPlacesAround(body) {
   const cached = cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     if (cached.negative) {
+      const local = knowledgePlacesAround(latitude, longitude, radius, limit);
+      if (local.length) return { places: local, source: "knowledge-fallback", degraded: true, cached: true };
       throw new OverpassError("provider_failed", "地图 POI 源暂时不可用（已缓存，稍后自动恢复）");
     }
     return { ...cached.value, cached: true };
@@ -60,14 +64,13 @@ export async function searchPlacesAround(body) {
   const rawLimit = RAW_LIMIT;
   const query = `[out:json][timeout:30];(${CATEGORY_TAGS.replaceAll("RADIUS", String(radius)).replaceAll("CENTER", center)});out center ${rawLimit};`;
   let lastError = null;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    for (const endpoint of MIRRORS) {
+  for (const endpoint of MIRRORS.filter(endpoint => !endpoint.includes("osm.ch") || (longitude >= 5 && longitude <= 11 && latitude >= 45 && latitude <= 48))) {
       try {
         const url = new URL(endpoint);
         url.searchParams.set("data", query);
         const response = await fetch(url, {
           headers: { "user-agent": networkUserAgent },
-          signal: AbortSignal.timeout(9_000)
+          signal: AbortSignal.timeout(6_000)
         });
         if (!response.ok) {
           lastError = new OverpassError("provider_failed", `Overpass 返回 ${response.status}`);
@@ -88,13 +91,22 @@ export async function searchPlacesAround(body) {
       } catch (error) {
         lastError = error;
       }
-    }
-    if (attempt === 0) {
-      await new Promise((resolve) => setTimeout(resolve, 1_200));
-    }
   }
   cache.set(cacheKey, { expiresAt: Date.now() + 90_000, negative: true });
-  throw lastError ?? new OverpassError("provider_failed", "没有可用的地图 POI 数据源");
+  const local = knowledgePlacesAround(latitude, longitude, radius, limit);
+  if (local.length) return { places: local, source: "knowledge-fallback", degraded: true, cached: false };
+  throw new OverpassError("provider_failed", "在线地点服务暂时没有回应；可稍后重试或手动添加地点");
+}
+
+export function knowledgePlacesAround(latitude, longitude, radius, limit) {
+  const radians = degrees => degrees * Math.PI / 180;
+  const categories = { 自然: "nature", 博物馆: "culture", 美食: "food", 夜景: "night", 亲子: "family" };
+  return knowledge.cities.flatMap(city => city.places.map(place => {
+    if (!Number.isFinite(place.coord?.lat) || !Number.isFinite(place.coord?.lng)) return null;
+    const a = Math.sin(radians(place.coord.lat - latitude) / 2) ** 2 + Math.cos(radians(latitude)) * Math.cos(radians(place.coord.lat)) * Math.sin(radians(place.coord.lng - longitude) / 2) ** 2;
+    const distance = 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return distance <= radius ? { id: `knowledge-${city.city}-${place.name}`, name: place.name, latitude: place.coord.lat, longitude: place.coord.lng, address: city.city, interest: categories[place.category] || "gardens", opening: place.openingHoursWeek || null, rating: null, source: "内置地点资料（在线源暂不可用）", distance } : null;
+  })).filter(Boolean).sort((a, b) => a.distance - b.distance).slice(0, limit);
 }
 
 function curate(places, limit) {

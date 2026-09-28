@@ -34,6 +34,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
   }, []);
 
   const enabled = state.channels.filter(channel => channel.status !== "disabled");
+  const issues = [...state.accommodationIssues, ...state.transportIssues, ...state.ticketIssues];
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div ref={card} className="modal-card" role="dialog" aria-modal="true" aria-labelledby="settings-title" onClick={event => event.stopPropagation()}>
@@ -61,10 +62,17 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
             : "在线服务暂未连接，内置地点与本机规划仍可用。可以稍后重试，不必修改设置。"}
         </div>
         <div className="channel-list">
-          {enabled.map(channel => <div key={channel.name} className="channel-row">
-            <span className="channel-dot on" aria-hidden="true" /><strong>{channel.detail ?? channel.name}</strong><span>已接入</span>
-          </div>)}
+          {enabled.map(channel => {
+            const results = issues.filter(issue => issue.provider === channel.name);
+            const returned = results.some(issue => issue.status === "ok" || issue.status === "partial");
+            const failed = results.some(issue => ["failed", "verification_required", "login_required"].includes(issue.status));
+            const label = returned ? failed ? "部分返回" : "本次有结果" : failed ? "本次未取到" : results.length ? "本次无匹配" : "待实际查询";
+            return <div key={channel.name} className="channel-row">
+              <span className={`channel-dot ${returned && !failed ? "on" : ""}`} aria-hidden="true" /><strong>{channel.detail ?? channel.name}</strong><span>{label}</span>
+            </div>;
+          })}
         </div>
+        {state.channels.some(channel => channel.status === "disabled") && <details className="advanced-settings"><summary>未启用的可选来源</summary><p className="sub-text">{state.channels.filter(channel => channel.status === "disabled").map(channel => channel.detail ?? channel.name).join("、")}。这些来源不计入可用服务。</p></details>}
         <details className="advanced-settings">
           <summary>高级设置（可选）</summary>
           <p className="sub-text">仅在你希望使用自己的服务时更改。留空地址将恢复应用预设。</p>

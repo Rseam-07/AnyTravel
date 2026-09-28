@@ -23,7 +23,8 @@ test("public app serves Web and truthful health together, never repository secre
     assert.equal(health.assistantFallback, "local-intent-v1");
     assert.equal(health.amap, "public");
     assert.equal(health.amapFallback, "OpenStreetMap");
-    assert.equal(health.fliggyFlights, "public");
+    assert.equal(health.fliggyFlights, "disabled");
+    assert.equal(health.ctripPublicFlights, "public");
     assert(!JSON.stringify(health).includes("test-only-private-value"));
     const page = await fetch(base + "/");
     assert.match(page.headers.get("content-type"), /text\/html/);

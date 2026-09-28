@@ -1,5 +1,5 @@
-const CACHE_NAME = "anytravel-shell-v0.8.4-routes-3";
-const APP_SHELL = ["./", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png", ...["ledger.html", "ledger.js", "ledger.css", "brand.css", "bridge.js", "runtime-storage.js"].map(f => `./vendor/travel-plan-page/${f}`)];
+const CACHE_NAME = "anytravel-shell-v0.8.4-planner-20260928-r2";
+const APP_SHELL = ["./", "./logo.svg", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png", ...["ledger.html", "ledger.js", "ledger.css", "brand.css", "bridge.js", "runtime-storage.js"].map(f => `./vendor/travel-plan-page/${f}`)];
 
 self.addEventListener("install", (event) => {
   event.waitUntil((async () => {
@@ -16,7 +16,9 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith("anytravel-shell-") && key !== CACHE_NAME).map((key) => caches.delete(key))))
+    // Keep one previous shell so already-open tabs can still load their lazy
+    // chunks after a deployment. A normal navigation fetches the new document.
+    caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith("anytravel-shell-") && key !== CACHE_NAME).slice(0, -1).map((key) => caches.delete(key))))
   );
   self.clients.claim();
 });
@@ -43,7 +45,9 @@ self.addEventListener("fetch", (event) => {
 
   if (["script", "style", "font", "image"].includes(request.destination)) {
     event.respondWith(
-      caches.match(request).then((cached) => {
+      // Public static assets are identical for anonymous CORS and same-origin
+      // requests. Precache requests can otherwise miss a Vary: Origin response.
+      caches.match(request, { ignoreVary: true }).then((cached) => {
         const update = fetch(request).then((response) => {
           if (response.ok) void caches.open(CACHE_NAME).then((cache) => cache.put(request, response.clone()));
           return response;

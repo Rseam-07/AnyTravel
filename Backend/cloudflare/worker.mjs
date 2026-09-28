@@ -30,7 +30,7 @@ export default {
     if (origin && !origins.includes(origin)) return json({ error: "origin_not_allowed" }, 403);
     if (request.method === "GET" && url.pathname === "/health") return json({
       status: "ok", service: "anytravel-companion", schemaVersion: 1, runtime: "cloudflare-workers",
-      rollinggo: env.ROLLINGGO_API_KEY ? "configured" : "disabled", railway12306: "public", fliggyFlights: "public",
+      rollinggo: env.ROLLINGGO_API_KEY ? "configured" : "disabled", railway12306: "public", fliggyFlights: env.FLIGGY_PUBLIC_ENABLED === "true" ? "public" : "disabled", ctripPublicFlights: "public",
       assistant: env.AI || env.DEEPSEEK_API_KEY || env.ZAI_API_KEY ? "configured" : "local", assistantFallback: "local-intent-v1",
       assistantModel: env.AI ? env.WORKERS_AI_MODEL || "@cf/qwen/qwen3-30b-a3b-fp8" : undefined,
       amap: env.AMAP_API_KEY ? "configured" : "public", amapFallback: "OpenStreetMap",

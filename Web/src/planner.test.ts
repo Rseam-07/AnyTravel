@@ -69,8 +69,10 @@ describe("itinerary planner", () => {
     const plan = planItinerary(candidates, draft());
     const scheduledMain = plan.days.flatMap((day) => day.stops).filter((stop) => !["food", "night"].includes(stop.place.interest));
 
-    expect(scheduledMain).toHaveLength(4);
-    expect(plan.notes.some((note) => note.includes("8 个候选点没有硬塞进日程"))).toBe(true);
+    expect(scheduledMain.length).toBeLessThanOrEqual(4);
+    expect(plan.days.every(day => !day.overCapacity)).toBe(true);
+    expect(plan.alternatives?.length).toBe(candidates.length - scheduledMain.length);
+    expect(plan.notes.some((note) => note.includes("候选点没有硬塞进日程"))).toBe(true);
   });
 
   it("keeps a full-day destination on its own", () => {
@@ -80,7 +82,7 @@ describe("itinerary planner", () => {
     };
     const plan = planItinerary(
       [themePark, place("museum", "culture", 1, "测试博物馆"), place("lake", "nature", 2, "测试湖")],
-      draft()
+      draft({ pace: "balanced" })
     );
     const parkDay = plan.days.find((day) => day.stops.some((stop) => stop.place.id === "park"));
 

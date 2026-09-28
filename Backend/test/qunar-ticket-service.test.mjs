@@ -42,7 +42,9 @@ test("maps the public Qunar display price and booking URL", async () => {
   }, { fetchImpl, now: () => new Date("2026-09-01T00:00:00Z") });
 
   assert.equal(result.quotes.length, 1);
-  assert.equal(result.quotes[0].amountCNY, 38);
+  assert.equal(result.quotes[0].amountCNY, 38.2);
+  assert.equal(result.quotes[0].priceType, "relatedProduct");
+  assert.equal(result.quotes[0].kind, "indicative");
   assert.equal(result.quotes[0].displayPriceText, "¥38.2/人起");
   assert.equal(result.quotes[0].provider, "qunar");
   assert.match(result.quotes[0].bookingURL, /detail_641515105/);

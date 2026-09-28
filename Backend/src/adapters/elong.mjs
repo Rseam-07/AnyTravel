@@ -15,7 +15,7 @@ export class ElongHotelAdapter {
 
   constructor(options = {}) {
     this.env = options.env || process.env;
-    this.fetchImpl = options.fetchImpl || globalThis.fetch;
+    this.fetchImpl = options.fetchImpl || globalThis.fetch.bind(globalThis);
     this.now = options.now || (() => new Date());
   }
 

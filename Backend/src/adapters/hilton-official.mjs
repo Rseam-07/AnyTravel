@@ -9,7 +9,7 @@ export class HiltonOfficialAdapter {
   name = "hilton-official";
 
   constructor(options = {}) {
-    this.fetchImpl = options.fetchImpl || globalThis.fetch;
+    this.fetchImpl = options.fetchImpl || globalThis.fetch.bind(globalThis);
     this.endpoint = options.endpoint || process.env.HILTON_OFFICIAL_ENDPOINT || DEFAULT_ENDPOINT;
     this.now = options.now || (() => new Date());
   }

@@ -1,4 +1,5 @@
 import { pickNearbyAccommodation } from "./accommodation-selection";
+import { quoteContext, quoteUnitLabel } from "./quotes";
 import {
   createContext,
   useCallback,
@@ -30,7 +31,7 @@ import {
   type ChatMessage,
   type WebSettings
 } from "./api";
-import { bestQuote, distanceMeters, addDays, planItinerary } from "./planner";
+import { bestQuote, distanceMeters, addDays, planItinerary, scheduleDay } from "./planner";
 import {
   PACE_META,
   type AccommodationOption,
@@ -57,10 +58,9 @@ import { knowledgeCitiesRef, knowledgePlaces, lookupCity, lookupCityCoordinate }
 import { normalizeActionType, parseAssistantEnvelope, partialAssistantReply, type AssistantAction } from "./chat";
 
 import { AUTOSAVE_KEY, readTripStorage, restoredSnapshot, snapshotTrip, validDraft, writeTripStorage, type SavedTrip } from "./trip-storage";
-import { hotelCheckOut, pickPreferredTransport, preserveSelectedItem, quoteTripKey, staleTicketQuotes } from "./quote-refresh";
+import { hotelCheckOut, pickPreferredTransport, preserveResearchedTransports, preserveSelectedItem, quoteTripKey, staleTicketQuotes } from "./quote-refresh";
 import {
   EMPTY_PLAN_LOCKS,
-  applyLockedVisits,
   draftChangeImpacts,
   rebaseExistingPlan,
   toggleVisitLock as toggledVisitLock,
@@ -221,12 +221,15 @@ interface AppApi {
   setFocus: (focus: Focus | null) => void;
   selectAccommodation: (id: string) => void;
   selectTransport: (id: string) => void;
+  importResearchedFlights: (options: TransportOption[]) => void;
   toggleVisitLock: (dayIndex: number, stopIndex: number) => void;
   toggleAccommodationLock: (id: string) => void;
   toggleTransportLock: (id: string) => void;
   confirmBooking: (kind: BookingKind, itemID: string, note?: string, actualAmountCNY?: number) => void;
   removeBookingConfirmation: (kind: BookingKind, itemID: string) => void;
   removeStop: (dayIndex: number, stopIndex: number) => Promise<void>;
+  replaceStop: (dayIndex: number, stopIndex: number, placeID: string) => Promise<void>;
+  applyRouteTimes: (dayIndex: number, stopIDs: string[], times: { from: Coord; to: Coord; minutes: number }[]) => void;
   relaxPlan: () => Promise<void>;
   saveSettings: (settings: WebSettings) => void;
   toggleChat: (open?: boolean) => void;
@@ -410,7 +413,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         Object.assign(stateRef.current, cleared);
         dispatch({ type: "patch", patch: cleared });
       }
-      updateDraft({ destination, destinationCoord: coordinate });
+      updateDraft({ destination, destinationCoord: coordinate, ...(changed ? { mustVisitIDs: [], excludedPlaceIDs: [] } : {}) });
     };
 
     const localCity = lookupCity(query);
@@ -421,7 +424,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     try {
       const results = await nominatimSearch(stateRef.current.settings.backendURL, query, 5);
-      const city = results.find((r) => r.type === "administrative" || r.addresstype === "city") ?? results[0];
+      const city = results.find((r) => r.addresstype === "city" || r.type === "city") ?? results.find((r) => r.type === "administrative") ?? results[0];
       if (!city || !Number.isFinite(city.latitude) || !Number.isFinite(city.longitude)) return null;
       const coord: Coord = { lat: city.latitude, lng: city.longitude };
       commitDestination(city.name, coord);
@@ -465,7 +468,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return builtIn;
     }
     const guidePlaces = knowledgePlaces(draft.destination, draft.interests);
-    if (guidePlaces.length >= 4) {
+    if (guidePlaces.length >= 1) {
       dispatch({ type: "setPlaces", places: guidePlaces });
       return guidePlaces;
     }
@@ -479,7 +482,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         radius: 18000,
         limit: 32
       });
-      if (pois.length >= 4) {
+      if (pois.length >= 1) {
         const buckets = pois
           .filter((poi) => poi.name && poi.name.length >= 2)
           .map((poi) => ({
@@ -488,7 +491,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             address: poi.address ?? undefined,
             coordinate: { lat: poi.latitude, lng: poi.longitude } as Coord,
             interest: normalizeInterest(poi.interest),
-            source: "OpenStreetMap · Overpass" as const,
+            source: poi.source,
             opening: poi.opening ?? undefined,
             planningPriority: undefined as "primary" | "supplemental" | undefined
           }));
@@ -554,13 +557,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateDraft({ startDate: defaultStartDate() });
       draft.startDate = defaultStartDate();
     }
-    dispatch({ type: "patch", patch: { phase: "planning", notice: "正在翻阅这座城市的热门去处…" } });
+    dispatch({ type: "patch", patch: { phase: "planning", notice: "正在检查可用时间、移动与地点顺序…" } });
     try {
       let places = stateRef.current.places;
-      if (places.length < 2) {
+      if (places.length < 1) {
         places = await discoverPlaces();
       }
-      if (places.length < 2) throw new Error("地图与在线资料暂时没有找到足够的地点，请换个目的地或兴趣再试。");
+      if (places.length < 1) throw new Error("地图与在线资料暂时没有找到足够的地点，请换个目的地或兴趣再试。");
 
       let plan: Plan;
       const onlyQuoteOrScheduleChanges = previousPlan && impacts.length > 0 && impacts.every((impact) => impact.scope !== "itinerary");
@@ -568,8 +571,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         plan = rebaseExistingPlan(previousPlan, draft, before.planLocks);
       } else {
         // Routing is loaded for the visible day by the map, without blocking planning.
-        const generated = planItinerary(places, draft);
-        plan = applyLockedVisits(generated, previousPlan, before.planLocks, draft);
+        plan = planItinerary(places, draft, undefined, { previous: previousPlan, locks: before.planLocks });
       }
       if (recordUndo && previousPlan) {
         reconfigurationUndoRef.current = undoSnapshot;
@@ -580,7 +582,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       stateRef.current.failureDetail = null;
       dispatch({ type: "setPlan", plan });
       const appliedNotice = impacts.length > 0
-        ? `已应用 ${impacts.map((impact) => impact.title).join("、")}；锁定与已预订内容保持不动。`
+        ? `已应用 ${impacts.map((impact) => impact.title).join("、")}；锁定内容会优先保留，时间冲突会在当天标出。`
         : null;
       const patch = {
         phase: "ready" as const,
@@ -687,7 +689,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const place = stopNames.find((s) => s.id === q.attractionID || s.name === q.name);
           if (place) {
             map[place.id] = {
-              provider: "qunar",
+              provider: q.provider ?? "qunar",
+              priceType: q.priceType,
               amountCNY: q.amountCNY,
               capturedAt: q.capturedAt,
               bookingURL: q.bookingURL,
@@ -726,7 +729,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Preserve both directions independently if either chosen option disappeared.
     const finalTransportItems = draft.skipTransport
       ? []
-      : preserveSelectedItem(transportItems, current.transports, fixedReturnID, transportResult.succeeded);
+      : preserveResearchedTransports(preserveSelectedItem(transportItems, current.transports, fixedReturnID, transportResult.succeeded), current.transports);
     const finalTickets = ticketResult.succeeded ? ticketResult.tickets : staleTicketQuotes(current.tickets);
 
     let selectedAccommodationID = fixedAccommodationID;
@@ -734,17 +737,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let selectedReturnID = fixedReturnID;
     const picks: string[] = [];
     if (!draft.skipAccommodation && !selectedAccommodationID) {
-      const near = pickNearbyAccommodation(catalogItems, plan?.days.flatMap(d => d.stops.map(s => s.place.coordinate)) ?? (draft.destinationCoord ? [draft.destinationCoord] : []));
+      const near = pickNearbyAccommodation(catalogItems, plan?.days.flatMap(d => d.stops.map(s => s.place.coordinate)) ?? (draft.destinationCoord ? [draft.destinationCoord] : []), quoteContext(draft, "accommodation"));
       selectedAccommodationID = near?.item.id ?? null;
-      if (near) picks.push(`住宿：${near.item.name} ¥${near.quote.amountCNY}/晚（${near.quote.providerTitle}，靠近行程）`);
+      if (near) picks.push(`住宿：${near.item.name} ¥${near.quote.amountCNY}${quoteUnitLabel(near.quote.unit)}（${near.quote.providerTitle}，靠近行程）`);
     }
     if (!draft.skipTransport && !selectedOutboundID) {
-      const outbound = pickPreferredTransport(finalTransportItems.filter(t => t.direction === "outbound"), draft.longDistanceMode);
+      const outbound = pickPreferredTransport(finalTransportItems.filter(t => t.direction === "outbound"), draft.longDistanceMode, { draft, plan });
       selectedOutboundID = outbound?.id ?? null;
       if (outbound) picks.push(`去程：${summarizeTransport(outbound)}`);
     }
     if (!draft.skipTransport && !selectedReturnID) {
-      const retur = pickPreferredTransport(finalTransportItems.filter(t => t.direction === "return"), draft.longDistanceMode);
+      const retur = pickPreferredTransport(finalTransportItems.filter(t => t.direction === "return"), draft.longDistanceMode, { draft, plan });
       selectedReturnID = retur?.id ?? null;
       if (retur) picks.push(`返程：${summarizeTransport(retur)}`);
     }
@@ -815,6 +818,13 @@ function summarizeTransport<T extends { title: string; quotes: { amountCNY?: num
     if (coordinate) setFocus({ kind: "station", id, coordinate });
   }, [setFocus]);
 
+  const importResearchedFlights = useCallback((options: TransportOption[]) => {
+    const ids = new Set(options.map(option => option.id));
+    const patch = { transports: [...stateRef.current.transports.filter(option => !ids.has(option.id)), ...options], notice: `已加入 ${options.length} 个网页查询班次，价格标为参考记录；选择后可计入费用。` };
+    Object.assign(stateRef.current, patch);
+    dispatch({ type: "patch", patch });
+  }, []);
+
   const confirmBooking = useCallback((kind: BookingKind, itemID: string, note?: string, actualAmountCNY?: number) => {
     const current = stateRef.current;
     const item = kind === "accommodation"
@@ -832,7 +842,7 @@ function summarizeTransport<T extends { title: string; quotes: { amountCNY?: num
       endDate: kind === "accommodation" ? returnDate : undefined,
       direction,
       actualAmountCNY: actualAmountCNY != null && Number.isFinite(actualAmountCNY) && actualAmountCNY > 0
-        ? Math.round(actualAmountCNY)
+        ? Math.round(actualAmountCNY * 100) / 100
         : undefined,
       note: note?.trim() || undefined
     };
@@ -925,10 +935,6 @@ function summarizeTransport<T extends { title: string; quotes: { amountCNY?: num
     dispatch({ type: "patch", patch });
   }, []);
 
-  const rePlanFromPlaces = useCallback(async () => {
-    await generatePlan();
-  }, [generatePlan]);
-
   const removeStop = useCallback(
     async (dayIndex: number, stopIndex: number) => {
       const plan = stateRef.current.plan;
@@ -940,19 +946,67 @@ function summarizeTransport<T extends { title: string; quotes: { amountCNY?: num
         dispatch({ type: "patch", patch: { notice: `先解锁${stop.place.name}，再决定是否移除。` } });
         return;
       }
-      const nextPlaces = places.filter((p) => p.id !== stop.place.id);
-      stateRef.current.places = nextPlaces;
-      dispatch({ type: "setPlaces", places: nextPlaces });
-      await rePlanFromPlaces();
+      // A local edit must not reshuffle unrelated days or fill the hole with another sight.
+      reconfigurationUndoRef.current = captureReconfiguration();
+      const draft = {
+        ...stateRef.current.draft,
+        excludedPlaceIDs: [...new Set([...(stateRef.current.draft.excludedPlaceIDs ?? []), stop.place.id])],
+        mustVisitIDs: stateRef.current.draft.mustVisitIDs?.filter(id => id !== stop.place.id)
+      };
+      const nextPlan = { ...plan, days: plan.days.map((day, index) => index === dayIndex
+        ? scheduleDay(day.stops.filter((_, i) => i !== stopIndex).map(s => s.place), draft, index, [], stateRef.current.planLocks)
+        : day), generatedAt: new Date().toISOString() };
+      const patch = { draft, plan: nextPlan, canUndoReconfiguration: true, notice: `已移除${stop.place.name}，其余日期保持原安排。` };
+      Object.assign(stateRef.current, patch);
+      dispatch({ type: "patch", patch });
     },
-    [rePlanFromPlaces]
+    [captureReconfiguration]
   );
+
+  const replaceStop = useCallback(async (dayIndex: number, stopIndex: number, placeID: string) => {
+    const current = stateRef.current;
+    const plan = current.plan;
+    const day = plan?.days[dayIndex];
+    const previous = day?.stops[stopIndex];
+    const replacement = plan?.alternatives?.find(item => item.place.id === placeID)?.place;
+    if (!plan || !day || !previous || !replacement) return;
+    if (current.planLocks.visits.some(lock => lock.placeID === previous.place.id)) return;
+    const next = scheduleDay(day.stops.map((stop, index) => index === stopIndex ? replacement : stop.place), current.draft, dayIndex, [], current.planLocks);
+    if (next.overCapacity) {
+      dispatch({ type: "patch", patch: { notice: `暂时不能替换：${next.assessment}` } });
+      return;
+    }
+    reconfigurationUndoRef.current = captureReconfiguration();
+    const updatedPlan: Plan = { ...plan, generatedAt: new Date().toISOString(), days: plan.days.map((item, index) => index === dayIndex ? next : item), alternatives: [
+      ...(plan.alternatives ?? []).filter(item => item.place.id !== placeID),
+      { place: previous.place, reason: "你换下的地点，仍可放回日程", required: false }
+    ] };
+    const draft = { ...current.draft, mustVisitIDs: current.draft.mustVisitIDs?.filter(id => id !== previous.place.id) };
+    const patch = { draft, plan: updatedPlan, canUndoReconfiguration: true, notice: `已把${previous.place.name}换成${replacement.name}，其他日期未改动。` };
+    Object.assign(current, patch);
+    dispatch({ type: "patch", patch });
+  }, [captureReconfiguration]);
+
+  const applyRouteTimes = useCallback((dayIndex: number, stopIDs: string[], times: { from: Coord; to: Coord; minutes: number }[]) => {
+    const current = stateRef.current;
+    const plan = current.plan;
+    const day = plan?.days[dayIndex];
+    if (!plan || !day || day.stops.map(stop => stop.place.id).join("|") !== stopIDs.join("|")) return;
+    const updated = scheduleDay(day.stops.map(stop => stop.place), current.draft, dayIndex, times, current.planLocks);
+    if (JSON.stringify(updated.stops) === JSON.stringify(day.stops)) return;
+    const nextPlan = { ...plan, days: plan.days.map((item, index) => index === dayIndex ? updated : item) };
+    // Route data may reveal a conflict. Preserve choices and show it, never silently delete stops.
+    current.plan = nextPlan;
+    dispatch({ type: "setPlan", plan: nextPlan });
+  }, []);
 
   const relaxPlan = useCallback(async () => {
     const draft = stateRef.current.draft;
-    const places = stateRef.current.places;
-    const neededDays = Math.max(Math.ceil(places.length / 3), 1);
-    await applyDraftChanges({ ...draft, pace: "relaxed", dayCount: Math.max(draft.dayCount, Math.min(neededDays, 10)) });
+    if (draft.pace === "relaxed") {
+      dispatch({ type: "patch", patch: { notice: "已经是松弛节奏。可以移除一站，或在调整里增加天数。" } });
+      return;
+    }
+    await applyDraftChanges({ ...draft, pace: "relaxed" });
   }, [applyDraftChanges]);
 
   const persistSettings = useCallback((settings: WebSettings) => {
@@ -1324,12 +1378,15 @@ function summarizeTransport<T extends { title: string; quotes: { amountCNY?: num
       setFocus,
       selectAccommodation,
       selectTransport,
+      importResearchedFlights,
       toggleVisitLock,
       toggleAccommodationLock,
       toggleTransportLock,
       confirmBooking,
       removeBookingConfirmation,
       removeStop,
+      replaceStop,
+      applyRouteTimes,
       relaxPlan,
       saveSettings: persistSettings,
       toggleChat,
@@ -1358,12 +1415,15 @@ function summarizeTransport<T extends { title: string; quotes: { amountCNY?: num
       setFocus,
       selectAccommodation,
       selectTransport,
+      importResearchedFlights,
       toggleVisitLock,
       toggleAccommodationLock,
       toggleTransportLock,
       confirmBooking,
       removeBookingConfirmation,
       removeStop,
+      replaceStop,
+      applyRouteTimes,
       relaxPlan,
       persistSettings,
       toggleChat,

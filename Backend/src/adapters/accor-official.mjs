@@ -43,7 +43,7 @@ export class AccorOfficialAdapter {
   name = "accor-official";
 
   constructor(options = {}) {
-    this.fetchImpl = options.fetchImpl || globalThis.fetch;
+    this.fetchImpl = options.fetchImpl || globalThis.fetch.bind(globalThis);
     this.algoliaAppID = options.algoliaAppID || process.env.ACCOR_ALGOLIA_APP_ID || ALGOLIA_APP_ID;
     this.algoliaSearchKey = options.algoliaSearchKey || process.env.ACCOR_ALGOLIA_SEARCH_KEY || ALGOLIA_SEARCH_KEY;
     this.bffAPIKey = options.bffAPIKey || process.env.ACCOR_BFF_API_KEY || BFF_API_KEY;
@@ -124,6 +124,7 @@ export class AccorOfficialAdapter {
       checkIn: request.checkIn,
       checkOut: request.checkOut,
       adults: request.adults,
+      childrenAges: request.childrenAges,
       rooms: request.rooms,
       size
     });
@@ -134,7 +135,9 @@ export class AccorOfficialAdapter {
     const capturedAt = this.now().toISOString();
     const nights = numberOfNights(request.checkIn, request.checkOut);
     const values = await Promise.all(rows.map(async (row) => {
-      const rate = await this.#rate(row.objectID, request).catch(() => null);
+      // This endpoint prices one room only. Keep multi-room searches as catalog
+      // cards rather than presenting a one-room total as the entire stay.
+      const rate = Number(request.rooms || 1) > 1 ? null : await this.#rate(row.objectID, request).catch(() => null);
       return listingFromAccor(row, rate, request, nights, capturedAt);
     }));
     const listings = values.filter(Boolean);

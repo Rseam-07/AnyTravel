@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildExpenseSummary } from "./expense-planner";
 import type { AppState } from "./store";
-import type { ProviderQuote, TripDraft } from "./types";
+import { formatCNY, type ProviderQuote, type TripDraft } from "./types";
 
 const draft: TripDraft = {
   origin: "上海",
@@ -67,13 +67,14 @@ describe("expense planner", () => {
       itemID: "hotel-1",
       title: "测试酒店",
       confirmedAt: "2026-09-05T00:00:00Z",
-      actualAmountCNY: 1688
+      actualAmountCNY: 1688.5
     }] }));
     const hotel = summary.rows.find((row) => row.id === "accommodation");
 
-    expect(hotel?.amountCNY).toBe(1688);
+    expect(hotel?.amountCNY).toBe(1688.5);
     expect(hotel?.source).toBe("confirmed");
-    expect(summary.confirmedTotalCNY).toBe(1688);
+    expect(summary.confirmedTotalCNY).toBe(1688.5);
+    expect(formatCNY(summary.confirmedTotalCNY)).toBe("¥1,688.5");
   });
 
   it("keeps missing prices visible through reserves and explicit pending items", () => {

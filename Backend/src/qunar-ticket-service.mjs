@@ -14,22 +14,27 @@ export async function searchQunarTicketQuotes(request, options = {}) {
   const now = options.now || (() => new Date());
   const clean = validateRequest(request);
   const capturedAt = now().toISOString();
+  const official = clean.attractions.map(attraction => officialTicketQuote(attraction, clean.destination, clean.visitDate, now())).filter(Boolean);
+  const officialIDs = new Set(official.map(quote => quote.attractionID));
+  const remaining = clean.attractions.filter(attraction => !officialIDs.has(attraction.id));
+  const officialDiagnostics = official.length ? [{ provider: "official-policy", status: "ok", detail: "已核验的官方票价政策，不代表有余票", resultCount: official.length, capturedAt: official[0].capturedAt }] : [];
+  if (!remaining.length) return { quotes: official, diagnostics: officialDiagnostics, capturedAt, cached: false };
 
   let citySights;
   try {
     citySights = await fetchSightList(clean.destination, fetchImpl);
   } catch (error) {
     return {
-      quotes: [],
-      diagnostics: [{ provider: "qunar", status: "failed", detail: error.message }],
+      quotes: official,
+      diagnostics: [...officialDiagnostics, { provider: "qunar", status: "failed", detail: error.message }],
       capturedAt,
       cached: false
     };
   }
 
   const matched = new Map();
-  attachMatches(citySights, clean.attractions, matched);
-  const unmatched = clean.attractions
+  attachMatches(citySights, remaining, matched);
+  const unmatched = remaining
     .filter((attraction) => !matched.has(attraction.id))
     .slice(0, maximumExactFallbacks);
 
@@ -44,18 +49,18 @@ export async function searchQunarTicketQuotes(request, options = {}) {
     }
   });
 
-  const quotes = [...matched.values()].map(({ attraction, sight }) => makeQuote(
+  const platformQuotes = [...matched.values()].map(({ attraction, sight }) => makeQuote(
     attraction,
     sight,
     capturedAt,
     clean.visitDate
   ));
   return {
-    quotes,
-    diagnostics: [{
+    quotes: [...official, ...platformQuotes],
+    diagnostics: [...officialDiagnostics, {
       provider: "qunar",
-      status: quotes.length ? "ok" : "no_matching_quotes",
-      resultCount: quotes.length,
+      status: platformQuotes.length ? "ok" : "no_matching_quotes",
+      resultCount: platformQuotes.length,
       capturedAt
     }],
     capturedAt,
@@ -145,7 +150,7 @@ export function isLikelyTicketedAttraction(attraction) {
 
 function makeQuote(attraction, sight, capturedAt, visitDate) {
   const rawPrice = sight.free ? 0 : Number(sight.qunarPrice);
-  const amountCNY = Math.max(Math.round(rawPrice), 0);
+  const amountCNY = Math.max(Math.round(rawPrice * 100) / 100, 0);
   const exactPrice = Number.isInteger(rawPrice) ? `¥${rawPrice}` : `¥${rawPrice.toFixed(1)}`;
   const dateNote = visitDate
     ? `计划日期${visitDate}的票种与库存仍需在购买页复核`
@@ -157,12 +162,13 @@ function makeQuote(attraction, sight, capturedAt, visitDate) {
     amountCNY,
     displayPriceText: sight.free ? "免费" : `${exactPrice}/人起`,
     unit: "perPerson",
-    kind: "live",
+    kind: "indicative",
+    priceType: sight.free ? "admission" : "relatedProduct",
     capturedAt,
     bookingURL: `https://piao.qunar.com/ticket/detail_${encodeURIComponent(String(sight.sightId))}.html`,
     note: sight.free
       ? `去哪儿门票公开页当前标注免费；${dateNote}`
-      : `去哪儿门票公开页当前展示起价${exactPrice}；${dateNote}`
+      : `去哪儿相关产品展示起价${exactPrice}，可能为优惠票、讲解或套餐，不作为成人大门票定价；${dateNote}`
   };
 }
 
@@ -192,3 +198,4 @@ function validateRequest(request) {
   }
   return { destination, attractions, visitDate };
 }
+import { officialTicketQuote } from "./official-ticket-policies.mjs";

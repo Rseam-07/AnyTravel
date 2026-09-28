@@ -1,7 +1,7 @@
 {
  "version": "2026-09-04.0",
- "harvestedAt": "2026-09-04T14:02:32.276Z",
- "sourceCount": 867,
+ "harvestedAt": "2026-09-21T12:41:17.030Z",
+ "sourceCount": 882,
  "cityCount": 162,
  "cities": [
   {
@@ -16347,7 +16347,7 @@
     "lng": 120.592412
    },
    "tripDays": "2-3天",
-   "sense": "苏州的候选点按公开热度、地点类型和空间位置共同筛选；先保留代表性停留，再由当天交通、天气与开放条件收拢。",
+   "sense": "苏州古城的园林、河道和街巷适合按片区慢走；古城东部可看拙政园、平江路、耦园与相门，城西园林另日安排。",
    "places": [
     {
      "name": "拙政园",
@@ -16358,11 +16358,12 @@
      "category": "园林",
      "stayMinutes": 120,
      "tier": "必去",
-     "ticket": "票价、余票、预约与临时开放以出发前实时查询为准",
-     "best": "白天",
+     "ticket": "日间成人旺季80元、淡季70元；提前1–7天实名分时预约。2026-09-21核查公开规则，出行日复核",
+     "best": "上午",
      "tags": [
-      "Wikidata / 中文维基百科 + Wikidata 城市地标校准 地点资料",
-      "公开热度信号 20"
+      "东北街178号",
+      "以水为中心的园林",
+      "建议120分钟"
      ]
     },
     {
@@ -16415,33 +16416,18 @@
     {
      "name": "平江路",
      "coord": {
-      "lat": 31.303889,
-      "lng": 120.616389
+      "lat": 31.3210858,
+      "lng": 120.6283636
      },
      "category": "古迹",
      "stayMinutes": 90,
      "tier": "推荐",
-     "ticket": "票价、余票、预约与临时开放以出发前实时查询为准",
+     "ticket": "公共街区免费，游船、演出和消费另计",
      "best": "白天",
      "tags": [
-      "Wikidata 城市地标校准 地点资料",
-      "公开热度信号 1"
-     ]
-    },
-    {
-     "name": "苏州园林",
-     "coord": {
-      "lat": 31.326667,
-      "lng": 120.625556
-     },
-     "category": "园林",
-     "stayMinutes": 120,
-     "tier": "推荐",
-     "ticket": "票价、余票、预约与临时开放以出发前实时查询为准",
-     "best": "白天",
-     "tags": [
-      "Wikidata / 中文维基百科 地点资料",
-      "公开热度信号 37"
+      "河街并行",
+      "代表点位于白塔东路交会处",
+      "可选北中段慢行60分钟"
      ]
     },
     {
@@ -16507,10 +16493,45 @@
       "Wikidata / 中文维基百科 地点资料",
       "公开热度信号 6"
      ]
+    },
+    {
+     "name": "耦园",
+     "coord": {
+      "lat": 31.3183675,
+      "lng": 120.6340622
+     },
+     "category": "园林",
+     "stayMinutes": 75,
+     "tier": "推荐",
+     "ticket": "日间成人旺季25元、淡季20元；优惠、余票与预约以出行日官方售票为准。2026-09-21核查",
+     "best": "下午",
+     "tags": [
+      "小新桥巷6号",
+      "三面环水",
+      "住宅居中、东西两园"
+     ]
+    },
+    {
+     "name": "相门",
+     "coord": {
+      "lat": 31.3136086,
+      "lng": 120.6364609
+     },
+     "category": "古迹",
+     "stayMinutes": 55,
+     "tier": "顺路",
+     "ticket": "本案例仅安排城墙广场与开放的滨河公共空间；馆内参观和临时活动另行核查",
+     "best": "下午",
+     "tags": [
+      "古城东侧城河",
+      "现存城门为修复重建",
+      "台阶或雨天可改平地观景"
+     ]
     }
    ],
    "patterns": [
-    "D1 留园→西园戒幢律寺→寒山寺；D2 虎丘→苏州博物馆→拙政园（实际按日期、营业与天气重排）"
+    "古城东部水城一日：09:00拙政园120分钟→平江路北中段60分钟→大新桥巷口附近餐休60分钟→13:35耦园75分钟→15:15相门55分钟；转场与返程接驳70分钟、机动20分钟，16:40结束。需先预约，不含大交通，属研究案例未实地验证。",
+    "城西另日按交通和预约选择留园、虎丘或寒山寺，不将东部四站与城西园林同时塞进一个白天。"
    ],
    "sources": [
     "https://www.openstreetmap.org/copyright",
@@ -16523,7 +16544,22 @@
     "https://www.wikidata.org/wiki/Q8013177",
     "https://zh.wikipedia.org/wiki/%E7%95%99%E5%9B%AD",
     "https://www.wikidata.org/wiki/Q6553852",
-    "https://www.wikidata.org/wiki/Q11061092"
+    "https://www.wikidata.org/wiki/Q11061092",
+    "https://ylj.suzhou.gov.cn/szsylj/sjyc/201905/c1df393edc8745abb20e8a9bd5525782.shtml",
+    "https://www.suzhou.gov.cn/szsrmzf/mszx/202606/face4650ec2245ce818aecc53eb4aaaa.shtml",
+    "https://ylj.suzhou.gov.cn/szsylj/kfsj/wztt.shtml",
+    "https://ylj.suzhou.gov.cn/szsylj/mpjg/wztt.shtml",
+    "https://credit.suzhou.gov.cn/html/wap_jgsc",
+    "https://water.suzhou.gov.cn/slj/gsq/202512/f62cb034b64749a780f78ca7a50f824a.shtml",
+    "https://ylj.suzhou.gov.cn/szsylj/sjyc/202509/b6e90b58ee1947fe9282ad5d7ecdae08.shtml",
+    "https://www.suzhou.gov.cn/szsrmzf/szyw/202609/cafba22ecc7e40c1a33cff0fc1fca525.shtml",
+    "https://dfzb.suzhou.gov.cn/dfzb/szdq/201811/35ab70df9087436583cc3cec413e1a7c.shtml",
+    "https://www.suzhou.gov.cn/678ktzt/gdjtgzdt/202407/cff057bec92345f1886867fe4b64b494.shtml",
+    "https://www.suzhou.gov.cn/szsrmzf/mszx/202504/748fd633b3aa4b7eb9d72504d5ff22cd.shtml",
+    "https://www.openstreetmap.org/way/181596127",
+    "https://www.openstreetmap.org/way/468359738",
+    "https://www.openstreetmap.org/way/492151336",
+    "https://www.openstreetmap.org/node/8034431020"
    ]
   },
   {

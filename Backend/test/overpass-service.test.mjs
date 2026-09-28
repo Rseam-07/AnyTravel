@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeElement } from "../src/overpass-service.mjs";
+import { normalizeElement, searchPlacesAround } from "../src/overpass-service.mjs";
 
 const capturedAt = "2026-09-02T12:00:00.000Z";
 
@@ -45,4 +45,20 @@ test("keeps the radius query well-formed for the provider", async () => {
   const encoded = url.searchParams.get("data");
   assert.ok(encoded.includes("around:15000,31.30000,120.60000"));
   assert.ok(encoded.includes("out center 120"));
+});
+
+test("failed public POI sources degrade to nearby known places with truthful provenance", async () => {
+  const original = globalThis.fetch;
+  let attempts = 0;
+  globalThis.fetch = async () => { attempts++; return new Response("unavailable", { status: 503 }); };
+  try {
+    const result = await searchPlacesAround({ latitude: 39.91631, longitude: 116.39721, radius: 5000, limit: 20 });
+    assert.equal(result.source, "knowledge-fallback");
+    assert.equal(result.degraded, true);
+    assert.ok(result.places.length > 0);
+    assert.ok(result.places.every(place => place.distance <= 5000 && place.rating === null && place.source.includes("内置")));
+    assert.ok(attempts <= 2, "must not query the Europe-only mirror for China");
+    await assert.rejects(searchPlacesAround({ latitude: -70, longitude: -120, radius: 1000 }), /暂时/);
+    await assert.rejects(searchPlacesAround({ latitude: 91, longitude: 0 }), /latitude/);
+  } finally { globalThis.fetch = original; }
 });

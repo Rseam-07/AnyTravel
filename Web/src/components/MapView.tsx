@@ -17,6 +17,12 @@ const ROUTE_LINE = "anytravel-current-route-line";
 export type MapSection = "plan" | "stay" | "transport";
 
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const viewportPadding = () => {
+  if (!window.matchMedia("(max-width: 1023px)").matches) return { top: 130, right: 100, bottom: 90, left: window.innerWidth >= 1440 ? 550 : 520 };
+  const sheet = document.querySelector<HTMLElement>(".mobile-sheet");
+  const sheetHeight = parseFloat(sheet?.style.height ?? "") || window.innerHeight * 0.61;
+  return { top: 160, right: 76, bottom: Math.min(sheetHeight + 40, window.innerHeight - 220), left: 40 };
+};
 
 interface MarkerSpec {
   kind: "destination" | "place" | "accommodation" | "station";
@@ -85,13 +91,15 @@ export default function MapView({
   onDarkChange: (value: boolean) => void;
   activeSection: MapSection;
 }) {
-  const { state, setFocus } = useApp();
+  const { state, setFocus, applyRouteTimes } = useApp();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
   const styleRef = useRef<string | null>(null);
   const [northUp, setNorthUp] = useState(true);
+  const [tilesReady, setTilesReady] = useState(false);
   const [mapReady, setMapReady] = useState(false);
+  const [loadedStyle, setLoadedStyle] = useState<string | null>(null);
   const [road, setRoad] = useState<{ key: string; data: RoadRoute | null }>();
   const [fitRequest, setFitRequest] = useState(0);
   const [routeLoading, setRouteLoading] = useState(false);
@@ -102,6 +110,14 @@ export default function MapView({
   const points = useMemo(() => selectedDay?.stops.map(s => s.place.coordinate) ?? [], [selectedDay]);
   const key = routeKey(points, state.draft.transportMode);
   const currentRoad = road?.key === key ? road.data : null;
+  useEffect(() => {
+    if (!currentRoad || !selectedDay || activeSection !== "plan") return;
+    applyRouteTimes(state.selectedDay, selectedDay.stops.map(stop => stop.place.id), currentRoad.legs.map((leg, index) => ({
+      from: points[index], to: points[index + 1], minutes: leg.durationMinutes
+    })));
+    // The request key identifies the sequence; a clock recalculation must not request it again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentRoad, key, activeSection, state.selectedDay, applyRouteTimes]);
   useEffect(() => {
     if (activeSection !== "plan" || points.length < 2 || state.draft.transportMode === "transit") { setRouteLoading(false); return; }
     const controller = new AbortController();
@@ -212,12 +228,12 @@ export default function MapView({
       pitchWithRotate: false
     });
     } catch { setMapError("地图暂时无法启动，仍可在行程卡片中查看安排。"); return; }
-    map.on("load", () => setMapReady(true));
+    map.on("style.load", () => { setMapReady(true); setLoadedStyle(styleRef.current); });
     const resize = new ResizeObserver(() => map.resize());
     resize.observe(containerRef.current);
     map.on("rotate", () => setNorthUp(Math.abs(map.getBearing()) < 0.5));
     map.on("error", () => setMapError("部分地图未加载，请检查网络。"));
-    map.on("idle", () => { if (map.areTilesLoaded()) setMapError(""); });
+    map.on("idle", () => { if (map.isStyleLoaded() && map.areTilesLoaded()) { setMapError(""); setTilesReady(true); } });
     mapRef.current = map;
     return () => {
       resize.disconnect();
@@ -234,6 +250,7 @@ export default function MapView({
     if (!map || styleRef.current === nextStyle) return;
     styleRef.current = nextStyle;
     setMapReady(false);
+    setTilesReady(false);
     map.setStyle(nextStyle);
     map.once("style.load", () => setMapReady(true));
     localStorage.setItem("anytravel-web:mapstyle", dark ? "dark" : "light");
@@ -241,7 +258,7 @@ export default function MapView({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady || !map.isStyleLoaded()) return;
+    if (!map || !mapReady) return;
     const color = DAY_COLORS[state.selectedDay % DAY_COLORS.length];
     const feature: GeoJSON.FeatureCollection = {
       type: "FeatureCollection",
@@ -270,7 +287,7 @@ export default function MapView({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady || !map.isStyleLoaded()) return;
+    if (!map || !mapReady) return;
     for (const marker of markersRef.current) marker.remove();
     markersRef.current = [];
     const seen = new Set<string>();
@@ -292,23 +309,16 @@ export default function MapView({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady || !map.isStyleLoaded()) return;
+    if (!map || !mapReady) return;
     const coordinates = markers.map((marker) => marker.coordinate);
     if (coordinates.length === 0 && state.draft.destinationCoord) coordinates.push(state.draft.destinationCoord);
     if (coordinates.length === 0) return;
-    if (coordinates.length === 1) {
-      map.easeTo({ center: [coordinates[0].lng, coordinates[0].lat], zoom: 11.4, duration: reducedMotion() ? 0 : 760 });
-      return;
-    }
     const bounds = coordinates.reduce(
       (value, point) => value.extend([point.lng, point.lat]),
       new maplibregl.LngLatBounds([coordinates[0].lng, coordinates[0].lat], [coordinates[0].lng, coordinates[0].lat])
     );
-    const mobile = window.matchMedia("(max-width: 1023px)").matches;
     map.fitBounds(bounds, {
-      padding: mobile
-        ? { top: 180, right: 60, bottom: Math.min(window.innerHeight * 0.47, 390), left: 60 }
-        : { top: 130, right: 100, bottom: 90, left: 490 },
+      padding: viewportPadding(),
       maxZoom: 13.2,
       duration: reducedMotion() ? 0 : 820
     });
@@ -328,9 +338,11 @@ export default function MapView({
   useEffect(() => {
     const map = mapRef.current;
     const focus = state.focus;
-    if (!map || !focus?.coordinate) return;
+    // Date changes are framed by the whole-day effect; a second city-center pan would undo it.
+    if (!map || !focus?.coordinate || focus.kind === "day") return;
     map.easeTo({
       center: [focus.coordinate.lng, focus.coordinate.lat],
+      padding: viewportPadding(),
       zoom: Math.max(map.getZoom(), 12.4),
       duration: reducedMotion() ? 0 : 720
     });
@@ -359,7 +371,7 @@ export default function MapView({
 
   return (
     <>
-      <div ref={containerRef} className="map-root" aria-label="行程地图" />
+      <div data-map-ready={tilesReady && mapReady && loadedStyle === (dark ? DARK_STYLE : LIGHT_STYLE)} data-map-theme={loadedStyle === DARK_STYLE ? "dark" : loadedStyle === LIGHT_STYLE ? "light" : "loading"} ref={containerRef} className="map-root" aria-label="行程地图" />
       <div className="map-controls">
         <button className="map-control" title="查看全程" aria-label="查看当天全程" onClick={() => setFitRequest(n => n + 1)}><ScanLine size={19}/></button>
         <button className="map-control" title="定位到当前位置" aria-label="定位到当前位置" onClick={locate}>
@@ -377,6 +389,7 @@ export default function MapView({
           <Compass size={19} aria-hidden="true" />
         </button>
       </div>
+      {(!tilesReady || !mapReady || loadedStyle !== (dark ? DARK_STYLE : LIGHT_STYLE)) && !mapError && <div className="map-tile-status" role="status">正在加载街道底图，行程可以先查看</div>}
       {mapError && <div className="map-error" role="status">{mapError}</div>}
       {activeSection === "plan" && selectedRouteMeters > 0 && (
         <div className="route-distance-pill">

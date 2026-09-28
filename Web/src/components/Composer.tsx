@@ -4,6 +4,9 @@ import { nominatimSearch, type NominatimPlace } from "../api";
 import { useApp } from "../store";
 import { INTERESTS, PACE_META, effectiveParty, type Interest, type MobilityNeed, type Pace, type TravelerProfile } from "../types";
 import { knowledgeCitiesRef } from "../knowledge";
+import MotionTabs from "./MotionTabs";
+import { catalogPlaces } from "../catalog";
+import { knowledgePlaces } from "../knowledge";
 import { draftChangeImpacts } from "../plan-locks";
 
 const INTEREST_ICONS = {
@@ -24,6 +27,8 @@ export default function Composer() {
   const timerRef = useRef<number | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const pickedAtRef = useRef(0);
+  const searchVersion = useRef(0);
+  const [searchError, setSearchError] = useState("");
 
   useEffect(() => {
     setQuery(draft.destination);
@@ -35,6 +40,7 @@ export default function Composer() {
       setSuggestions([]);
       return;
     }
+    const version = ++searchVersion.current;
     const normalized = text.trim().replace(/(市|省)$/, "");
     const local = knowledgeCitiesRef()
       .filter((city) => city.city.includes(normalized) || normalized.includes(city.city))
@@ -51,13 +57,16 @@ export default function Composer() {
     try {
       const remote = await nominatimSearch(settings.backendURL, text, 6);
       const names = new Set(local.map((item) => item.name));
+      if (version !== searchVersion.current) return;
       setSuggestions([...local, ...remote.filter((item) => !names.has(item.name))].slice(0, 8));
     } catch {
-      setSuggestions(local);
+      if (version === searchVersion.current) setSuggestions(local);
     }
   }, [settings.backendURL]);
 
   const onInput = (text: string) => {
+    searchVersion.current++;
+    setSearchError("");
     setQuery(text);
     setOpen(true);
     if (timerRef.current) window.clearTimeout(timerRef.current);
@@ -65,6 +74,7 @@ export default function Composer() {
   };
 
   const pick = async (place: NominatimPlace) => {
+    searchVersion.current++;
     pickedAtRef.current = Date.now();
     setSuggestions([]);
     setOpen(false);
@@ -73,7 +83,15 @@ export default function Composer() {
     setQuery(place.name);
   };
 
-  const canGenerate = draft.destination.length > 0 && state.phase !== "planning";
+  const canGenerate = query.trim().length > 0 && state.phase !== "planning";
+  const submit = async () => {
+    if (query.trim() !== draft.destination) {
+      const found = await resolveDestination(query.trim());
+      if (!found) { setSearchError("没有定位到这座城市，请尝试完整城市名称。"); return; }
+    }
+    setOpen(false);
+    await generatePlan();
+  };
 
   return (
     <div className="composer" onClick={(e) => e.stopPropagation()}>
@@ -98,12 +116,7 @@ export default function Composer() {
             }
             if (e.key === "Enter") {
               e.preventDefault();
-              if (query.trim() && query.trim() !== draft.destination) {
-                void resolveDestination(query.trim());
-                setOpen(false);
-              } else if (canGenerate) {
-                void generatePlan();
-              }
+              if (canGenerate) void submit();
             }
           }}
           aria-label="目的地搜索"
@@ -112,11 +125,12 @@ export default function Composer() {
           <button className="chip-btn" title="打开智能向导" onClick={() => toggleChat(true)}>
             <Sparkles size={16} aria-hidden="true" /> 直接说吧
           </button>
-          <button className="generate-btn" disabled={!canGenerate} onClick={() => void generatePlan()}>
-            {state.phase === "planning" ? "规划中…" : "让旅程展开"}
+          <button className="generate-btn" disabled={!canGenerate} onClick={() => void submit()}>
+            {state.phase === "planning" ? "规划中…" : "生成路线"}
           </button>
         </div>
       </div>
+      {searchError && <p className="issue-note" role="alert">{searchError}</p>}
       {open && suggestions.length > 0 && (
         <div className="suggestions">
           {suggestions.map((s) => (
@@ -151,188 +165,48 @@ export function ConditionsCard() {
     changeDraft({ party: next, travelers: next.adults + next.childrenAges.length });
   };
   const impacts = editingExistingPlan ? draftChangeImpacts(state.draft, draft) : [];
+  const localCandidates = catalogPlaces(draft.destination);
+  const candidates = localCandidates.length >= 2 ? localCandidates : knowledgePlaces(draft.destination, draft.interests);
+  const setRequired = (id: string) => changeDraft({
+    mustVisitIDs: draft.mustVisitIDs?.includes(id) ? draft.mustVisitIDs.filter(p => p !== id) : [...(draft.mustVisitIDs ?? []), id],
+    excludedPlaceIDs: draft.excludedPlaceIDs?.filter(p => p !== id)
+  });
   return (
-    <div>
-      <div className="section-title">这次怎么走</div>
-      <div className="composer-expanded" style={{ borderTop: "none", padding: "4px 0 10px" }}>
-        <div className="field">
-          <label htmlFor="trip-origin">出发地（用于往返班次）</label>
-          <input
-            id="trip-origin"
-            type="text"
-            placeholder="比如：上海"
-            value={draft.origin}
-            onChange={(e) => changeDraft({ origin: e.target.value })}
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="trip-start-date">出发日期</label>
-          <input
-            id="trip-start-date"
-            type="date"
-            value={draft.startDate ?? ""}
-            onChange={(e) => changeDraft({ startDate: e.target.value })}
-          />
-        </div>
-        <div className="field">
-          <label>天数</label>
-          <div className="stepper">
-            <button aria-label="减少一天" onClick={() => changeDraft({ dayCount: Math.max(draft.dayCount - 1, 1) })} disabled={draft.dayCount <= 1}>
-              −
-            </button>
-            <span>{draft.dayCount} 天</span>
-            <button aria-label="增加一天" onClick={() => changeDraft({ dayCount: Math.min(draft.dayCount + 1, 14) })} disabled={draft.dayCount >= 14}>
-              +
-            </button>
-          </div>
-        </div>
-        <div className="field">
-          <label>同行总人数</label>
-          <div className="stepper">
-            <button aria-label="减少一位成人" onClick={() => changeParty({ adults: Math.max(party.adults - 1, 1) })} disabled={party.adults <= 1}>
-              −
-            </button>
-            <span>{party.adults + party.childrenAges.length} 人</span>
-            <button aria-label="增加一位成人" onClick={() => changeParty({ adults: Math.min(party.adults + 1, 8) })} disabled={party.adults >= 8}>
-              +
-            </button>
-          </div>
-        </div>
-        <div className="field" style={{ gridColumn: "1 / -1" }}>
-          <label>同行结构与住宿</label>
-          <div style={{ display: "grid", gap: 10, padding: 12, borderRadius: 16, background: "var(--surface-muted, rgba(0,0,0,.035))" }}>
-            <div className="stepper">
-              <span style={{ flex: 1 }}>成人 {party.adults} 人</span>
-              <button aria-label="减少一位成人" onClick={() => changeParty({ adults: Math.max(party.adults - 1, 1) })} disabled={party.adults <= 1}>−</button>
-              <button aria-label="增加一位成人" onClick={() => changeParty({ adults: Math.min(party.adults + 1, 8) })} disabled={party.adults >= 8}>+</button>
-            </div>
-            {party.childrenAges.map((age, index) => (
-              <div className="stepper" key={`${index}-${age}`}>
-                <label htmlFor={`child-age-${index}`} style={{ flex: 1 }}>儿童 {index + 1} 岁</label>
-                <input
-                  id={`child-age-${index}`}
-                  aria-label={`儿童${index + 1}年龄`}
-                  type="number"
-                  min={0}
-                  max={17}
-                  value={age}
-                  onChange={(event) => {
-                    const ages = [...party.childrenAges];
-                    ages[index] = Math.min(Math.max(Number(event.target.value) || 0, 0), 17);
-                    changeParty({ childrenAges: ages });
-                  }}
-                  style={{ width: 66 }}
-                />
-                <button aria-label={`删除第${index + 1}名儿童`} onClick={() => changeParty({ childrenAges: party.childrenAges.filter((_, childIndex) => childIndex !== index) })}>×</button>
-              </div>
-            ))}
-            <button className="chip-btn" onClick={() => changeParty({ childrenAges: [...party.childrenAges, 8].slice(0, 6) })} disabled={party.childrenAges.length >= 6}>
-              + 添加儿童年龄
-            </button>
-            <div className="stepper">
-              <span style={{ flex: 1 }}>房间 {party.rooms} 间</span>
-              <button aria-label="减少一间房" onClick={() => changeParty({ rooms: Math.max(party.rooms - 1, 1) })} disabled={party.rooms <= 1}>−</button>
-              <button aria-label="增加一间房" onClick={() => changeParty({ rooms: Math.min(party.rooms + 1, 4) })} disabled={party.rooms >= 4}>+</button>
-            </div>
-            <div className="stepper">
-              <span style={{ flex: 1 }}>其中老人 {party.seniorTravelers} 人</span>
-              <button aria-label="减少一位老人" onClick={() => changeParty({ seniorTravelers: Math.max(party.seniorTravelers - 1, 0) })} disabled={party.seniorTravelers <= 0}>−</button>
-              <button aria-label="增加一位老人" onClick={() => changeParty({ seniorTravelers: Math.min(party.seniorTravelers + 1, party.adults) })} disabled={party.seniorTravelers >= party.adults}>+</button>
-            </div>
-            <label htmlFor="trip-mobility">步行与无障碍偏好</label>
-            <select id="trip-mobility" value={party.mobilityNeed} onChange={(event) => changeParty({ mobilityNeed: event.target.value as MobilityNeed })}>
-              <option value="none">普通步行</option>
-              <option value="stroller">需要婴儿车友好路线</option>
-              <option value="wheelchair">需要无障碍路线</option>
-            </select>
-            <small className="sub-text">儿童年龄会发送给支持该字段的住宿渠道；儿童票、婴儿票与无障碍设施仍需在购买前复核。</small>
-          </div>
-        </div>
-        <div className="field">
-          <label htmlFor="trip-budget">人均预算（元）</label>
-          <input
-            id="trip-budget"
-            type="number"
-            value={draft.budgetPerPerson ?? ""}
-            min={100}
-            step={100}
-            onChange={(e) => changeDraft({ budgetPerPerson: Number(e.target.value) || undefined })}
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="trip-pace">节奏</label>
-          <select id="trip-pace" value={draft.pace} onChange={(e) => changeDraft({ pace: e.target.value as Pace })}>
-            {(Object.keys(PACE_META) as Pace[]).map((pace) => (
-              <option key={pace} value={pace}>
-                {PACE_META[pace].title} · {PACE_META[pace].note}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="trip-transport-mode">市内移动（估算）</label>
-          <select id="trip-transport-mode" value={draft.transportMode} onChange={(e) => changeDraft({ transportMode: e.target.value as TripDraftTransportMode })}>
-            <option value="transit">地铁公交</option>
-            <option value="walking">步行</option>
-            <option value="driving">打车/自驾</option>
-          </select>
-        </div>
-        <div className="field" style={{ gridColumn: "1 / -1" }}>
-          <label>想去哪类地方</label>
-          <div className="interest-grid">
-            {INTERESTS.map((interest) => (
-              (() => {
-                const Icon = INTEREST_ICONS[interest.id];
-                const selected = draft.interests.includes(interest.id);
-                return (
-                  <button
-                    key={interest.id}
-                    className={`chip-btn ${selected ? "active" : ""}`}
-                    aria-pressed={selected}
-                    onClick={() => {
-                      const next = selected
-                        ? draft.interests.filter((i) => i !== interest.id)
-                        : [...draft.interests, interest.id];
-                      changeDraft({ interests: next.length === 0 ? (["gardens"] as Interest[]) : next });
-                    }}
-                  >
-                    <Icon size={15} aria-hidden="true" /> {interest.title}
-                  </button>
-                );
-              })()
-            ))}
-          </div>
-        </div>
+    <div className="planning-brief">
+      <div className="brief-heading"><span>01</span><h2>先留出旅行的时间</h2></div>
+      <div className="brief-fields">
+        <div className="field"><label htmlFor="trip-start-date">出发日期</label><input id="trip-start-date" type="date" value={draft.startDate ?? ""} onChange={e => changeDraft({ startDate: e.target.value })} /></div>
+        <div className="field"><label>旅行天数</label><div className="stepper"><button aria-label="减少一天" disabled={draft.dayCount <= 1} onClick={() => changeDraft({ dayCount: draft.dayCount - 1 })}>−</button><strong>{draft.dayCount} 天</strong><button aria-label="增加一天" disabled={draft.dayCount >= 14} onClick={() => changeDraft({ dayCount: draft.dayCount + 1 })}>+</button></div></div>
+        <div className="field"><label htmlFor="first-day-start">首日几点能开始逛</label><input id="first-day-start" type="time" value={draft.firstDayStart ?? ""} onChange={e => changeDraft({ firstDayStart: e.target.value || undefined })} /><small>算上抵达、安顿的时间</small></div>
+        <div className="field"><label htmlFor="last-day-end">末日几点结束游览</label><input id="last-day-end" type="time" value={draft.lastDayEnd ?? ""} onChange={e => changeDraft({ lastDayEnd: e.target.value || undefined })} /><small>留好前往车站或机场的时间</small></div>
       </div>
-      {editingExistingPlan && impacts.length > 0 && (
-        <div className="change-preview" role="status" aria-label="本次调整影响预览">
-          <strong>应用前先看会改变什么</strong>
-          {impacts.map((impact) => (
-            <div key={impact.key}>
-              <span>{impact.title}</span>
-              <small>{impact.detail}</small>
-            </div>
-          ))}
-          <p>带锁标记和已预订内容不会被替换；应用后可一步撤销。</p>
+      <div className="brief-heading"><span>02</span><h2>按你的节奏走</h2></div>
+      <MotionTabs label="游览节奏" value={draft.pace} onChange={id => changeDraft({ pace: id as Pace })} items={[
+        { id: "relaxed", content: <><b>松弛</b><small>少走，慢慢看</small></> },
+        { id: "balanced", content: <><b>适中</b><small>游览与留白兼顾</small></> },
+        { id: "full", content: <><b>充实</b><small>愿意多走一点</small></> }
+      ]} />
+      <div className="field travel-mode-field"><label htmlFor="trip-transport-mode">市内怎么移动</label><select id="trip-transport-mode" value={draft.transportMode} onChange={e => changeDraft({ transportMode: e.target.value as TripDraftTransportMode })}><option value="transit">地铁 / 公交</option><option value="walking">主要步行</option><option value="driving">打车 / 自驾</option></select></div>
+      <div className="interest-grid">{INTERESTS.map(interest => { const Icon = INTEREST_ICONS[interest.id]; const selected = draft.interests.includes(interest.id); return <button key={interest.id} className={`chip-btn ${selected ? "active" : ""}`} aria-pressed={selected} onClick={() => changeDraft({ interests: selected ? draft.interests.filter(i => i !== interest.id) : [...draft.interests, interest.id] })}><Icon size={15} aria-hidden="true" />{interest.title}</button>; })}</div>
+      {candidates.length > 0 && <details className="brief-disclosure priority-picker">
+        <summary><span>有没有一定想去的地方？</span><b>{draft.mustVisitIDs?.length ? `${draft.mustVisitIDs.length} 处必去` : "按需选择"}</b></summary>
+        <p>“必去”优先安排，实在放不下会说明原因。其余地点按偏好和距离挑选。</p>
+        {candidates.map(place => <div className="priority-choice" key={place.id}><span>{place.name}</span><button className="chip-btn" aria-label={`必去${place.name}`} aria-pressed={Boolean(draft.mustVisitIDs?.includes(place.id))} onClick={() => setRequired(place.id)}>必去</button><button className="chip-btn" aria-label={`不去${place.name}`} aria-pressed={Boolean(draft.excludedPlaceIDs?.includes(place.id))} onClick={() => changeDraft({ excludedPlaceIDs: draft.excludedPlaceIDs?.includes(place.id) ? draft.excludedPlaceIDs.filter(id => id !== place.id) : [...(draft.excludedPlaceIDs ?? []), place.id], mustVisitIDs: draft.mustVisitIDs?.filter(id => id !== place.id) })}>不去</button></div>)}
+      </details>}
+      <details className="brief-disclosure"><summary><span>同行、预算与往返</span><b>{party.adults + party.childrenAges.length} 人</b></summary>
+        <div className="brief-fields">
+          <div className="field"><label htmlFor="trip-origin">出发地</label><input id="trip-origin" value={draft.origin} placeholder="用于查询往返班次" onChange={e => changeDraft({ origin: e.target.value })} /></div>
+          <div className="field"><label htmlFor="trip-budget">人均预算（元）</label><input id="trip-budget" type="number" min={100} step={100} value={draft.budgetPerPerson ?? ""} onChange={e => changeDraft({ budgetPerPerson: Number(e.target.value) || undefined })} /></div>
         </div>
-      )}
-      <button
-        className="generate-btn"
-        style={{ width: "100%", marginTop: 4 }}
-        disabled={state.phase === "planning" || !draft.destination || (editingExistingPlan && impacts.length === 0)}
-        onClick={() => void (editingExistingPlan ? applyDraftChanges(draft) : generatePlan())}
-      >
-        {state.phase === "planning"
-          ? "规划中…"
-          : editingExistingPlan
-            ? impacts.length > 0 ? `应用 ${impacts.length} 项调整` : "原方案没有变化"
-            : "让旅程展开"}
-      </button>
-      <div className="sub-text" style={{ marginTop: 8, lineHeight: 1.6 }}>
-        {editingExistingPlan
-          ? "日期、人数和预算只刷新相关报价；需要重排时也会先保住锁定内容。"
-          : "条件可以随时改：日期、人数、预算、节奏、兴趣与城市内移动方式。"}
-      </div>
+        <div className="stepper"><span>成人 {party.adults} 人</span><button aria-label="减少一位成人" disabled={party.adults <= 1} onClick={() => changeParty({ adults: party.adults - 1 })}>−</button><button aria-label="增加一位成人" disabled={party.adults >= 8} onClick={() => changeParty({ adults: party.adults + 1 })}>+</button></div>
+        {party.childrenAges.map((age, index) => <div className="stepper" key={index}><label htmlFor={`child-age-${index}`}>儿童 {index + 1} 年龄</label><input id={`child-age-${index}`} type="number" min={0} max={17} value={age} onChange={e => changeParty({ childrenAges: party.childrenAges.map((v, i) => i === index ? Math.max(0, Math.min(17, Number(e.target.value))) : v) })} /><button aria-label={`删除第${index + 1}名儿童`} onClick={() => changeParty({ childrenAges: party.childrenAges.filter((_, i) => i !== index) })}>×</button></div>)}
+        <button className="chip-btn" disabled={party.childrenAges.length >= 6} onClick={() => changeParty({ childrenAges: [...party.childrenAges, 8] })}>添加儿童</button>
+        <div className="stepper"><span>长辈 {party.seniorTravelers} 人</span><button aria-label="减少一位长辈" disabled={party.seniorTravelers <= 0} onClick={() => changeParty({ seniorTravelers: party.seniorTravelers - 1 })}>−</button><button aria-label="增加一位长辈" disabled={party.seniorTravelers >= party.adults} onClick={() => changeParty({ seniorTravelers: party.seniorTravelers + 1 })}>+</button></div>
+        <div className="stepper"><span>房间 {party.rooms} 间</span><button aria-label="减少一间房" disabled={party.rooms <= 1} onClick={() => changeParty({ rooms: party.rooms - 1 })}>−</button><button aria-label="增加一间房" disabled={party.rooms >= 4} onClick={() => changeParty({ rooms: party.rooms + 1 })}>+</button></div>
+        <div className="field"><label htmlFor="mobility-need">行动需要</label><select id="mobility-need" value={party.mobilityNeed} onChange={e => changeParty({ mobilityNeed: e.target.value as MobilityNeed })}><option value="none">无特别需要</option><option value="stroller">携带婴儿车</option><option value="wheelchair">需要无障碍通行</option></select><small>会多留休息时间；实际无障碍通行条件仍需核实。</small></div>
+      </details>
+      {editingExistingPlan && impacts.length > 0 && <div className="change-preview" role="status"><strong>这次将调整</strong>{impacts.map(impact => <div key={impact.key}><span>{impact.title}</span><small>{impact.detail}</small></div>)}<p>可撤销本次调整。</p></div>}
+      <div className="brief-submit"><button className="generate-btn" disabled={state.phase === "planning" || !draft.destination || (editingExistingPlan && !impacts.length)} onClick={() => void (editingExistingPlan ? applyDraftChanges(draft) : generatePlan())}>{state.phase === "planning" ? "正在安排时间与路线…" : editingExistingPlan ? impacts.length ? "应用调整" : "条件没有变化" : "生成我的路线"}</button><p>先有一份走得通的安排，再慢慢调整。</p></div>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { preferredQuote, quoteContext, quoteTotal } from "./quotes";
 import type { AppState } from "./store";
 import { effectiveParty, type BookingConfirmation, type ProviderQuote } from "./types";
 
@@ -32,17 +33,6 @@ export function expenseSourceTitle(source: ExpenseSource): string {
   return SOURCE_TITLE[source];
 }
 
-function preferredQuote(quotes: ProviderQuote[]): ProviderQuote | undefined {
-  return [...quotes]
-    .filter((quote) => quote.amountCNY != null && quote.kind !== "demo")
-    .sort((a, b) => {
-      const freshness = Number(Boolean(a.isStale)) - Number(Boolean(b.isStale));
-      if (freshness !== 0) return freshness;
-      const kindRank = (quote: ProviderQuote) => quote.kind === "live" ? 0 : quote.kind === "indicative" ? 1 : 2;
-      return kindRank(a) - kindRank(b) || (a.amountCNY ?? Number.MAX_SAFE_INTEGER) - (b.amountCNY ?? Number.MAX_SAFE_INTEGER);
-    })[0];
-}
-
 function sourceForQuote(quote?: ProviderQuote): ExpenseSource {
   if (!quote) return "reserved";
   if (quote.isStale || quote.kind === "indicative") return "reference";
@@ -57,22 +47,6 @@ function matchingConfirmation(
   itemID?: string | null
 ): BookingConfirmation | undefined {
   return itemID ? confirmations.find((item) => item.kind === kind && item.itemID === itemID) : undefined;
-}
-
-function transportTotal(quote: ProviderQuote | undefined, travelers: number): number | null {
-  if (!quote) return null;
-  if (quote.totalAmountCNY != null) return quote.totalAmountCNY;
-  if (quote.amountCNY == null) return null;
-  return quote.unit === "perPerson" ? quote.amountCNY * travelers : quote.amountCNY;
-}
-
-function accommodationTotal(quote: ProviderQuote | undefined, travelers: number, nights: number, rooms: number): number | null {
-  if (!quote) return null;
-  if (quote.totalAmountCNY != null) return quote.totalAmountCNY;
-  if (quote.amountCNY == null) return null;
-  if (quote.unit === "total") return quote.amountCNY;
-  if (quote.unit === "perPerson") return quote.amountCNY * travelers;
-  return quote.amountCNY * nights * rooms;
 }
 
 export function buildExpenseSummary(state: AppState): ExpenseSummary {
@@ -93,9 +67,9 @@ export function buildExpenseSummary(state: AppState): ExpenseSummary {
       rows.push({ id: entry.id, label: entry.label, amountCNY: 0, source: "estimate", note: "已按你的选择跳过", pendingItems: [] });
       continue;
     }
-    const quote = entry.option ? preferredQuote(entry.option.quotes) : undefined;
+    const quote = entry.option ? preferredQuote(entry.option.quotes, quoteContext(draft, "transport")) : undefined;
     const confirmation = matchingConfirmation(state.bookingConfirmations, "transport", entry.option?.id);
-    const quoted = transportTotal(quote, travelers);
+    const quoted = quoteTotal(quote, quoteContext(draft, "transport"));
     const actual = confirmation?.actualAmountCNY;
     rows.push({
       id: entry.id,
@@ -112,9 +86,9 @@ export function buildExpenseSummary(state: AppState): ExpenseSummary {
   }
 
   const stay = state.accommodations.find((item) => item.id === state.selectedAccommodationID);
-  const stayQuote = stay ? preferredQuote(stay.quotes) : undefined;
+  const stayQuote = stay ? preferredQuote(stay.quotes, quoteContext(draft, "accommodation")) : undefined;
   const stayConfirmation = matchingConfirmation(state.bookingConfirmations, "accommodation", stay?.id);
-  const quotedStay = nights === 0 ? 0 : accommodationTotal(stayQuote, travelers, nights, rooms);
+  const quotedStay = nights === 0 ? 0 : quoteTotal(stayQuote, quoteContext(draft, "accommodation"));
   const actualStay = stayConfirmation?.actualAmountCNY;
   const stayPending = nights === 0 ? [] : [
     stayQuote?.taxesIncluded === true ? null : stayQuote?.taxesIncluded === false ? "住宿税费（渠道标记未含）" : "住宿税费",
@@ -124,8 +98,8 @@ export function buildExpenseSummary(state: AppState): ExpenseSummary {
   const stayFormula = stayQuote?.totalAmountCNY != null || stayQuote?.unit === "total"
     ? `渠道返回本次入住总价 · ${nights}晚 · ${rooms}间`
     : stayQuote?.amountCNY != null
-      ? `¥${stayQuote.amountCNY}/晚 × ${nights}晚 × ${rooms}间`
-      : `${nights}晚 × ${rooms}间 · 当前按每间 2 名成人估算`;
+      ? stayQuote.unit === "perPerson" ? `¥${stayQuote.amountCNY}/人 × ${travelers}人` : `¥${stayQuote.amountCNY}/间晚 × ${nights}晚 × ${rooms}间`
+      : `${nights}晚 × ${rooms}间 · 使用旅行条件中的房间数`;
   rows.push({
     id: "accommodation",
     label: `住宿（${nights}晚 · ${rooms}间）`,
@@ -140,7 +114,7 @@ export function buildExpenseSummary(state: AppState): ExpenseSummary {
   });
 
   const ticketableIDs = new Set(state.plan?.days.flatMap((day) => day.stops.filter((stop) => stop.place.interest !== "food").map((stop) => stop.place.id)) ?? []);
-  const pricedTickets = Object.entries(state.tickets).filter(([id, quote]) => ticketableIDs.has(id) && quote.amountCNY != null);
+  const pricedTickets = Object.entries(state.tickets).filter(([id, quote]) => ticketableIDs.has(id) && quote.priceType !== "relatedProduct" && quote.amountCNY != null);
   const knownTicketTotal = pricedTickets.reduce((sum, [, quote]) => sum + (quote.amountCNY ?? 0) * travelers, 0);
   const unknownTicketCount = Math.max(ticketableIDs.size - pricedTickets.length, 0);
   const ticketEnvelope = Math.round(totalBudget * 0.13);

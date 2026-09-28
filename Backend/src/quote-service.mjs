@@ -1,5 +1,6 @@
 import { CtripAdapter } from "./adapters/ctrip.mjs";
 import { CtripFlightAdapter } from "./adapters/ctrip-flight.mjs";
+import { CtripPublicFlightAdapter } from "./adapters/ctrip-public-flight.mjs";
 import { FliggyFlightAdapter } from "./adapters/fliggy-flight.mjs";
 import { BoundedCache } from "./lib/bounded-cache.mjs";
 import { AccorOfficialAdapter } from "./adapters/accor-official.mjs";
@@ -33,18 +34,14 @@ const catalogAdapters = [
   new OneBoundCtripAdapter(),
   new ElongHotelAdapter()
 ];
-const transportAdapters = [new Railway12306Adapter(), new FliggyFlightAdapter(), new CtripFlightAdapter()];
+const transportAdapters = [new Railway12306Adapter(), new CtripPublicFlightAdapter(), new FliggyFlightAdapter(), new CtripFlightAdapter()];
 
 export async function searchAccommodationCatalog(request) {
   validateCatalogRequest(request);
   const normalizedRequest = {
     ...request,
     adults: Math.min(Math.max(Number(request.adults || 1), 1), 8),
-    childrenAges: [...new Set(
-      (Array.isArray(request.childrenAges) ? request.childrenAges : [])
-        .map((value) => Number(value))
-        .filter((value) => Number.isInteger(value) && value >= 0 && value <= 17)
-    )].slice(0, 6),
+    childrenAges: normalizeChildrenAges(request.childrenAges),
     rooms: Math.min(Math.max(Number(request.rooms || 1), 1), 4),
     size: Math.min(Math.max(Number(request.size || 20), 1), 20),
     anchors: [...new Set(
@@ -158,11 +155,7 @@ function validateRequest(request) {
   }
   request.adults = Math.min(Math.max(Number(request.adults || 1), 1), 8);
   request.rooms = Math.min(Math.max(Number(request.rooms || 1), 1), 4);
-  request.childrenAges = [...new Set(
-    (Array.isArray(request.childrenAges) ? request.childrenAges : [])
-      .map((value) => Number(value))
-      .filter((value) => Number.isInteger(value) && value >= 0 && value <= 17)
-  )].slice(0, 6);
+  request.childrenAges = normalizeChildrenAges(request.childrenAges);
 }
 
 function validateCatalogRequest(request) {
@@ -197,11 +190,13 @@ function validateTransportRequest(request) {
     throw new RequestError("modes must contain train or flight");
   }
   request.adults = Math.min(Math.max(Number(request.adults || 1), 1), 8);
-  request.childrenAges = [...new Set(
-    (Array.isArray(request.childrenAges) ? request.childrenAges : [])
-      .map((value) => Number(value))
-      .filter((value) => Number.isInteger(value) && value >= 0 && value <= 17)
-  )].slice(0, 6);
+  request.childrenAges = normalizeChildrenAges(request.childrenAges);
 }
 
 export class RequestError extends Error {}
+
+// Equal ages are separate travelers (for example twins), not duplicate values.
+export function normalizeChildrenAges(ages) {
+  return (Array.isArray(ages) ? ages : []).map(Number)
+    .filter(value => Number.isInteger(value) && value >= 0 && value <= 17).slice(0, 6);
+}

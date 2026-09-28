@@ -1,4 +1,4 @@
-import { Component, lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Component, lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   BedDouble,
   BookOpen,
@@ -15,9 +15,11 @@ import {
   WalletCards
 } from "lucide-react";
 import { AppProvider, useApp } from "./store";
+import { clockText, durationText } from "./types";
 import type { MapSection } from "./components/MapView";
 import Composer, { ConditionsCard } from "./components/Composer";
 import ChatPanel from "./components/ChatPanel";
+import MotionTabs from "./components/MotionTabs";
 import SettingsPanel from "./components/SettingsPanel";
 import { AccommodationPanel, BudgetPanel, PlanPanel, TransportPanel } from "./components/Panels";
 
@@ -78,6 +80,8 @@ function Shell() {
   const [collapsed, setCollapsed] = useState(false);
   const [mapDark, setMapDark] = useState(() => localStorage.getItem("anytravel-web:mapstyle") === "dark");
   const hasPlan = Boolean(state.plan);
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia("(max-width: 1023px)").matches);
+  useEffect(() => { const media = window.matchMedia("(max-width: 1023px)"); const update = () => setIsMobile(media.matches); media.addEventListener("change", update); return () => media.removeEventListener("change", update); }, []);
   const mapSection: MapSection = !hasPlan ? "plan" : tab === "stay" ? "stay" : tab === "transport" ? "transport" : "plan";
 
   useEffect(() => {
@@ -109,11 +113,11 @@ function Shell() {
               ? "往返选择已经和目的地保持同步"
               : tab === "budget"
                 ? "费用会随着你的选择一起更新"
-                : `第 ${state.selectedDay + 1} 天的脚步已经落在地图上`}
+                : `第 ${state.selectedDay + 1} 天 · ${state.plan.days[state.selectedDay]?.stops.length ?? 0} 处停留 · 路段为规划估算`}
         </div>
       )}
 
-      <aside className={`side-panel desktop-only${collapsed ? " collapsed" : ""}`}>
+      {!isMobile && <aside className={`side-panel desktop-only${collapsed ? " collapsed" : ""}`}>
         <button
           className="collapse-handle"
           onClick={() => setCollapsed((value) => !value)}
@@ -130,15 +134,15 @@ function Shell() {
             setEditingConditions={setEditingConditions}
           />
         )}
-      </aside>
+      </aside>}
 
-      <MobileLayer
+      {isMobile && <MobileLayer
         tab={tab}
         setTab={setTab}
         hasPlan={hasPlan}
         editingConditions={editingConditions}
         setEditingConditions={setEditingConditions}
-      />
+      />}
 
       {state.chatOpen && <ChatPanel />}
       {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
@@ -164,14 +168,14 @@ function TopChrome({
   const { state } = useApp();
   const title = state.draft.destination || "AnyTravel";
   const subtitle = state.phase === "planning"
-    ? "正在把想法落到地图上"
+    ? "正在检查时间与地点顺序"
     : state.phase === "ready"
       ? `${state.draft.dayCount} 天 · 每次选择都落在地图上`
       : state.phase === "failure"
         ? "这一段路需要重新接上"
         : state.draft.destination
           ? "再告诉我一点旅途偏好"
-          : "地图正等你说出下一处远方";
+          : "为想去的地方，安排好时间";
   const progress = state.phase === "ready" || state.phase === "failure"
     ? 3
     : state.phase === "planning"
@@ -219,11 +223,13 @@ function PanelScaffold({
   setEditingConditions: (value: boolean) => void;
 }) {
   const { state, undoReconfiguration } = useApp();
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0; }, [state.plan?.generatedAt, state.selectedDay]);
   return (
     <>
       <div className="panel-grabber" aria-hidden="true"><i /></div>
       {hasPlan && !editingConditions && <PanelTabs tab={tab} setTab={setTab} />}
-      <div className="side-content">
+      <div className="side-content" ref={scrollRef} role="main" aria-label="旅行规划">
         {!hasPlan ? (
           <DestinationStart />
         ) : editingConditions ? (
@@ -267,8 +273,9 @@ function DestinationStart() {
 
   return (
     <div className="destination-start">
-      <p className="eyebrow">从地图出发，不填长表格</p>
-      <h1>想把哪里变成一段行程？</h1>
+      <p className="eyebrow">ANYTRAVEL / 下一段旅程</p>
+      <h1>{state.draft.destination ? `${state.draft.destination}，怎么走？` : <>把时间留给<br />真正想去的地方。</>}</h1>
+      {!state.draft.destination && <p className="start-description">选一座城市，告诉我你的节奏。把游览、路程和休息，一起安排好。</p>}
       {state.recoveryTrip && !state.draft.destination && (
         <div className="recovery-card" role="status">
           <div>
@@ -280,7 +287,7 @@ function DestinationStart() {
       )}
       {state.storageIssue && <div className="issue-note" role="alert">{state.storageIssue}</div>}
       <Composer />
-      <div className="destination-examples" aria-label="推荐目的地">
+      {!state.draft.destination && <div className="destination-examples" aria-label="推荐目的地">
         {examples.map((city) => (
           <button
             key={city}
@@ -295,11 +302,10 @@ function DestinationStart() {
             {choosing === city ? "定位中…" : city}
           </button>
         ))}
-      </div>
+      </div>}
       {state.draft.destination && (
         <div className="destination-confirmed">
-          <strong>地图已抵达 {state.draft.destination}</strong>
-          <span>继续补充偏好，或直接让旅程展开。</span>
+          <strong className="destination-label">{state.draft.destination} · 旅行偏好</strong>
           <ConditionsCard />
         </div>
       )}
@@ -318,26 +324,7 @@ function PanelBody({ tab, setTab, goConditions }: { tab: ReadyTab; setTab: (tab:
 }
 
 function PanelTabs({ tab, setTab }: { tab: ReadyTab; setTab: (tab: ReadyTab) => void }) {
-  return (
-    <div className="side-tabs" role="tablist" aria-label="行程内容">
-      {READY_TABS.map((meta) => {
-        const Icon = meta.icon;
-        const selected = tab === meta.id;
-        return (
-          <button
-            key={meta.id}
-            className={`side-tab${selected ? " active" : ""}`}
-            onClick={() => setTab(meta.id)}
-            role="tab"
-            aria-selected={selected}
-          >
-            <Icon size={17} aria-hidden="true" />
-            {meta.title}
-          </button>
-        );
-      })}
-    </div>
-  );
+  return <MotionTabs className="side-tabs" label="行程内容" value={tab} onChange={id => setTab(id as ReadyTab)} items={READY_TABS.map(meta => { const Icon = meta.icon; return { id: meta.id, content: <><Icon size={17} aria-hidden="true" />{meta.title}</> }; })} />;
 }
 
 type Detent = "compact" | "medium" | "large";
@@ -520,14 +507,16 @@ function PrintView() {
       {plan.days.map((day, index) => (
         <section key={index}>
           <h2>{day.title}</h2>
-          {day.stops.map((stop, stopIndex) => (
-            <p key={stopIndex}>
-              <strong>{stop.arrivalText}–{stop.departureText}</strong> {stop.place.name}
-              {stop.place.address ? `（${stop.place.address.slice(0, 80)}）` : ""}
-            </p>
-          ))}
+          <p>游览时段 {clockText(day.startMinute)}–{clockText(day.endMinute)} · 停留 {durationText(day.visitMinutes)} · 移动约 {durationText(day.travelMinutes)}</p>
+          {[
+            ...day.stops.map(stop => ({ start: stop.arriveMinute ?? 0, end: stop.leaveMinute ?? 0, label: `${stop.place.name}${stop.place.address ? `（${stop.place.address.slice(0, 80)}）` : ""}` })),
+            ...(day.breaks ?? []).filter(pause => pause.kind !== "buffer").map(pause => ({ start: pause.startMinute, end: pause.endMinute, label: pause.label }))
+          ].sort((a, b) => a.start - b.start).map((item, i) => <p key={i}><strong>{clockText(item.start)}–{clockText(item.end)}</strong> {item.label}</p>)}
+          <p>另留机动 {durationText(day.bufferMinutes)}。{day.assessment}</p>
+          {day.warnings?.map(warning => <p key={warning}>{warning}</p>)}
         </section>
       ))}
+      <p>时间为规划估算，开放、预约与临时调整请以场所最新通知为准。</p>
     </div>
   );
 }
