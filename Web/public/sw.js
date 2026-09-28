@@ -1,4 +1,4 @@
-const CACHE_NAME = "anytravel-shell-v0.8.4-planner-20260928-r2";
+const CACHE_NAME = "anytravel-shell-v0.8.4-planner-20260928-r3";
 const APP_SHELL = ["./", "./logo.svg", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png", ...["ledger.html", "ledger.js", "ledger.css", "brand.css", "bridge.js", "runtime-storage.js"].map(f => `./vendor/travel-plan-page/${f}`)];
 
 self.addEventListener("install", (event) => {

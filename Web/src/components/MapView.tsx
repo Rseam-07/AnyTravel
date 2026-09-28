@@ -229,7 +229,12 @@ export default function MapView({
     });
     } catch { setMapError("地图暂时无法启动，仍可在行程卡片中查看安排。"); return; }
     map.on("style.load", () => { setMapReady(true); setLoadedStyle(styleRef.current); });
-    const resize = new ResizeObserver(() => map.resize());
+    const resize = new ResizeObserver(() => {
+      map.resize();
+      // Crossing the desktop/mobile breakpoint changes the covered map area.
+      // Recompute padding as well as the canvas, including orientation changes.
+      setFitRequest(n => n + 1);
+    });
     resize.observe(containerRef.current);
     map.on("rotate", () => setNorthUp(Math.abs(map.getBearing()) < 0.5));
     map.on("error", () => setMapError("部分地图未加载，请检查网络。"));

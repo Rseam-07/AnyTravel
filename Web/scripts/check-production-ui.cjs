@@ -47,8 +47,12 @@ const pass=name=>{report.checks.push(name);console.log('PASS '+name);};
  await page.locator('[data-map-ready=true]').waitFor({timeout:30000});
  await page.getByRole('button',{name:'存进旅册',exact:true}).click();
  await page.screenshot({path:out+'/production-desktop.png'});
- await page.setViewportSize({width:390,height:844});
- await page.waitForTimeout(500);
+  await page.setViewportSize({width:390,height:844});
+  await page.waitForFunction(()=>{
+    const sheet=document.querySelector('.mobile-sheet')?.getBoundingClientRect();
+    const pins=[...document.querySelectorAll('.map-pin')].map(pin=>pin.getBoundingClientRect());
+    return sheet && pins.length>0 && pins.every(pin=>pin.left>=0 && pin.right<=innerWidth && pin.top>=70 && pin.bottom<sheet.top);
+  },null,{timeout:10000});
  await page.screenshot({path:out+'/production-mobile.png'});
  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
  pass('production desktop and mobile render');
